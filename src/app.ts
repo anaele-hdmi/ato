@@ -18,6 +18,7 @@ import { Figures } from './world/figures';
 import { Grass } from './world/grass';
 import { Heightfield } from './world/heightfield';
 import { HOUSE_BIRTH, HOUSE_DEATH, House } from './world/house';
+import { Crowd } from './world/crowd';
 import { Smoke } from './world/smoke';
 import { Terrain } from './world/terrain';
 import { Town } from './world/town';
@@ -40,6 +41,7 @@ export class App {
   private house: House;
   private figures: Figures;
   private town: Town;
+  private crowd: Crowd;
   private smoke = new Smoke();
   private water = new Water();
   private endTitle: EndTitle;
@@ -76,7 +78,8 @@ export class App {
     this.house = new House(this.shadow);
     this.figures = new Figures((x, z) => this.hf.height(x, z, this.disp), this.shadow);
     this.town = new Town((x, z) => this.hf.height(x, z, 0), this.shadow);
-    this.scene.add(this.atmos.sky, this.terrain.mesh, this.grass.mesh, this.veg.group, this.house.group, this.figures.group, this.town.group, this.smoke.points, this.water.mesh);
+    this.crowd = new Crowd(this.shadow);
+    this.scene.add(this.atmos.sky, this.terrain.mesh, this.grass.mesh, this.veg.group, this.house.group, this.figures.group, this.town.group, this.crowd.group, this.smoke.points, this.water.mesh);
     const collider = new Collider(this.town.data.boxes, [
       ...this.town.data.cottages,
       { x: 0, y: this.house.position.y, z: 0, rot: 0, scale: 1, birth: HOUSE_BIRTH, death: HOUSE_DEATH, color: new THREE.Color(), seed: 0 },
@@ -223,6 +226,8 @@ export class App {
     this.figures.update(dt, env.year, env.people);
     this.town.update(env.year, env.dots, projScale);
     this.smoke.update(env.year, projScale);
+    // streets fill as the city matures and empty through the bad years
+    this.crowd.update(win(env.year, 1985, 2040, 2298, 2330) * (1 - 0.5 * env.chaos), this.cam.target);
     this.water.update(camera.position);
     BLOCK_DAMAGE.value = smoothstep(2300, 2326, env.year);
 
