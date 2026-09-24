@@ -151,6 +151,7 @@ uniform float uCa;
 uniform float uContrast;
 uniform float uTime;
 uniform float uDebug;
+uniform float uStyle;
 ${COC}
 varying vec2 vUv;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -177,6 +178,73 @@ vec4 upsampleBlur(vec2 uv, float cocFull) {
   }
   return vec4(col / max(wsum, 1e-4), cov / max(wsum, 1e-4));
 }
+
+// Trial treatments for choosing a look (?style=1..3). 0 is the current photographic one.
+float lum(vec3 c) { return dot(c, vec3(0.299, 0.587, 0.114)); }
+float depthEdge(vec2 uv) {
+  float d0 = linearDepth(uv);
+  float e = 0.0;
+  for (int i = 0; i < 4; i++) {
+    vec2 o = (i == 0 ? vec2(1.0, 0.0) : i == 1 ? vec2(-1.0, 0.0) : i == 2 ? vec2(0.0, 1.0) : vec2(0.0, -1.0)) * uTexel * 1.5;
+    e = max(e, abs(linearDepth(uv + o) - d0) / d0);
+  }
+  return smoothstep(0.02, 0.08, e);
+}
+vec3 styleSilhouette(vec3 c, vec2 uv) {
+  // Inside: colour almost gone, depth read as layers of air, near things go dark
+  float d = linearDepth(uv);
+  float l = lum(c);
+  float layer = smoothstep(10.0, 1200.0, d);
+  vec3 air = vec3(0.72, 0.74, 0.73);
+  vec3 g = vec3(pow(l, 1.6)) * vec3(0.92, 0.97, 1.0);
+  g = mix(g * 0.55, air * (0.6 + 0.4 * l), pow(layer, 0.7));
+  return mix(g, c * 0.4, 0.08);
+}
+vec3 styleEtching(vec3 c, vec2 uv) {
+  // an etched plate: paper, ink lines at edges, hatching that thickens into shadow
+  float l = lum(c);
+  vec2 px = uv / uTexel;
+  float h1 = step(0.5, fract((px.x + px.y) / 5.0));
+  float h2 = step(0.5, fract((px.x - px.y) / 5.0));
+  float h3 = step(0.6, fract(px.y / 3.0));
+  float ink = 0.0;
+  ink = max(ink, (1.0 - smoothstep(0.45, 0.6, l)) * (1.0 - h1));
+  ink = max(ink, (1.0 - smoothstep(0.28, 0.4, l)) * (1.0 - h2));
+  ink = max(ink, (1.0 - smoothstep(0.14, 0.24, l)) * (1.0 - h3));
+  ink = max(ink, depthEdge(uv) * 0.85);
+  float d = linearDepth(uv);
+  ink *= 1.0 - 0.7 * smoothstep(300.0, 3000.0, d);
+  vec3 paper = vec3(0.9, 0.87, 0.8) * (0.96 + 0.04 * hash(floor(px / 3.0)));
+  vec3 inkC = vec3(0.16, 0.14, 0.13);
+  return mix(mix(paper, inkC, ink * 0.85), c, 0.1);
+}
+vec3 stylePolaroid(vec3 c, vec2 uv) {
+  // instant film seen from the air: shadows sink into teal, highlights into cream,
+  // greens drift toward cyan, light falls off and develops a little unevenly
+  float l = lum(c);
+  c = mix(vec3(l), c, 1.18);
+  c.b += 0.08 * max(c.g - c.r, 0.0);
+  c.r *= 1.0 - 0.05 * max(c.g - c.r, 0.0);
+  c = (c - 0.5) * 1.12 + 0.5;
+  c = c * 0.93 + vec3(0.0, 0.03, 0.04) * (1.0 - smoothstep(0.0, 0.45, l));
+  c = mix(c, c * vec3(1.04, 1.0, 0.9) + vec3(0.03, 0.02, 0.0), smoothstep(0.5, 1.0, l));
+  vec2 dv = uv - 0.5;
+  c *= 1.0 - 0.38 * pow(dot(dv, dv) * 2.0, 1.3);
+  vec2 q = uv * vec2(2.3, 3.1);
+  float blot = sin(q.x * 2.1 + sin(q.y * 1.7)) * sin(q.y * 1.3 + 0.7);
+  c *= 1.0 + 0.035 * blot;
+  return clamp(c, 0.0, 1.0);
+}
+vec3 stylePlatinum(vec3 c, vec2 uv) {
+  // an old platinum print: warm monochrome, long soft tones, the edges falling away
+  float l = lum(c);
+  l = smoothstep(0.02, 0.98, pow(l, 0.9));
+  vec3 tone = mix(vec3(0.12, 0.1, 0.08), vec3(0.93, 0.89, 0.8), l);
+  tone = mix(tone, vec3(0.62, 0.55, 0.45), 0.12);
+  vec2 dv = uv - 0.5;
+  tone *= 1.0 - 0.45 * pow(dot(dv, dv) * 2.2, 1.4);
+  return tone;
+}
 void main() {
   float coc = abs(cocAt(vUv));
   vec4 b = upsampleBlur(vUv, coc);
@@ -196,6 +264,10 @@ void main() {
   c *= 1.0 - 0.18 * dot(dir, dir) * 2.0;
   // -- colour grading insertion point: adjust final 'c' below, before debug/output --
   if (uDebug > 0.5) { float k = cocAt(vUv) / uMaxPx; c = vec3(max(-k, 0.0), max(k, 0.0), b.a); }
+  if (uStyle > 0.5 && uStyle < 1.5) c = styleSilhouette(c, vUv);
+  else if (uStyle > 1.5 && uStyle < 2.5) c = styleEtching(c, vUv);
+  else if (uStyle > 2.5 && uStyle < 3.5) c = stylePlatinum(c, vUv);
+  else if (uStyle > 3.5) c = stylePolaroid(c, vUv);
   gl_FragColor = vec4(c, 1.0);
 }
 `;
@@ -262,6 +334,7 @@ export class DofPipeline {
         uContrast: { value: 1 },
         uTime: { value: 0 },
         uDebug: { value: new URLSearchParams(location.search).has('dofdebug') ? 1 : 0 },
+        uStyle: { value: parseFloat(new URLSearchParams(location.search).get('style') ?? '0') || 0 },
       },
       vertexShader: fsVert, fragmentShader: compFrag, depthTest: false, depthWrite: false,
     });

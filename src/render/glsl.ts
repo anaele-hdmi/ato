@@ -137,9 +137,9 @@ vec3 tonemap(vec3 x) {
 // Real places shot like models, never vivid.
 vec3 grade(vec3 c) {
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = mix(vec3(l), c, 0.74);
-  c = mix(c * vec3(0.9, 0.97, 1.08), c, smoothstep(0.0, 0.5, l));
-  return c * 0.95 + vec3(0.018, 0.02, 0.024);
+  c = mix(vec3(l), c, 0.86);
+  c = mix(c * vec3(0.93, 0.98, 1.05), c, smoothstep(0.0, 0.5, l));
+  return c * 0.97 + vec3(0.01, 0.012, 0.014);
 }
 vec4 finalOut(vec3 c) {
   return vec4(pow(grade(tonemap(c)), vec3(1.0 / 2.2)), 1.0);
