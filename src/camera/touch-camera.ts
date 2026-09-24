@@ -80,8 +80,12 @@ export class TouchCamera {
 
   private onDown = (e: PointerEvent) => {
     e.preventDefault();
-    this.el.setPointerCapture?.(e.pointerId);
     this.ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    try {
+      this.el.setPointerCapture?.(e.pointerId);
+    } catch {
+      /* capture is a nicety; gestures work without it */
+    }
     this.touched();
     if (e.pointerType === 'mouse') this.mouseButton = e.button === 2 || e.shiftKey ? 2 : 0;
     if (this.ptrs.size === 1) {

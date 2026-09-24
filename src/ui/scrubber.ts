@@ -96,7 +96,11 @@ export class Scrubber {
 
   private onDown = (e: PointerEvent) => {
     e.preventDefault();
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    } catch {
+      /* capture is a nicety */
+    }
     const r = this.track.getBoundingClientRect();
     const knobX = r.left + this.h.getU() * r.width;
     if (Math.abs(e.clientX - knobX) > 26) this.h.setU(this.uAt(e.clientX));
