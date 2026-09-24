@@ -12,6 +12,7 @@ uniform sampler2D uTexTrack;
 uniform sampler2D uTexSoil;
 uniform sampler2D uTexRoof;
 uniform sampler2D uTexLeaves;
+uniform sampler2D uTexWall;
 uniform vec3 uMeanMeadow;
 uniform vec3 uMeanMeadow2;
 uniform vec3 uMeanMacro;
@@ -19,6 +20,7 @@ uniform vec3 uMeanTrack;
 uniform vec3 uMeanSoil;
 uniform vec3 uMeanRoof;
 uniform vec3 uMeanLeaves;
+uniform vec3 uMeanWall;
 // photo colour relative to its own average, partly desaturated so hue stays ours
 vec3 photoDetail(sampler2D t, vec3 mean, vec2 uv, float keepHue) {
   vec3 c = pow(texture2D(t, uv).rgb, vec3(2.2)) / max(mean, vec3(0.03));
@@ -29,7 +31,7 @@ vec3 photoDetail(sampler2D t, vec3 mean, vec2 uv, float keepHue) {
 
 const FILES = {
   uTexMeadow: 'meadow', uTexMeadow2: 'meadow2', uTexMacro: 'macro', uTexTrack: 'track',
-  uTexSoil: 'soil', uTexRoof: 'roof', uTexLeaves: 'leaves',
+  uTexSoil: 'soil', uTexRoof: 'roof', uTexLeaves: 'leaves', uTexWall: 'wall',
 } as const;
 
 export const photoUniforms = {
@@ -42,6 +44,7 @@ export const photoUniforms = {
   uMeanSoil: { value: new THREE.Vector3(0.5, 0.5, 0.5) },
   uMeanRoof: { value: new THREE.Vector3(0.5, 0.5, 0.5) },
   uMeanLeaves: { value: new THREE.Vector3(0.5, 0.5, 0.5) },
+  uMeanWall: { value: new THREE.Vector3(0.5, 0.5, 0.5) },
 } as Record<string, THREE.IUniform>;
 Object.assign(shared, photoUniforms);
 

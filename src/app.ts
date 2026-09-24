@@ -130,7 +130,11 @@ export class App {
     if (q.has('day')) this.clock.day = parseFloat(q.get('day') as string);
     if (q.has('speed')) this.clock.speed = parseInt(q.get('speed') as string, 10);
     if (q.has('nointro')) this.intro = 0;
-    if (q.has('photo')) void loadPhotoTextures(this.renderer).catch(() => undefined);
+    if (q.has('overcast')) this.atmos.overcast = parseFloat(q.get('overcast') as string) || 1;
+    if (q.has('photo')) {
+      void loadPhotoTextures(this.renderer).catch(() => undefined);
+      void this.veg.photo.load().catch(() => undefined);
+    }
     if (q.has('phototex')) {
       const load = (f: string) => {
         const t = new THREE.TextureLoader().load(`./textures-test/${f}`);

@@ -219,20 +219,19 @@ vec3 styleEtching(vec3 c, vec2 uv) {
   return mix(mix(paper, inkC, ink * 0.85), c, 0.1);
 }
 vec3 stylePolaroid(vec3 c, vec2 uv) {
-  // instant film seen from the air: shadows sink into teal, highlights into cream,
-  // greens drift toward cyan, light falls off and develops a little unevenly
+  // instant film at first light: the frame sits low and damp, shadows sink into a
+  // green-teal, the bright sky turns cream, colour is held well back
   float l = lum(c);
-  c = mix(vec3(l), c, 1.18);
-  c.b += 0.08 * max(c.g - c.r, 0.0);
-  c.r *= 1.0 - 0.05 * max(c.g - c.r, 0.0);
-  c = (c - 0.5) * 1.12 + 0.5;
-  c = c * 0.93 + vec3(0.0, 0.03, 0.04) * (1.0 - smoothstep(0.0, 0.45, l));
-  c = mix(c, c * vec3(1.04, 1.0, 0.9) + vec3(0.03, 0.02, 0.0), smoothstep(0.5, 1.0, l));
+  float lt = pow(l, 1.45);
+  c *= lt / max(l, 1e-4);
+  c = mix(vec3(lum(c)), c, 0.62);
+  c = mix(c, c * vec3(0.86, 1.02, 0.96), 1.0 - smoothstep(0.08, 0.5, lt));
+  c = mix(c, c * vec3(1.04, 1.02, 0.8) + vec3(0.03, 0.03, 0.0), smoothstep(0.4, 0.9, lt));
+  c = c * 0.93 + vec3(0.03, 0.045, 0.04);
   vec2 dv = uv - 0.5;
-  c *= 1.0 - 0.38 * pow(dot(dv, dv) * 2.0, 1.3);
+  c *= 1.0 - 0.45 * pow(dot(dv, dv) * 2.0, 1.25);
   vec2 q = uv * vec2(2.3, 3.1);
-  float blot = sin(q.x * 2.1 + sin(q.y * 1.7)) * sin(q.y * 1.3 + 0.7);
-  c *= 1.0 + 0.035 * blot;
+  c *= 1.0 + 0.035 * sin(q.x * 2.1 + sin(q.y * 1.7)) * sin(q.y * 1.3 + 0.7);
   return clamp(c, 0.0, 1.0);
 }
 vec3 stylePlatinum(vec3 c, vec2 uv) {

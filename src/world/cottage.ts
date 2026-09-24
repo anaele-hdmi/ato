@@ -120,6 +120,11 @@ void main() {
   if (uPhoto > 0.5) roof *= photoDetail(uTexRoof, uMeanRoof, vec2(vLocal.x, abs(vLocal.z) * 1.15 + vLocal.y * 0.5) / 2.2, 0.35);
   vec3 stone = vec3(0.42, 0.4, 0.37) * (0.8 + 0.3 * vnoise(vLocal.xy * 4.0 + vLocal.zz));
   vec3 brick = vec3(0.35, 0.22, 0.17);
+  if (uPhoto > 0.5) {
+    // boards run horizontally along whichever wall this is
+    vec2 wq = abs(n.z) > 0.5 ? vec2(vLocal.x, vLocal.y) : vec2(vLocal.z, vLocal.y);
+    wall *= photoDetail(uTexWall, uMeanWall, wq / 2.6, 0.3);
+  }
   vec3 col = vPart < 0.5 ? wall : vPart < 1.5 ? roof : vPart < 2.5 ? brick : stone;
   float lit = 0.0;
   if (vPart < 0.5 && abs(n.y) < 0.5) {

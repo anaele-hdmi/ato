@@ -99,7 +99,7 @@ function sunDirection(out: THREE.Vector3, dec: number, dayPhase: number): THREE.
 }
 
 /** Light of the world at one hour. Writes into `o` without allocating. */
-function lightAt(o: Light, env: Env, dec: number, dayPhase: number): Light {
+function lightAt(o: Light, env: Env, dec: number, dayPhase: number, oc = 0): Light {
   sunDirection(o.sunDir, dec, dayPhase);
   const alt = o.sunDir.y;
   const day = smoothstep(-0.12, 0.12, alt);
@@ -114,8 +114,11 @@ function lightAt(o: Light, env: Env, dec: number, dayPhase: number): Light {
   // chaos: the air goes brown and flat before anything else changes
   o.zenith.lerp(tmp.setRGB(0.42, 0.38, 0.34).multiplyScalar(0.08 + 0.92 * day), env.chaos * 0.6);
   o.horizon.lerp(tmp.setRGB(0.5, 0.43, 0.36).multiplyScalar(0.1 + 0.9 * day), env.chaos * 0.6);
-  o.sun.setRGB(1.0, 0.93, 0.8).lerp(tmp.setRGB(1.0, 0.56, 0.26), low).multiplyScalar(lerp(2.15, 1.2, turb) * day);
-  o.skyAmb.copy(o.zenith).lerp(o.horizon, 0.35).multiplyScalar(lerp(0.5, 0.66, turb));
+  // overcast: a pale cream sky over teal-grey cloud, the sun only a brightening in it
+  o.zenith.lerp(tmp.setRGB(0.36, 0.44, 0.43).multiplyScalar(0.25 + 0.75 * day), oc);
+  o.horizon.lerp(tmp.setRGB(0.86, 0.84, 0.66).multiplyScalar(0.2 + 0.8 * day), oc);
+  o.sun.setRGB(1.0, 0.93, 0.8).lerp(tmp.setRGB(1.0, 0.56, 0.26), low).multiplyScalar(lerp(2.15, 1.2, turb) * day * (1 - 0.82 * oc));
+  o.skyAmb.copy(o.zenith).lerp(o.horizon, 0.35 + 0.3 * oc).multiplyScalar(lerp(0.5, 0.66, turb) * (1 + 0.25 * oc));
   o.skyAmb.add(tmp.setRGB(0.02, 0.03, 0.05).multiplyScalar(night)).add(tmp.setRGB(0.12, 0.08, 0.05).multiplyScalar(lp * night));
   o.groundAmb.setRGB(0.3, 0.28, 0.2).multiplyScalar(day * 0.55).add(tmp.setRGB(0.02, 0.022, 0.03));
   return o;
@@ -127,6 +130,8 @@ export class Atmosphere {
   readonly sky: THREE.Mesh;
   private skyMat: THREE.ShaderMaterial;
   readonly sunDir = new THREE.Vector3();
+  /** 0 clear .. 1 low cloud and mist; the weather of the moment. */
+  overcast = 0;
   sunAlt = 0;
   night = 0;
   private now = makeLight();
@@ -162,7 +167,7 @@ export class Atmosphere {
   update(env: Env, mist: number, exposure: number): void {
     const decNeutral = 0.2;
     const dec = lerp(decNeutral, 0.409 * Math.sin((env.season - 0.22) * Math.PI * 2), env.seasonality);
-    const L = lightAt(this.now, env, dec, env.day);
+    const L = lightAt(this.now, env, dec, env.day, this.overcast);
     let sunDir = L.sunDir;
     if (exposure > 0.01) {
       // Average the whole day (and, with seasons blurred, the whole year).
@@ -172,7 +177,7 @@ export class Atmosphere {
       const decSpread = (1 - env.seasonality) * 0.409;
       for (let i = 0; i < AVG_SAMPLES; i++) {
         const d = dec + decSpread * Math.sin((i * 2.399) % (Math.PI * 2));
-        const sm = lightAt(this.sample, env, d, (i + 0.5) / AVG_SAMPLES);
+        const sm = lightAt(this.sample, env, d, (i + 0.5) / AVG_SAMPLES, this.overcast);
         a.sun.add(sm.sun); a.zenith.add(sm.zenith); a.horizon.add(sm.horizon);
         a.skyAmb.add(sm.skyAmb); a.groundAmb.add(sm.groundAmb); a.night += sm.night;
       }
@@ -201,8 +206,8 @@ export class Atmosphere {
     s.uSkyAmb.value.copy(L.skyAmb);
     s.uGroundAmb.value.copy(L.groundAmb);
     s.uFogColor.value.copy(this.fog);
-    s.uFogDensity.value = 0.00009 + turb * 0.00032 + env.smoke * 0.00015;
-    s.uMist.value = mist * (1 - exposure);
+    s.uFogDensity.value = 0.00009 + turb * 0.00032 + env.smoke * 0.00015 + this.overcast * 0.0012;
+    s.uMist.value = Math.max(mist, this.overcast * 0.85) * (1 - exposure);
     s.uNight.value = L.night;
     s.uLightPollution.value = env.lightPollution;
     s.uExposure.value = lerp(0.68, 1.5, L.night);
