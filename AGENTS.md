@@ -37,7 +37,7 @@ Vite + TypeScript + Three.js(WebGL2)。React/R3F・物理・WebGPUなし。地�
 ## 音
 最初のタップで AudioContext を解錠。バス: ambience / drone / spot / ui → 高度EQ（寄ると高域・細部、引くと風と低域）→ 穴（沈黙）→ master。
 ステムは t でクロスフェード。イベント系は毎回生成し同じフレーズを繰り返さない。スクラブ速度で引き伸ばし/粒立ち。
-音源ファイルは未配置。全て手続き音で、各クラスに「replace with: public/audio/…」の差し替え位置コメントあり。
+音源ファイルは未配置。全て手続き音で、`src/audio/stems-*.ts` の各クラスに「replace with: public/audio/…」の差し替え位置コメントあり。
 
 ## 未決（ユーザー判断待ち）
 - 終端の作品名: 指示内に「画面上の表記は『跡』のみ」と「終端に『定点』を出す」が併存。現在は後者（`src/ui/end-title.ts` の `END_TITLE`）。タブ名は「跡」。

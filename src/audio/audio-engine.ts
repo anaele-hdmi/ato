@@ -3,10 +3,13 @@
 import type { Env } from '../time/time-model';
 import { smoothstep } from '../util/rand';
 import { type Kit, burst, filter, gain, noiseBuffer, rand, roomImpulse, tone } from './kit';
+import type { Stem } from './stem';
 import {
-  AnimalsStem, BirdsStem, CreakStem, DroneStem, ElectricStem, GrassStem, GravelStem, HumStem, IceStem,
-  InsectsStem, MetalStem, MorningStem, RainStem, type Stem, StepsStem, TrafficStem, WaterStem, WindStem, WorkStem,
-} from './stems';
+  AnimalsStem, BirdsStem, GrassStem, IceStem, InsectsStem, MorningStem, RainStem, WaterStem, WindStem,
+} from './stems-nature';
+import {
+  CreakStem, DroneStem, ElectricStem, GravelStem, HumStem, MetalStem, StepsStem, TrafficStem, WorkStem,
+} from './stems-human';
 
 export interface AudioFrame {
   env: Env;
