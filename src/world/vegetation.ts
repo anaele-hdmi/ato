@@ -14,7 +14,7 @@ import { LANES, MAIN_ROAD, alongPolyline, distToPolyline, polylineLength, urbanY
 export const KIND = { decid: 0, conifer: 1, apple: 2, hedge: 3 } as const;
 const FOREVER = 1e10;
 
-interface TreeRec {
+export interface TreeRec {
   x: number; z: number; size: number;
   birth: number; death: number;
   kind: number; deep: boolean; seed: number;
@@ -317,7 +317,7 @@ function trunkGeometry(): THREE.InstancedBufferGeometry {
 
 export class Vegetation {
   readonly group = new THREE.Group();
-  private trees: TreeRec[];
+  readonly trees: TreeRec[];
   private births: number[];
   private geos: THREE.InstancedBufferGeometry[] = [];
   private points: THREE.Points;

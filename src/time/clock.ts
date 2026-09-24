@@ -27,6 +27,16 @@ export class Clock {
   dayRate = 0;
   private lastU = this.u;
 
+  /** Jump without any sense of motion: used by debug parameters. */
+  settle(): void {
+    this.year = uToYear(this.u);
+    this.lastU = this.u;
+    this.yearRate = 0;
+    this.scrubRate = 0;
+    this.exposure = 0;
+    this.season = ((this.year % 1) + 1) % 1;
+  }
+
   setU(u: number): void {
     this.u = clamp(u, 0, 1);
   }

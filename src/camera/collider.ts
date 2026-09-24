@@ -5,6 +5,8 @@ import type { CottageInstance } from '../world/cottage';
 import { smoothstep } from '../util/rand';
 
 interface Solid {
+  /** big enough to stand between the eye and what it looks at */
+  blocks: boolean;
   x: number; z: number; c: number; s: number; hx: number; hz: number; y: number;
   birth: number; death: number;
   h0: number; h1: number; h2: number; g1: number; g2s: number; g2e: number; collapse: number; seed: number;
@@ -15,7 +17,7 @@ const CELL = 60;
 export class Collider {
   private grid = new Map<number, Solid[]>();
 
-  constructor(boxes: BoxRec[], cottages: CottageInstance[]) {
+  constructor(boxes: BoxRec[], cottages: CottageInstance[], trees: { x: number; y: number; z: number; size: number; birth: number; death: number; kind: number }[] = []) {
     const add = (o: Solid) => {
       const r = Math.hypot(o.hx, o.hz);
       for (let i = Math.floor((o.x - r) / CELL); i <= Math.floor((o.x + r) / CELL); i++) {
@@ -29,6 +31,7 @@ export class Collider {
     };
     for (const b of boxes) {
       add({
+        blocks: true,
         x: b.x, z: b.z, c: Math.cos(b.rot), s: Math.sin(b.rot), hx: b.sx / 2 + 0.6, hz: b.sz / 2 + 0.6, y: b.y,
         birth: b.birth, death: b.death, h0: b.h0, h1: b.h1, h2: b.h2, g1: b.grow1, g2s: b.g2s, g2e: b.g2e, collapse: b.collapse, seed: b.seed,
       });
@@ -36,8 +39,19 @@ export class Collider {
     for (const c of cottages) {
       const h = 5.5 * c.scale;
       add({
+        blocks: false,
         x: c.x, z: c.z, c: Math.cos(c.rot), s: Math.sin(c.rot), hx: 3.5 * c.scale, hz: 3 * c.scale, y: c.y,
         birth: c.birth, death: c.death, h0: h, h1: h, h2: h, g1: 0, g2s: 9e9, g2e: 9e9, collapse: 9e9, seed: 0,
+      });
+    }
+    // trees: only their crowns, as a box the eye stays out of (hedges are low enough to ignore)
+    for (const t of trees) {
+      if (t.kind === 3) continue;
+      const r = t.size * 0.35;
+      add({
+        blocks: false,
+        x: t.x, z: t.z, c: 1, s: 0, hx: r, hz: r, y: t.y,
+        birth: t.birth, death: t.death, h0: t.size, h1: t.size, h2: t.size, g1: 0, g2s: 9e9, g2e: 9e9, collapse: 9e9, seed: 0,
       });
     }
   }
@@ -55,11 +69,12 @@ export class Collider {
     return Math.max(1.5, h + (shellH - h) * c1 + (rubbleH - shellH) * c2);
   }
 
-  private inside(x: number, y: number, z: number, year: number): boolean {
+  private inside(x: number, y: number, z: number, year: number, blockersOnly = false): boolean {
     const l = this.grid.get(Math.floor(x / CELL) * 100003 + Math.floor(z / CELL));
     if (!l) return false;
     for (const o of l) {
       if (year < o.birth || year >= o.death) continue;
+      if (blockersOnly && !o.blocks) continue;
       const dx = x - o.x, dz = z - o.z;
       const lx = dx * o.c - dz * o.s, lz = dx * o.s + dz * o.c;
       if (Math.abs(lx) > o.hx || Math.abs(lz) > o.hz) continue;
@@ -76,15 +91,18 @@ export class Collider {
   clip(fx: number, fy: number, fz: number, tx: number, ty: number, tz: number, year: number): number {
     const len = Math.hypot(tx - fx, ty - fy, tz - fz);
     const steps = Math.min(240, Math.ceil(len / 1.5));
-    const at = (t: number) => this.inside(fx + (tx - fx) * t, fy + (ty - fy) * t, fz + (tz - fz) * t, year);
+    const at = (t: number, blockersOnly = false) => this.inside(fx + (tx - fx) * t, fy + (ty - fy) * t, fz + (tz - fz) * t, year, blockersOnly);
     if (len < 350) {
       // a look point inside a building (panned there) must not trap the eye
       let wasOutside = false;
       for (let i = 1; i <= steps; i++) {
-        const hit = at(i / steps);
+        const hit = at(i / steps, true);
         if (hit && wasOutside) return Math.max(0, (i - 1) / steps);
         if (!hit) wasOutside = true;
       }
+      // small things (a house, a tree) never hide the view; only keep the eye out of them
+      if (!at(1)) return 1;
+      for (let i = steps - 1; i >= 1; i--) if (!at(i / steps)) return i / steps;
       return 1;
     }
     if (!at(1)) return 1;

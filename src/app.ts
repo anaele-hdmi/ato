@@ -87,7 +87,7 @@ export class App {
     const collider = new Collider(this.town.data.boxes, [
       ...this.town.data.cottages,
       { x: 0, y: this.house.position.y, z: 0, rot: 0, scale: 1, birth: HOUSE_BIRTH, death: HOUSE_DEATH, color: new THREE.Color(), seed: 0 },
-    ]);
+    ], this.veg.trees.filter((t) => t.death < 1e9).map((t) => ({ ...t, y: this.hf.height(t.x, t.z) })));
     this.cam.setClip((a, b) => collider.clip(a.x, a.y, a.z, b.x, b.y, b.z, this.clock.year));
 
     this.ui = new Scrubber(stage, {
@@ -124,6 +124,7 @@ export class App {
     const q = new URLSearchParams(location.search);
     if (q.has('t')) this.clock.setU(yearToU(parseFloat(q.get('t') as string)));
     if (q.has('u')) this.clock.setU(parseFloat(q.get('u') as string));
+    this.clock.settle();
     if (q.has('d')) this.cam.logDist = Math.log(parseFloat(q.get('d') as string));
     (this.cam as unknown as { logTarget: number }).logTarget = this.cam.logDist;
     if (q.has('az')) this.cam.azimuth = parseFloat(q.get('az') as string);

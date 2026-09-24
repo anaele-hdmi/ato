@@ -118,14 +118,17 @@ float heightFogDepth(vec3 wp, float base, float scale, float dens) {
 vec3 applyFog(vec3 c, vec3 wp) {
   float d = length(wp - cameraPosition);
   float od = heightFogDepth(wp, 0.0, 1400.0, uFogDensity);
-  // morning mist lies in the low ground, in banks rather than an even sheet
-  float bank = 0.35 + 1.3 * smoothstep(0.35, 0.75, vnoise(wp.xz * 0.0022 + uTime * 0.003));
-  od += heightFogDepth(wp, 14.0, 9.0, uMist * 0.02 * bank);
   // distant air in layers: a few veils that step back one behind another
   od += uFogDensity * 0.9 * max(d - 250.0, 0.0) * smoothstep(0.3, 0.7, vnoise(vec2(d * 0.0016, 3.1)));
   float f = 1.0 - exp(-od);
   f = max(f, uIntro * smoothstep(0.0, 18.0, d));
-  return mix(c, uFogColor, clamp(f, 0.0, 1.0));
+  c = mix(c, uFogColor, clamp(f, 0.0, 1.0));
+  // ground mist: its own pale layer pooled in the low fields, drifting in banks;
+  // what stands above it (trees, the house) reads as a silhouette
+  float bank = 0.25 + 1.5 * smoothstep(0.3, 0.75, vnoise(wp.xz * 0.0028 + vec2(uTime * 0.004, 0.0)));
+  float odm = heightFogDepth(wp, 13.0, 6.5, uMist * 0.045 * bank);
+  vec3 mistCol = mix(uFogColor, vec3(dot(uFogColor, vec3(0.3, 0.55, 0.15))) * 1.15 + 0.04, 0.55);
+  return mix(c, mistCol, clamp(1.0 - exp(-odm), 0.0, 0.92));
 }
 
 vec3 tonemap(vec3 x) {
