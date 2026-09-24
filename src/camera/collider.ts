@@ -45,8 +45,14 @@ export class Collider {
   private height(o: Solid, year: number): number {
     let h = o.h0 + (o.h1 - o.h0) * smoothstep(o.birth, Math.max(o.g1, o.birth + 0.01), year) + (o.h2 - o.h1) * smoothstep(o.g2s, o.g2e, year);
     h = Math.max(3.2, Math.round(h / 3.2) * 3.2);
-    const col = smoothstep(o.collapse, o.collapse + 120 + o.seed * 260, year);
-    return Math.max(1.5, h * (1 - col * 0.9));
+    // same two stages as the building shader: shear to a shell, later a fall to rubble
+    const failDur = 3 + glslHash11(o.seed * 17.3) * 9;
+    const shellH = Math.max(1, Math.round((h / 3.2) * (0.12 + glslHash11(o.seed * 23.1) * 0.55))) * 3.2;
+    const fall = o.collapse + failDur + 50 + Math.pow(glslHash11(o.seed * 41.7), 3) * 900;
+    const c1 = smoothstep(o.collapse, o.collapse + failDur, year);
+    const c2 = smoothstep(fall, fall + failDur * 0.6, year);
+    const rubbleH = Math.min(h * 0.18, 4 + o.seed * 8);
+    return Math.max(1.5, h + (shellH - h) * c1 + (rubbleH - shellH) * c2);
   }
 
   private inside(x: number, y: number, z: number, year: number): boolean {
@@ -85,4 +91,13 @@ export class Collider {
     for (let i = steps - 1; i >= 1; i--) if (!at(i / steps)) return i / steps;
     return 0;
   }
+}
+
+/** JS twin of hash11 in render/glsl.ts, so camera and shader agree. */
+function glslHash11(p: number): number {
+  const fr = (x: number) => x - Math.floor(x);
+  p = fr(p * 0.1031);
+  p *= p + 33.33;
+  p *= p + p;
+  return fr(p);
 }

@@ -5,8 +5,28 @@ import { shared } from '../render/shared';
 import { COMMON } from '../render/glsl';
 import type { BoxRec } from './settlement';
 
+// Structural-failure timing, shared with debris.ts so a building's falling shell
+// and the rubble mound that appears for it stay on the same clock. Two short, sudden
+// stages (a jagged shear to a broken shell, then — sometimes centuries later — a
+// second collapse to a low mound) read as failure; a smooth height lerp read as a
+// building growing in reverse, which is the thing this replaced.
+export const COLLAPSE_GLSL = /* glsl */ `
+float failDur(float seed) { return 3.0 + hash11(seed * 17.3) * 9.0; }
+float shellFrac(float seed) { return 0.12 + hash11(seed * 23.1) * 0.55; }
+float longStand(float seed) { return 50.0 + pow(hash11(seed * 41.7), 3.0) * 900.0; }
+float fallYear(float collapseAt, float seed) { return collapseAt + failDur(seed) + longStand(seed); }
+float collapse1Of(float collapseAt, float seed, float year) {
+  return smoothstep(collapseAt, collapseAt + failDur(seed), year);
+}
+float collapse2Of(float collapseAt, float seed, float year) {
+  float fy = fallYear(collapseAt, seed);
+  return smoothstep(fy, fy + failDur(seed) * 0.6, year);
+}
+`;
+
 const vert = /* glsl */ `
 ${COMMON}
+${COLLAPSE_GLSL}
 attribute vec2 aLife;
 attribute vec4 aShape;   // h0, h1, h2, kind
 attribute vec4 aTimes;   // grow1, g2 start, g2 end, seed
@@ -15,7 +35,8 @@ varying vec3 vWorld;
 varying vec3 vNormal;
 varying vec3 vObj;
 varying vec3 vSize;
-varying vec4 vInfo;      // kind, seed, rot/abandon amount, collapse amount
+varying vec3 vInfo;      // kind, seed, abandon amount
+varying vec3 vCollapse;  // shear-stage amount, final-crumble amount, shell fraction (damage)
 void main() {
   if (uYear < aLife.x || uYear >= aLife.y) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   float seed = aTimes.w;
@@ -24,24 +45,49 @@ void main() {
   // floors are added one at a time
   h = max(3.2, floor(h / 3.2 + 0.5) * 3.2);
   float build = smoothstep(aLife.x, aLife.x + 1.5 + h * 0.02, uYear);
-  float collapse = smoothstep(aDecay.y, aDecay.y + 120.0 + seed * 260.0, uYear);
   float abandon = smoothstep(aDecay.x, aDecay.x + 25.0, uYear);
   vec3 sx = vec3(length(instanceMatrix[0].xyz), 1.0, length(instanceMatrix[2].xyz));
   vec3 p = position;
   float top = step(0.5, p.y);
   // broken tops: each corner falls at its own pace
   float corner = hash12(vec2(sign(p.x) + seed * 13.0, sign(p.z) + seed * 7.0));
-  float rubble = min(h * 0.2, 5.0 + seed * 9.0) * (1.0 - 0.6 * smoothstep(aDecay.y + 400.0, aDecay.y + 3000.0, uYear));
-  float hc = mix(h * build, rubble, collapse) * mix(1.0, 0.8 + 0.2 * corner, collapse);
-  hc = max(hc, 1.5);
+
+  // stage 1: a short, jagged shear down to a broken shell (not a smooth shrink) —
+  // floors are lost in a handful of discrete, uneven steps over just a few years.
+  float floors = max(1.0, floor(h / 3.2 + 0.5));
+  float sf = shellFrac(seed);
+  float shellFloors = max(1.0, floor(floors * sf + 0.5));
+  float c1raw = collapse1Of(aDecay.y, seed, uYear);
+  float steps = clamp(floors - shellFloors, 2.0, 6.0);
+  float c1 = floor(c1raw * steps + 0.001) / steps;
+  float shellH = shellFloors * 3.2 * mix(1.0, 0.82 + 0.18 * corner, step(0.001, c1raw));
+  // stage 2: the standing shell can last a long time (occasionally centuries) before
+  // a second short collapse flattens it to a low rubble mound.
+  float c2raw = collapse2Of(aDecay.y, seed, uYear);
+  float c2 = floor(c2raw * 4.0 + 0.001) / 4.0;
+  float rubbleH = min(h * 0.18, 4.0 + seed * 8.0) * mix(1.0, 0.7 + 0.3 * corner, step(0.001, c2raw));
+
+  float hc = mix(h, shellH, c1);
+  hc = mix(hc, rubbleH, c2);
+  hc *= build;
+  hc = max(hc, 1.2);
+
+  // a leaning shell: the top of the box shears sideways while the base stays put,
+  // building up gradually even though the height itself falls in sudden steps.
+  vec2 leanDir = normalize(vec2(hash11(seed * 12.9 + 1.0) - 0.5, hash11(seed * 57.3 + 2.0) - 0.5) + 1e-4);
+  float leanAmt = clamp(c1raw * 0.9 + c2raw * 0.5, 0.0, 1.0) * (0.05 + 0.12 * hash11(seed * 77.0));
+  vec2 leanShift = leanDir * leanAmt * hc * top;
+
   float y = mix(-3.0, hc, top);
   vec4 w = modelMatrix * instanceMatrix * vec4(p.x, 0.0, p.z, 1.0);
   w.y += y;
+  w.xz += leanShift;
   vWorld = w.xyz;
   vNormal = normalize(mat3(modelMatrix) * mat3(instanceMatrix) * normal);
   vObj = vec3(p.x * sx.x, y, p.z * sx.z);
   vSize = vec3(sx.x, hc, sx.z);
-  vInfo = vec4(aShape.w, seed, abandon, collapse);
+  vInfo = vec3(aShape.w, seed, abandon);
+  vCollapse = vec3(c1, c2, sf);
   gl_Position = projectionMatrix * viewMatrix * w;
 }
 `;
@@ -52,16 +98,19 @@ varying vec3 vWorld;
 varying vec3 vNormal;
 varying vec3 vObj;
 varying vec3 vSize;
-varying vec4 vInfo;
+varying vec3 vInfo;
+varying vec3 vCollapse;
 uniform float uDamage;
 float box(vec2 p, vec2 lo, vec2 hi) { return step(lo.x, p.x) * step(p.x, hi.x) * step(lo.y, p.y) * step(p.y, hi.y); }
 void main() {
-  float kind = vInfo.x, seed = vInfo.y, abandon = vInfo.z, collapse = vInfo.w;
+  float kind = vInfo.x, seed = vInfo.y, abandon = vInfo.z;
+  float c1 = vCollapse.x, c2 = vCollapse.y, sf = vCollapse.z;
+  float shellAmt = max(c1, c2);
   // jagged broken tops once falling; holes torn in some during the bad years
   float aa = vObj.x + vObj.z;
-  float ragged = (collapse > 0.001 ? collapse : abandon * 0.15) * (2.0 + 10.0 * vnoise(vec2(aa * 0.21, seed * 50.0)));
+  float ragged = (shellAmt > 0.001 ? shellAmt : abandon * 0.15) * (3.0 + 16.0 * vnoise(vec2(aa * 0.21, seed * 50.0)));
   if (vObj.y > vSize.y - ragged) discard;
-  float hurt = uDamage * step(0.55, fract(seed * 5.13)) + collapse * 0.8;
+  float hurt = uDamage * step(0.55, fract(seed * 5.13)) + shellAmt * 0.8;
   if (hurt > 0.01 && vnoise(vec2(aa * 0.07 + seed * 30.0, vObj.y * 0.06)) > 1.0 - 0.28 * hurt && vObj.y > 3.0) discard;
 #ifdef DEPTH_PASS
   gl_FragColor = vec4(1.0);
@@ -107,6 +156,13 @@ void main() {
     vec2 cell = vec2(fract(a / bayW), fract(y / floorH));
     float winW = tower ? 0.42 : 0.3;
     float win = box(cell, vec2(winW, 0.28), vec2(1.0 - winW * (tower ? 0.3 : 1.0), 0.82)) * step(0.0, y - 0.4);
+    // exposed skeleton: once the shell has sheared, facade panels between floor
+    // lines fall away and leave the slabs and columns bare; the rest is a hole.
+    float skeleton = c1 * (1.0 - c2);
+    bool slab = cell.y < 0.1 || cell.y > 0.9;
+    bool column = cell.x < 0.05 || cell.x > 0.95;
+    float exposeChance = skeleton * mix(0.15, 0.85, 1.0 - sf);
+    if (!slab && !column && hash12(vec2(bay, fl) + seed * 41.0) < exposeChance) discard;
     // stains running down from the sills
     float streak = vnoise(vec2(a * 0.7, y * 0.05 + seed * 9.0));
     col *= 1.0 - 0.18 * streak * smoothstep(0.3, 1.0, fract(a / bayW + 0.1)) - 0.25 * abandon * vnoise(vec2(a * 0.3, y * 0.1));
@@ -138,10 +194,15 @@ void main() {
     if (sign > 0.5) glowCol = mix(glowCol, signCol * 1.5 + 0.2, 0.9);
     // broken windows once abandoned
     col = mix(col, vec3(0.03), win * abandon * step(0.4, hash12(vec2(bay, fl) + seed * 5.0)));
+    // bare concrete where the facade is gone
+    col = mix(col, vec3(0.4, 0.37, 0.33), skeleton * float(slab || column) * 0.55);
     // green creeping up from the ground
     float creep = smoothstep(0.0, 1.0, uWild * 1.4 - y / max(vSize.y, 1.0) * 0.8 - 0.3 + vnoise(vec2(a * 0.4, y * 0.3)) * 0.5);
     col = mix(col, grassColor(0.3) * 0.8, creep * abandon);
   }
+  // ground the collapsed remainder in dust; no lights left in a rubble pile
+  col = mix(col, vec3(0.36, 0.33, 0.29), c2 * 0.7);
+  glow *= 1.0 - c2;
   // scaffold colour while building
   float sh = sampleShadow(vWorld, n);
   vec3 c = shade(col, n, vWorld, 0.15, sh);

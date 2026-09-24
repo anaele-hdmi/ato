@@ -4,6 +4,7 @@ import * as THREE from 'three';
 import type { SunShadow } from '../render/shadow';
 import { bornBy, buildBlocks } from './blocks';
 import { buildCottages, cottageMaterials } from './cottage';
+import { Debris } from './debris';
 import { type Settlement, buildSettlement } from './settlement';
 import { StreetDots } from './street-dots';
 import { Utilities } from './utilities';
@@ -16,6 +17,7 @@ export class Town {
   private blockBirths: number[];
   private cottageBirths: number[];
   private dots: StreetDots;
+  private debris: Debris;
   readonly data: Settlement;
 
   constructor(ground: (x: number, z: number) => number, shadow: SunShadow) {
@@ -29,9 +31,11 @@ export class Town {
     this.blocks = b.mesh;
     this.blockBirths = b.births;
     shadow.add(this.blocks, b.depth);
+    this.debris = new Debris(s.boxes);
+    shadow.add(this.debris.mesh, this.debris.depth);
     this.utilities = new Utilities(s.poles, shadow);
     this.dots = new StreetDots(s.streets);
-    this.group.add(this.cottages, this.blocks, this.utilities.group, this.dots.points);
+    this.group.add(this.cottages, this.blocks, this.debris.mesh, this.utilities.group, this.dots.points);
   }
 
   update(year: number, dots: number, projScale: number): void {
@@ -40,5 +44,6 @@ export class Town {
     this.cottages.visible = this.cottages.count > 0;
     this.blocks.visible = this.blocks.count > 0;
     this.dots.update(dots, projScale);
+    this.debris.update(year);
   }
 }
