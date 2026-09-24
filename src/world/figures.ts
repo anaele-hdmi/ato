@@ -55,6 +55,15 @@ export class Figures {
   private meshes: Record<(typeof PARTS)[number], THREE.InstancedMesh>;
   private m = new THREE.Matrix4();
   private tmpQ = new THREE.Quaternion();
+  // per-frame scratch, so walking allocates nothing
+  private zero = new THREE.Matrix4().makeScale(0, 0, 0);
+  private base = new THREE.Matrix4();
+  private limb = new THREE.Matrix4();
+  private rot = new THREE.Matrix4();
+  private out = new THREE.Matrix4();
+  private pos = new THREE.Vector3();
+  private scl = new THREE.Vector3();
+  private eul = new THREE.Euler(0, 0, 0, 'YXZ');
 
   constructor(private ground: (x: number, z: number) => number, shadow: SunShadow) {
     const rng = mulberry32(4242);
@@ -105,7 +114,7 @@ export class Figures {
   }
 
   update(dt: number, year: number, people: number): void {
-    const zero = new THREE.Matrix4().makeScale(0, 0, 0);
+    const zero = this.zero;
     this.walkers.forEach((w, i) => {
       const present = year >= w.birth && year < w.death && people > 0.02;
       // Fade the crowd out by dropping individuals, not by transparency.
@@ -141,19 +150,19 @@ export class Figures {
       const swing = Math.sin(w.phase) * moving;
       const bob = Math.abs(Math.sin(w.phase)) * 0.025 * moving;
       const sway = Math.sin(performance.now() * 0.0007 + i) * 0.015 * (1 - moving);
-      const base = new THREE.Matrix4().compose(
-        new THREE.Vector3(pt.x, y + bob, pt.z),
-        this.tmpQ.setFromEuler(new THREE.Euler(sway, yaw, 0, 'YXZ')),
-        new THREE.Vector3(w.scale, w.scale, w.scale),
+      const base = this.base.compose(
+        this.pos.set(pt.x, y + bob, pt.z),
+        this.tmpQ.setFromEuler(this.eul.set(sway, yaw, 0, 'YXZ')),
+        this.scl.setScalar(w.scale),
       );
       this.setPart('head', i, 0, base);
       this.setPart('torso', i, 0, base);
       for (let k = 0; k < 2; k++) {
         const sgn = k === 0 ? 1 : -1;
-        const leg = new THREE.Matrix4().makeTranslation(sgn * 0.085, 0.86, 0).multiply(new THREE.Matrix4().makeRotationX(swing * 0.42 * sgn));
-        this.setPart('legs', i, k, base.clone().multiply(leg));
-        const arm = new THREE.Matrix4().makeTranslation(sgn * 0.215, 1.36, 0).multiply(new THREE.Matrix4().makeRotationX(-swing * 0.32 * sgn)).multiply(new THREE.Matrix4().makeRotationZ(sgn * 0.06));
-        this.setPart('arms', i, k, base.clone().multiply(arm));
+        this.limb.makeTranslation(sgn * 0.085, 0.86, 0).multiply(this.rot.makeRotationX(swing * 0.42 * sgn));
+        this.setPart('legs', i, k, this.out.multiplyMatrices(base, this.limb));
+        this.limb.makeTranslation(sgn * 0.215, 1.36, 0).multiply(this.rot.makeRotationX(-swing * 0.32 * sgn)).multiply(this.rot.makeRotationZ(sgn * 0.06));
+        this.setPart('arms', i, k, this.out.multiplyMatrices(base, this.limb));
       }
     });
     for (const p of PARTS) this.meshes[p].instanceMatrix.needsUpdate = true;

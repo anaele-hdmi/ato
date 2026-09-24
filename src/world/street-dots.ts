@@ -23,7 +23,7 @@ void main() {
   if (vShow < 0.5) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; return; }
   vec2 a = aSeg.xy, b = aSeg.zw;
   float len = max(length(b - a), 1.0);
-  float dir = aMove.w > 0.5 ? (seed > 0.5 ? 1.0 : -1.0) : (seed > 0.5 ? 1.0 : -1.0);
+  float dir = seed > 0.5 ? 1.0 : -1.0;
   float s = fract(aMove.y + dir * uTime * aMove.x / len);
   vec2 t = (b - a) / len;
   vec2 nrm = vec2(-t.y, t.x);

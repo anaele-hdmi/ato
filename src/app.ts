@@ -53,6 +53,10 @@ export class App {
   private intro = 1;
   private debugEl: HTMLDivElement | null = null;
   private disp = 0;
+  private tmpV2 = new THREE.Vector2();
+  private fwd = new THREE.Vector3();
+  private poleNear = 0;
+  private poleTimer = 0;
 
   constructor(canvas: HTMLCanvasElement, private stage: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'high-performance', stencil: false });
@@ -209,7 +213,7 @@ export class App {
 
     this.atmos.update(env, mist);
     this.grass.update(camera.position, this.cam.target, dist);
-    const projScale = (this.renderer.getDrawingBufferSize(new THREE.Vector2()).y / 2) / Math.tan((camera.fov * Math.PI) / 360);
+    const projScale = (this.renderer.getDrawingBufferSize(this.tmpV2).y / 2) / Math.tan((camera.fov * Math.PI) / 360);
     this.veg.update(env.year, env.year < 2330 + 3000 ? 1 : env.forest * (1 - env.glacial), projScale);
     this.house.update(env.year, c.season, c.seasonality, c.day);
     this.figures.update(dt, env.year, env.people);
@@ -236,11 +240,16 @@ export class App {
 
     // Sound
     const summer = win(c.season, 0.36, 0.46, 0.7, 0.8) * c.seasonality + 0.35 * (1 - c.seasonality);
-    const fwd = new THREE.Vector3();
-    camera.getWorldDirection(fwd);
+    const fwd = camera.getWorldDirection(this.fwd);
+    // the nearest pole only matters for a slow hum; a few checks a second is plenty
+    this.poleTimer -= dt;
+    if (this.poleTimer <= 0) {
+      this.poleTimer = 0.3;
+      this.poleNear = this.town.utilities.nearness(camera.position, env.year);
+    }
     const frameA: AudioFrame = {
       env, altitude: alt, scrubRate: c.scrubRate, night: this.atmos.night, morning, summer,
-      wind: this.wind.value, poleNear: this.town.utilities.nearness(camera.position, env.year),
+      wind: this.wind.value, poleNear: this.poleNear,
       listener: { x: camera.position.x, y: camera.position.y, z: camera.position.z, fx: fwd.x, fy: fwd.y, fz: fwd.z },
       house: {
         x: 1.5, y: this.house.position.y + 4, z: -0.9,

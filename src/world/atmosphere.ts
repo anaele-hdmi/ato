@@ -59,6 +59,12 @@ export class Atmosphere {
   readonly sunDir = new THREE.Vector3();
   sunAlt = 0;
   night = 0;
+  // scratch colours reused every frame instead of allocating
+  private colors = Array.from({ length: 24 }, () => new THREE.Color());
+  private pool = 0;
+  private c(r = 0, g = 0, b = 0): THREE.Color {
+    return this.colors[this.pool++].setRGB(r, g, b);
+  }
 
   constructor() {
     this.skyMat = new THREE.ShaderMaterial({
@@ -98,30 +104,31 @@ export class Atmosphere {
     const lp = env.lightPollution;
     const g = env.glacial;
 
-    const zenith = new THREE.Color(0.16, 0.36, 0.78)
-      .lerp(new THREE.Color(0.46, 0.55, 0.64), turb * 0.8)
-      .lerp(new THREE.Color(0.55, 0.62, 0.72), g * 0.5);
-    const horizon = new THREE.Color(0.66, 0.76, 0.86)
-      .lerp(new THREE.Color(0.8, 0.76, 0.68), turb * 0.8)
-      .lerp(new THREE.Color(0.95, 0.66, 0.42), low * 0.7 * day);
-    const nz = new THREE.Color(0.01, 0.016, 0.034).lerp(new THREE.Color(0.06, 0.05, 0.05), lp * 0.8);
-    const nh = new THREE.Color(0.028, 0.035, 0.055).lerp(new THREE.Color(0.2, 0.13, 0.08), lp);
+    this.pool = 0;
+    const zenith = this.c(0.16, 0.36, 0.78)
+      .lerp(this.c(0.46, 0.55, 0.64), turb * 0.8)
+      .lerp(this.c(0.55, 0.62, 0.72), g * 0.5);
+    const horizon = this.c(0.66, 0.76, 0.86)
+      .lerp(this.c(0.8, 0.76, 0.68), turb * 0.8)
+      .lerp(this.c(0.95, 0.66, 0.42), low * 0.7 * day);
+    const nz = this.c(0.01, 0.016, 0.034).lerp(this.c(0.06, 0.05, 0.05), lp * 0.8);
+    const nh = this.c(0.028, 0.035, 0.055).lerp(this.c(0.2, 0.13, 0.08), lp);
     zenith.lerp(nz, night);
     horizon.lerp(nh, night);
     // chaos: the air goes brown and flat before anything else changes
-    zenith.lerp(new THREE.Color(0.42, 0.38, 0.34).multiplyScalar(0.08 + 0.92 * day), env.chaos * 0.6);
-    horizon.lerp(new THREE.Color(0.5, 0.43, 0.36).multiplyScalar(0.1 + 0.9 * day), env.chaos * 0.6);
+    zenith.lerp(this.c(0.42, 0.38, 0.34).multiplyScalar(0.08 + 0.92 * day), env.chaos * 0.6);
+    horizon.lerp(this.c(0.5, 0.43, 0.36).multiplyScalar(0.1 + 0.9 * day), env.chaos * 0.6);
 
-    const sunCol = new THREE.Color(1.0, 0.94, 0.84)
-      .lerp(new THREE.Color(1.0, 0.56, 0.26), low)
+    const sunCol = this.c(1.0, 0.94, 0.84)
+      .lerp(this.c(1.0, 0.56, 0.26), low)
       .multiplyScalar(lerp(1.75, 1.1, turb) * day);
 
-    const skyAmb = zenith.clone().lerp(horizon, 0.45).multiplyScalar(lerp(0.62, 0.7, turb));
-    skyAmb.add(new THREE.Color(0.02, 0.03, 0.05).multiplyScalar(night));
-    skyAmb.add(new THREE.Color(0.12, 0.08, 0.05).multiplyScalar(lp * night));
-    const groundAmb = new THREE.Color(0.3, 0.28, 0.2).multiplyScalar(day * 0.55).add(new THREE.Color(0.02, 0.022, 0.03));
+    const skyAmb = this.c().copy(zenith).lerp(horizon, 0.45).multiplyScalar(lerp(0.62, 0.7, turb));
+    skyAmb.add(this.c(0.02, 0.03, 0.05).multiplyScalar(night));
+    skyAmb.add(this.c(0.12, 0.08, 0.05).multiplyScalar(lp * night));
+    const groundAmb = this.c(0.3, 0.28, 0.2).multiplyScalar(day * 0.55).add(this.c(0.02, 0.022, 0.03));
 
-    const fog = horizon.clone().lerp(zenith, 0.15);
+    const fog = this.c().copy(horizon).lerp(zenith, 0.15);
 
     const s = shared;
     s.uSunDir.value.copy(this.sunDir);
