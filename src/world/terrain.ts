@@ -92,6 +92,16 @@ ${ROADS_FN}
 ${GRID_FN}
 varying vec3 vWorld;
 varying vec4 vRaw;
+uniform float uPhoto;
+uniform sampler2D uTexGrass;
+uniform sampler2D uTexGravel;
+// a real photograph's grain, at two scales and two rotations so tiles never line up
+float photoGrain(sampler2D t, vec2 p, float dist, float s1, float s2) {
+  mat2 r1 = mat2(0.8, -0.6, 0.6, 0.8), r2 = mat2(0.28, 0.96, -0.96, 0.28);
+  float a = texture2D(t, r1 * p * s1).r;
+  float b = texture2D(t, r2 * p * s2 + 0.37).r;
+  return mix(a, b, smoothstep(15.0, 160.0, dist)) / 0.45;
+}
 
 vec3 roadSurface(float along, vec2 p, float paved, float decayed) {
   float n = vnoise(p * 1.7);
@@ -141,6 +151,7 @@ void main() {
   // a meadow is a patchwork: clover, tussock, sorrel, dry grass
   grass = mix(grass, grass * vec3(0.66, 0.78, 0.7), smoothstep(0.5, 0.8, fbm3(p * 0.07 + 4.0)) * 0.6);
   grass = mix(grass, grass * vec3(1.25, 1.12, 0.82), smoothstep(0.55, 0.8, fbm3(p * 0.03 + 9.0)) * 0.5);
+  if (uPhoto > 0.5) grass *= mix(1.0, photoGrain(uTexGrass, p, dist, 0.35, 0.06), 0.8 * (1.0 - smoothstep(600.0, 2500.0, dist)));
   // wind running over the meadow as travelling bands of light
   float gustBand = sin(dot(p, uWindDir) * 0.09 - uTime * 1.3 + vnoise(p * 0.02) * 4.0);
   grass *= 1.0 + 0.09 * uWind * gustBand * (1.0 - urban) * (1.0 - smoothstep(150.0, 600.0, dist));
@@ -221,6 +232,7 @@ void main() {
   float rut = (1.0 - uGravel) * (1.0 - smoothstep(0.12, 0.3, abs(rd.r - 0.75))) * mainRoad;
   vec3 track = mix(roadSurface(rd.r, p, max(uPaved, max(lanePaved * lane, street)), decayed), grass * 0.8, (1.0 - uGravel) * 0.55);
   track = mix(track, vec3(0.27, 0.22, 0.16), rut * 0.8);
+  if (uPhoto > 0.5) track *= mix(1.0, photoGrain(uTexGravel, p, dist, 0.6, 0.12), 0.7 * (1.0 - smoothstep(400.0, 2000.0, dist)));
   // sidewalks along the avenue
   float kerb = smoothstep(mainW * 0.5, mainW * 0.5 + 0.2, rd.r) * (1.0 - smoothstep(mainW * 0.5 + 2.6, mainW * 0.5 + 2.8, rd.r)) * uAvenue * (1.0 - roadGone);
   col = mix(col, vec3(0.48, 0.47, 0.44) * (0.9 + 0.2 * fine), kerb * (1.0 - grow * 0.8));

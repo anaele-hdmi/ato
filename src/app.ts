@@ -129,6 +129,17 @@ export class App {
     if (q.has('day')) this.clock.day = parseFloat(q.get('day') as string);
     if (q.has('speed')) this.clock.speed = parseInt(q.get('speed') as string, 10);
     if (q.has('nointro')) this.intro = 0;
+    if (q.has('phototex')) {
+      const load = (f: string) => {
+        const t = new THREE.TextureLoader().load(`./textures-test/${f}`);
+        t.wrapS = t.wrapT = THREE.RepeatWrapping;
+        t.anisotropy = 8;
+        return t;
+      };
+      shared.uTexGrass.value = load('grass.png');
+      shared.uTexGravel.value = load('gravel.png');
+      shared.uPhoto.value = 1;
+    }
     if (q.has('debug')) {
       (window as unknown as { __ato: App }).__ato = this;
       this.debugEl = document.createElement('div');

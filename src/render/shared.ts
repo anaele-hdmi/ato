@@ -51,6 +51,10 @@ export const shared = {
   uGlacial: { value: 0 },
   uChaos: { value: 0 },
   uIntro: { value: 1 },
+  // photographic detail textures (trial); uPhoto 0 keeps the procedural ground
+  uPhoto: { value: 0 },
+  uTexGrass: { value: null as THREE.Texture | null },
+  uTexGravel: { value: null as THREE.Texture | null },
 };
 
 export type Shared = typeof shared;
