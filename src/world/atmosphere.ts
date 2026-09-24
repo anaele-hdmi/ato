@@ -36,7 +36,8 @@ void main() {
   float low = 1.0 - smoothstep(0.0, 0.35, uSunDir.y + 0.05);
   c += vec3(0.55, 0.22, 0.06) * low * pow(toward, 3.0) * exp(-max(e, 0.0) * 6.0) * smoothstep(-0.2, 0.0, uSunDir.y);
   float sd = max(dot(d, uSunDir), 0.0);
-  c += uSunColor * (pow(sd, 12.0) * 0.12 + pow(sd, 900.0) * 3.0) * smoothstep(-0.03, 0.02, uSunDir.y) * (1.0 - uExpo);
+  // the air around the sun is brighter and warmer; a wide soft halo, then the disc
+  c += uSunColor * (pow(sd, 4.0) * 0.16 + pow(sd, 32.0) * 0.22 + pow(sd, 900.0) * 3.0) * smoothstep(-0.03, 0.02, uSunDir.y) * (1.0 - uExpo);
   // Long exposure: the sun becomes the arc it draws; with years flying, a broad band
   // swept between the solstices.
   float pd = dot(d, uPole);
@@ -106,15 +107,15 @@ function lightAt(o: Light, env: Env, dec: number, dayPhase: number): Light {
   const low = 1 - smoothstep(0.02, 0.4, alt);
   const turb = env.turbidity, lp = env.lightPollution, g = env.glacial;
   o.night = night;
-  o.zenith.setRGB(0.16, 0.36, 0.78).lerp(tmp.setRGB(0.46, 0.55, 0.64), turb * 0.8).lerp(tmp.setRGB(0.55, 0.62, 0.72), g * 0.5);
+  o.zenith.setRGB(0.11, 0.29, 0.74).lerp(tmp.setRGB(0.46, 0.55, 0.64), turb * 0.8).lerp(tmp.setRGB(0.55, 0.62, 0.72), g * 0.5);
   o.horizon.setRGB(0.66, 0.76, 0.86).lerp(tmp.setRGB(0.8, 0.76, 0.68), turb * 0.8).lerp(tmp.setRGB(0.95, 0.66, 0.42), low * 0.7 * day);
   o.zenith.lerp(tmp.setRGB(0.01, 0.016, 0.034).lerp(NIGHT_Z_LP, lp * 0.8), night);
   o.horizon.lerp(tmp.setRGB(0.028, 0.035, 0.055).lerp(NIGHT_H_LP, lp), night);
   // chaos: the air goes brown and flat before anything else changes
   o.zenith.lerp(tmp.setRGB(0.42, 0.38, 0.34).multiplyScalar(0.08 + 0.92 * day), env.chaos * 0.6);
   o.horizon.lerp(tmp.setRGB(0.5, 0.43, 0.36).multiplyScalar(0.1 + 0.9 * day), env.chaos * 0.6);
-  o.sun.setRGB(1.0, 0.94, 0.84).lerp(tmp.setRGB(1.0, 0.56, 0.26), low).multiplyScalar(lerp(1.75, 1.1, turb) * day);
-  o.skyAmb.copy(o.zenith).lerp(o.horizon, 0.45).multiplyScalar(lerp(0.62, 0.7, turb));
+  o.sun.setRGB(1.0, 0.93, 0.8).lerp(tmp.setRGB(1.0, 0.56, 0.26), low).multiplyScalar(lerp(2.15, 1.2, turb) * day);
+  o.skyAmb.copy(o.zenith).lerp(o.horizon, 0.35).multiplyScalar(lerp(0.5, 0.66, turb));
   o.skyAmb.add(tmp.setRGB(0.02, 0.03, 0.05).multiplyScalar(night)).add(tmp.setRGB(0.12, 0.08, 0.05).multiplyScalar(lp * night));
   o.groundAmb.setRGB(0.3, 0.28, 0.2).multiplyScalar(day * 0.55).add(tmp.setRGB(0.02, 0.022, 0.03));
   return o;
@@ -200,7 +201,7 @@ export class Atmosphere {
     s.uSkyAmb.value.copy(L.skyAmb);
     s.uGroundAmb.value.copy(L.groundAmb);
     s.uFogColor.value.copy(this.fog);
-    s.uFogDensity.value = 0.00016 + turb * 0.0004 + env.smoke * 0.00015;
+    s.uFogDensity.value = 0.00009 + turb * 0.00032 + env.smoke * 0.00015;
     s.uMist.value = mist * (1 - exposure);
     s.uNight.value = L.night;
     s.uLightPollution.value = env.lightPollution;

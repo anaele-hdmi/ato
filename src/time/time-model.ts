@@ -1,22 +1,36 @@
 // Internal time. Years are design keys only and must never reach the screen.
 import { clamp, lerp, smoothstep } from '../util/rand';
 
+// Prehistory runs on a log scale toward the house: 10,000 years compress into the
+// first stretch of u, then time slows into decades, then opens out again.
+export const PRE_U1 = 0.12;
+export const PRE_SPAN_LOG = 4; // 10^4 years before the anchor
+const PRE_ANCHOR = 1880;
+const PRE_END_LOG = 1.3; // ends 20 years before the anchor
+export const START_YEAR = PRE_ANCHOR - Math.pow(10, PRE_SPAN_LOG);
+
 const HUMAN_KNOTS: ReadonlyArray<readonly [number, number]> = [
-  [0.0, 1900],
-  [0.08, 1920],
-  [0.17, 1950],
-  [0.27, 1990],
-  [0.38, 2050],
-  [0.47, 2150],
-  [0.55, 2300],
-  [0.575, 2330],
+  [PRE_U1, PRE_ANCHOR - Math.pow(10, PRE_END_LOG)],
+  [0.15, 1880],
+  [0.18, 1900],
+  [0.24, 1920],
+  [0.31, 1950],
+  [0.39, 1990],
+  [0.47, 2050],
+  [0.54, 2150],
+  [0.6, 2300],
+  [0.62, 2330],
 ];
-export const DEEP_U0 = 0.575;
+export const DEEP_U0 = 0.62;
 export const DEEP_BASE_YEAR = 2330;
 export const DEEP_LOG_MAX = 8.5;
 
 export function uToYear(u: number): number {
   u = clamp(u, 0, 1);
+  if (u < PRE_U1) {
+    const k = u / PRE_U1;
+    return PRE_ANCHOR - Math.pow(10, lerp(PRE_SPAN_LOG, PRE_END_LOG, k));
+  }
   if (u >= DEEP_U0) {
     const k = (u - DEEP_U0) / (1 - DEEP_U0);
     return DEEP_BASE_YEAR + Math.pow(10, k * DEEP_LOG_MAX) - 1;
@@ -35,6 +49,10 @@ export function yearToU(y: number): number {
   if (y >= DEEP_BASE_YEAR) {
     const k = Math.log10(y - DEEP_BASE_YEAR + 1) / DEEP_LOG_MAX;
     return DEEP_U0 + clamp(k, 0, 1) * (1 - DEEP_U0);
+  }
+  if (y < HUMAN_KNOTS[0][1]) {
+    const lg = Math.log10(Math.max(PRE_ANCHOR - y, 1e-6));
+    return clamp((PRE_SPAN_LOG - lg) / (PRE_SPAN_LOG - PRE_END_LOG), 0, 1) * PRE_U1;
   }
   for (let i = 1; i < HUMAN_KNOTS.length; i++) {
     const [u1, y1] = HUMAN_KNOTS[i];
@@ -120,9 +138,11 @@ export function evaluateEnv(year: number, season: number, seasonality: number, d
   // Deep time runs one way only: forest, one long ice, a dry age wearing the land
   // down into new shapes, then the sea comes and stays. Nothing returns.
   const deep = smoothstep(3.6, 4.2, L);
-  const glacial = bump(L, 3.95, 4.25, 4.85, 5.25);
+  // the last ice is leaving when the piece begins; one more comes, far ahead
+  const glacial = bump(L, 3.95, 4.25, 4.85, 5.25) + (1 - smoothstep(START_YEAR, START_YEAR + 1500, y)) * 0.55;
   const arid = bump(L, 5.1, 5.7, 7.1, 7.8);
-  const forest = smoothstep(2.3, 3.2, L) * (1 - arid * 0.85) * (1 - smoothstep(7.4, 8.0, L) * 0.7);
+  const wildwood = smoothstep(START_YEAR + 800, START_YEAR + 2500, y) * (1 - smoothstep(1650, 1860, y));
+  const forest = Math.max(wildwood, smoothstep(2.3, 3.2, L) * (1 - arid * 0.85) * (1 - smoothstep(7.4, 8.0, L) * 0.7));
   const transgress = smoothstep(6.9, 8.25, L);
   const seaLevel = -2 - glacial * 8 + transgress * 26;
   const terrainDisp = smoothstep(4.6, 7.4, L);

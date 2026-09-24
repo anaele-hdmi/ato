@@ -5,10 +5,10 @@ import { shared } from '../render/shared';
 import { COMMON, TERRAIN_FN } from '../render/glsl';
 import type { SunShadow } from '../render/shadow';
 import { fbm, mulberry32 } from '../util/rand';
-import { DEEP_BASE_YEAR } from '../time/time-model';
+import { DEEP_BASE_YEAR, START_YEAR } from '../time/time-model';
 import { LANES, MAIN_ROAD, alongPolyline, distToPolyline, polylineLength, urbanYear } from './layout';
 
-export const KIND = { decid: 0, conifer: 1, apple: 2 } as const;
+export const KIND = { decid: 0, conifer: 1, apple: 2, hedge: 3 } as const;
 const FOREVER = 1e10;
 
 interface TreeRec {
@@ -32,6 +32,14 @@ function placeTrees(): TreeRec[] {
   // a few old trees on the hill, not arranged around the house
   for (const [x, z, sz] of [[-31, -24, 13], [-38, -9, 11], [33, -33, 14], [48, -21, 10], [-63, 27, 12], [19, -52, 15], [74, 12, 9], [-18, 46, 8]]) {
     out.push({ x, z, size: sz, birth: 1800 + rng() * 60, death: urbanYear(x, z) + 4 + rng() * 10, kind: KIND.decid, deep: false, seed: rng() });
+  }
+  // hedgerows along the old field edges near the house
+  for (const [ax, az, bx, bz] of [[-70, -34, 60, -40], [60, -40, 90, 40], [-70, -34, -95, 45]]) {
+    const len = Math.hypot(bx - ax, bz - az);
+    for (let t = 0; t < len; t += 1.3 + rng() * 0.8) {
+      const x = ax + ((bx - ax) * t) / len + (rng() - 0.5) * 1.5, z = az + ((bz - az) * t) / len + (rng() - 0.5) * 1.5;
+      out.push({ x, z, size: 2.4 + rng() * 1.6, birth: 1884 + rng() * 10, death: urbanYear(x, z) - rng() * 5, kind: KIND.hedge, deep: false, seed: rng() });
+    }
   }
   // countryside: woodlots, hedgerows and lone trees, felled as the city arrives
   const C = 26;
@@ -81,6 +89,24 @@ function placeTrees(): TreeRec[] {
       });
     }
   }
+  // the wildwood that grows in after the ice and is cleared, tree by tree, for pasture
+  const P = 23;
+  for (let z = -1100; z < 1100; z += P) {
+    for (let x = -1100; x < 1100; x += P) {
+      const px = x + rng() * P, pz = z + rng() * P;
+      const r = Math.hypot(px, pz);
+      if (r > 1100) continue;
+      const grove = fbm(px / 260, pz / 260, 3, 55) > 0.16;
+      const cleared = r < 20 ? 1780 + rng() * 60 : 1640 + Math.min(r, 900) * 0.15 + rng() * 120;
+      out.push({
+        x: px, z: pz, size: 11 + rng() * 13,
+        birth: START_YEAR + 700 + rng() * 2600 + r * 0.3,
+        death: grove && r > 60 ? Math.min(urbanYear(px, pz) - 2, 2300) : cleared,
+        kind: rng() < 0.4 ? KIND.conifer : KIND.decid,
+        deep: false, seed: rng(),
+      });
+    }
+  }
   return out.sort((a, b) => a.birth - b.birth);
 }
 
@@ -103,6 +129,11 @@ vec4 blobOf(float kind, float i, float seed) {
     if (i < 0.5) return vec4(vec3(0.0, 0.36, 0.0) + j * 0.3, 0.25);
     if (i < 1.5) return vec4(vec3(0.0, 0.58, 0.0) + j * 0.3, 0.19);
     return vec4(vec3(0.0, 0.8, 0.0) + j * 0.3, 0.12);
+  }
+  if (kind > 2.5) {
+    if (i < 0.5) return vec4(vec3(-0.25, 0.32, 0.0) + j, 0.4);
+    if (i < 1.5) return vec4(vec3(0.25, 0.36, 0.05) + j, 0.42);
+    return vec4(vec3(0.0, 0.5, -0.05) + j, 0.34);
   }
   if (kind > 1.5) {
     if (i < 0.5) return vec4(vec3(0.0, 0.58, 0.0) + j, 0.36);
@@ -247,7 +278,7 @@ void main() {
   vec2 xz = aPos.xy;
   float gy = terrainHeight(xz);
   vec3 root = vec3(xz.x, gy, xz.y);
-  if (treeHidden(gy) > 0.5 || distance(root, cameraPosition) > uLodDist * 0.6) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
+  if (treeHidden(gy) > 0.5 || aMeta.x > 2.5 || distance(root, cameraPosition) > uLodDist * 0.6) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   float size = aPos.z * treeGrow();
   float h = aMeta.x > 0.5 && aMeta.x < 1.5 ? 0.5 : 0.62;
   vec3 p = position;

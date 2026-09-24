@@ -1,6 +1,6 @@
 // Playback, scrub and the two cyclic clocks (season from the year, day from wall time).
 import { clamp, smoothstep } from '../util/rand';
-import { DEEP_U0, uToYear, yearToU } from './time-model';
+import { DEEP_U0, PRE_U1, uToYear, yearToU } from './time-model';
 
 export const SPEEDS = 4; // 0 stop, 1 slow, 2 mid, 3 fast
 // slow: a day in under two seconds, the sun sweeps; mid: days strobe into an
@@ -10,7 +10,7 @@ const YEARS_PER_SEC = [0, 0.6 / 365.25, 20 / 365.25, 7];
 const DEEP_U_PER_SEC = [0, 0.0011, 0.0045, 0.016];
 
 export class Clock {
-  u = yearToU(1900.28);
+  u = 0;
   year = uToYear(this.u);
   speed = 1;
   scrubbing = false;
@@ -41,7 +41,8 @@ export class Clock {
       const yr = uToYear(this.u);
       const dudy = (yearToU(yr + 0.01) - this.u) / 0.01;
       const humanDu = YEARS_PER_SEC[this.speed] * dudy * dt;
-      const deepness = smoothstep(DEEP_U0 - 0.02, DEEP_U0 + 0.05, this.u);
+      // Prehistory and deep time flow in u; arriving at the house the flow slows to days.
+      const deepness = Math.max(smoothstep(DEEP_U0 - 0.02, DEEP_U0 + 0.05, this.u), 1 - smoothstep(PRE_U1, yearToU(1883), this.u));
       const deepDu = DEEP_U_PER_SEC[this.speed] * deepness * dt;
       this.u = clamp(this.u + Math.max(humanDu, deepDu), 0, 1);
     }
@@ -61,7 +62,7 @@ export class Clock {
     d -= Math.round(d);
     const maxStep = 0.45 * dt;
     this.season = (this.season + clamp(d, -maxStep, maxStep) + 1) % 1;
-    const deep = smoothstep(DEEP_U0 - 0.01, DEEP_U0 + 0.1, this.u);
+    const deep = Math.max(smoothstep(DEEP_U0 - 0.01, DEEP_U0 + 0.1, this.u), 1 - smoothstep(PRE_U1 * 0.6, PRE_U1, this.u));
     const want = (1 - smoothstep(1.5, 14, Math.abs(this.yearRate))) * (1 - deep);
     this.seasonality += (want - this.seasonality) * (1 - Math.exp(-dt * 2));
 

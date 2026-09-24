@@ -117,6 +117,13 @@ void main() {
     n = normalize(mix(n, fn, clamp(uDisp * 1.5, 0.0, 0.8)));
   }
   float dist = length(vWorld - cameraPosition);
+  // small undulations the heightmap is too coarse to hold: tussocks, old furrows, hollows
+  {
+    float e = 0.7;
+    float m0 = fbm3(p * 0.045), mx = fbm3((p + vec2(e, 0.0)) * 0.045), mz = fbm3((p + vec2(0.0, e)) * 0.045);
+    float k = 0.9 * (1.0 - smoothstep(250.0, 1200.0, dist));
+    n = normalize(n + vec3(-(mx - m0), 0.0, -(mz - m0)) * k * 5.0);
+  }
   vec4 rd = roadRaw(p);
   float urbY = yearN(rd.a);
   float urban = smoothstep(urbY + 1.0, urbY + 6.0, uYear);
@@ -131,7 +138,12 @@ void main() {
   vec3 grass = grassColor(clamp(macro * 0.8 + var * 0.35 - lush, 0.0, 1.0));
   grass *= 0.78 + 0.3 * macro + 0.12 * (fine - 0.5) + 0.06 * (vnoise(p * 7.0) - 0.5) * (1.0 - smoothstep(20.0, 60.0, dist));
   // clumps of darker growth, patches of clover and bare
-  grass = mix(grass, grass * vec3(0.7, 0.8, 0.7), smoothstep(0.55, 0.85, fbm3(p * 0.09 + 4.0)) * 0.35);
+  // a meadow is a patchwork: clover, tussock, sorrel, dry grass
+  grass = mix(grass, grass * vec3(0.66, 0.78, 0.7), smoothstep(0.5, 0.8, fbm3(p * 0.07 + 4.0)) * 0.6);
+  grass = mix(grass, grass * vec3(1.25, 1.12, 0.82), smoothstep(0.55, 0.8, fbm3(p * 0.03 + 9.0)) * 0.5);
+  // wind running over the meadow as travelling bands of light
+  float gustBand = sin(dot(p, uWindDir) * 0.09 - uTime * 1.3 + vnoise(p * 0.02) * 4.0);
+  grass *= 1.0 + 0.09 * uWind * gustBand * (1.0 - urban) * (1.0 - smoothstep(150.0, 600.0, dist));
   // photographic grain of real ground when close: tufts, bare specks
   float near = 1.0 - smoothstep(15.0, 90.0, dist);
   grass *= 1.0 + near * (0.14 * (vnoise(p * 3.3) - 0.5) + 0.1 * (vnoise(p * 12.0) - 0.5));
@@ -177,6 +189,16 @@ void main() {
   pave = mix(pave, grassColor(var) * 0.85, clamp(grow, 0.0, 1.0));
   float urbanGround = urban * (1.0 - voidM) * (1.0 - roadGone);
   col = mix(col, pave, urbanGround);
+  // the kitchen garden behind the house, dug each spring while someone lives there
+  {
+    vec2 gq = p - vec2(-2.0, -8.5);
+    float plot = (1.0 - smoothstep(4.2, 4.5, abs(gq.x))) * (1.0 - smoothstep(2.6, 2.9, abs(gq.y)));
+    float lived = smoothstep(1882.0, 1884.0, uYear) * (1.0 - smoothstep(2060.0, 2075.0, uYear));
+    float furrow = 0.5 + 0.5 * sin(gq.x * 5.2);
+    vec3 soil = vec3(0.26, 0.2, 0.14) * (0.8 + 0.35 * furrow);
+    vec3 crop = mix(soil, grassColor(0.2) * 1.1, smoothstep(0.3, 0.45, uSeason) * (1.0 - smoothstep(0.75, 0.85, uSeason)) * furrow);
+    col = mix(col, crop, plot * lived);
+  }
   // the square: packed earth and weeds while everything around is paved
   vec3 bare = mix(vec3(0.36, 0.31, 0.24), grass, 0.35 + 0.4 * fine);
   float squareEra = smoothstep(2100.0, 2108.0, uYear) * (1.0 - smoothstep(2.4, 3.2, uL));
@@ -187,7 +209,8 @@ void main() {
   float mainW = mix(2.2, 4.2, uGravel);
   mainW = mix(mainW, 7.0, uPaved);
   mainW = mix(mainW, 12.5, uAvenue);
-  float mainRoad = 1.0 - smoothstep(mainW * 0.5 - 0.3, mainW * 0.5 + 0.3, rd.r);
+  // the track itself is worn in by the first settlers
+  float mainRoad = (1.0 - smoothstep(mainW * 0.5 - 0.3, mainW * 0.5 + 0.3, rd.r)) * smoothstep(1840.0, 1870.0, uYear);
   float laneOn = smoothstep(yearN(rd.b), yearN(rd.b) + 3.0, uYear);
   float laneW = mix(1.8, 3.6, uGravel) + 1.6 * lanePaved + 3.0 * urban;
   float lane = (1.0 - smoothstep(laneW * 0.5 - 0.3, laneW * 0.5 + 0.3, rd.g)) * laneOn;
@@ -207,7 +230,10 @@ void main() {
   col = mix(col, track, onRoad);
 
   // snow, ice
-  float snow = snowCover() * smoothstep(0.35, 0.65, n.y + fine * 0.2) * (1.0 - onRoad * uPaved * 0.7);
+  // ice comes and goes in patches, lingering in hollows and on the north faces
+  float icePatch = smoothstep(0.42, 0.58, fbm3(p * 0.006) + (uGlacial - 0.5) * 1.1 - n.z * 0.15);
+  float snow = max(snowCover() - uGlacial, 0.0) + uGlacial * icePatch;
+  snow *= smoothstep(0.35, 0.65, n.y + fine * 0.2) * (1.0 - onRoad * uPaved * 0.7);
   col = mix(col, vec3(0.86, 0.88, 0.9), snow);
 
   // shore sand and wet ground near the sea

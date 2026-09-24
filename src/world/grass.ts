@@ -32,11 +32,11 @@ void main() {
   float regrow = smoothstep(0.2, 0.9, uRoadDecay + 0.5 * (hash12(base * 0.13) - 0.5));
   float mainW = mix(mix(mix(2.2, 4.2, uGravel), 7.0, uPaved), 12.5, uAvenue) * 0.5 + 0.5;
   float laneOn = step(yearN(rd.b), uYear);
-  float onRoad = max(step(rd.r, mainW), step(rd.g, 2.4 + 2.0 * urban) * laneOn);
+  float onRoad = max(step(rd.r, mainW) * step(1860.0, uYear), step(rd.g, 2.4 + 2.0 * urban) * laneOn);
   onRoad = max(onRoad, urban * step(gridStreetDist(xz), 6.0));
   float bare = max(onRoad * (1.0 - regrow), urban * (1.0 - voidMask(xz)) * (1.0 - regrow));
   // around the house the ground is trodden
-  float trod = 1.0 - smoothstep(3.5, 6.5, length(xz - vec2(0.0, 0.5)));
+  float trod = (1.0 - smoothstep(3.5, 6.5, length(xz - vec2(0.0, 0.5)))) * step(1880.0, uYear);
   float h0 = terrainHeight(xz);
   float wet = step(h0, uSeaLevel + 0.3);
   float dCam = length(vec3(xz.x, h0, xz.y) - cameraPosition);

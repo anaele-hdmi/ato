@@ -118,8 +118,11 @@ float heightFogDepth(vec3 wp, float base, float scale, float dens) {
 vec3 applyFog(vec3 c, vec3 wp) {
   float d = length(wp - cameraPosition);
   float od = heightFogDepth(wp, 0.0, 1400.0, uFogDensity);
-  // morning mist lies in the low ground
-  od += heightFogDepth(wp, 14.0, 9.0, uMist * 0.02);
+  // morning mist lies in the low ground, in banks rather than an even sheet
+  float bank = 0.35 + 1.3 * smoothstep(0.35, 0.75, vnoise(wp.xz * 0.0022 + uTime * 0.003));
+  od += heightFogDepth(wp, 14.0, 9.0, uMist * 0.02 * bank);
+  // distant air in layers: a few veils that step back one behind another
+  od += uFogDensity * 0.9 * max(d - 250.0, 0.0) * smoothstep(0.3, 0.7, vnoise(vec2(d * 0.0016, 3.1)));
   float f = 1.0 - exp(-od);
   f = max(f, uIntro * smoothstep(0.0, 18.0, d));
   return mix(c, uFogColor, clamp(f, 0.0, 1.0));
@@ -134,9 +137,9 @@ vec3 tonemap(vec3 x) {
 // Real places shot like models, never vivid.
 vec3 grade(vec3 c) {
   float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
-  c = mix(vec3(l), c, 0.66);
-  c = mix(c * vec3(0.93, 0.98, 1.06), c, smoothstep(0.0, 0.55, l));
-  return c * 0.9 + vec3(0.045, 0.047, 0.05);
+  c = mix(vec3(l), c, 0.74);
+  c = mix(c * vec3(0.9, 0.97, 1.08), c, smoothstep(0.0, 0.5, l));
+  return c * 0.95 + vec3(0.018, 0.02, 0.024);
 }
 vec4 finalOut(vec3 c) {
   return vec4(pow(grade(tonemap(c)), vec3(1.0 / 2.2)), 1.0);
@@ -145,8 +148,8 @@ vec4 finalOut(vec3 c) {
 // Seasonal grass colour; seasonality pulls toward late spring while scrubbing.
 vec3 grassColor(float var) {
   float s = uSeason;
-  vec3 spring = vec3(0.22, 0.29, 0.12);
-  vec3 summer = vec3(0.15, 0.21, 0.09);
+  vec3 spring = vec3(0.18, 0.27, 0.13);
+  vec3 summer = vec3(0.13, 0.2, 0.1);
   vec3 autumn = vec3(0.33, 0.28, 0.15);
   vec3 winter = vec3(0.27, 0.25, 0.19);
   vec3 c = winter;
@@ -154,7 +157,7 @@ vec3 grassColor(float var) {
   c = mix(c, summer, smoothstep(0.42, 0.55, s));
   c = mix(c, autumn, smoothstep(0.66, 0.78, s));
   c = mix(c, winter, smoothstep(0.86, 0.97, s));
-  c = mix(vec3(0.19, 0.26, 0.11), c, uSeasonality);
+  c = mix(vec3(0.16, 0.24, 0.12), c, uSeasonality);
   // the dry age: ochre and dust
   c = mix(c, vec3(0.36, 0.3, 0.18), uArid * 0.85);
   // dry, yellower patches against lush, bluer ones

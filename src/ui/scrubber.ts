@@ -1,10 +1,38 @@
 // The only persistent controls: time scrub, playback speed, mute. No numbers, no words.
+// The bar is a strata ruler: it draws the elapsed years as compressed colour bands, the
+// house's span thinning among them but never vanishing.
+import { DEEP_BASE_YEAR, DEEP_LOG_MAX, START_YEAR } from '../time/time-model';
 import { clamp } from '../util/rand';
 
 // The span the first house stood. After it is gone this span is drawn to scale
 // against all the time since, so it thins to a hair.
 const HOUSE_FROM = 1880;
 const HOUSE_TO = 2104;
+
+// The playhead sits at a fixed fraction of the track; everything to its left is the
+// past, drawn to a linear scale from START_YEAR to "now". Must match .knob's `left`.
+const KNOB_FRAC = 0.82;
+
+const DEEP_MAX_YEAR = DEEP_BASE_YEAR + Math.pow(10, DEEP_LOG_MAX) - 1;
+const ICE_FROM = DEEP_BASE_YEAR + Math.pow(10, 3.95) - 1;
+const ICE_TO = DEEP_BASE_YEAR + Math.pow(10, 5.25) - 1;
+const ARID_TO = DEEP_BASE_YEAR + Math.pow(10, 7.8) - 1;
+const SEA_FROM = DEEP_BASE_YEAR + Math.pow(10, 6.9) - 1;
+
+// [yearFrom, yearTo, colour]. Muted, low-contrast, drawn chronologically left to right.
+const STRATA: ReadonlyArray<readonly [number, number, string]> = [
+  [START_YEAR, START_YEAR + 1500, 'rgba(200,208,214,0.50)'],  // ice leaving
+  [START_YEAR + 1500, 1650, 'rgba(52,68,50,0.46)'],           // wildwood
+  [1650, HOUSE_FROM, 'rgba(120,112,60,0.40)'],                // clearing / pasture
+  [HOUSE_FROM, HOUSE_TO, 'rgba(198,150,82,0.58)'],            // the house's years (ochre)
+  [HOUSE_TO, 2296, 'rgba(144,147,151,0.40)'],                 // city
+  [2296, 2420, 'rgba(112,93,77,0.48)'],                       // bad years
+  [2420, ICE_FROM, 'rgba(90,104,86,0.38)'],                   // ruin / forest regrowth
+  [ICE_FROM, ICE_TO, 'rgba(228,230,232,0.55)'],               // ice
+  [ICE_TO, ARID_TO, 'rgba(206,187,144,0.42)'],                // dry age
+  [SEA_FROM, DEEP_MAX_YEAR, 'rgba(94,114,136,0.46)'],         // sea
+];
+const HOUSE_BAND = 3;
 
 const SPEED_GLYPHS = [
   '<rect x="8" y="8" width="8" height="8" rx="1"/>',
@@ -28,24 +56,28 @@ export interface ScrubberHooks {
 export class Scrubber {
   readonly root: HTMLDivElement;
   private track: HTMLDivElement;
-  private era: HTMLElement;
+  private canvas: HTMLCanvasElement;
+  private ctx: CanvasRenderingContext2D;
   private knob: HTMLDivElement;
   private speedBtn: HTMLButtonElement;
   private muteBtn: HTMLButtonElement;
   private drag: { id: number; x: number; y0: number; u: number } | null = null;
   private opacity = 1;
+  private dpr = 1;
+  private lastDrawYear = NaN;
 
   constructor(parent: HTMLElement, private h: ScrubberHooks) {
     this.root = document.createElement('div');
     this.root.className = 'hud';
     this.root.innerHTML = `
-      <div class="scrub"><div class="track"><div class="gauge"><i></i></div><div class="knob"></div></div></div>
+      <div class="scrub"><div class="track"><canvas class="strata"></canvas><i class="rush"></i><div class="knob"></div></div></div>
       <button class="btn speed" aria-label="speed"><svg viewBox="0 0 24 24" fill="currentColor"></svg></button>
       <button class="btn mute" aria-label="sound"><svg viewBox="0 0 24 24" fill="currentColor"></svg></button>`;
     parent.appendChild(this.root);
     const scrub = this.root.querySelector('.scrub') as HTMLDivElement;
     this.track = this.root.querySelector('.track') as HTMLDivElement;
-    this.era = this.root.querySelector('.gauge i') as HTMLElement;
+    this.canvas = this.root.querySelector('.strata') as HTMLCanvasElement;
+    this.ctx = this.canvas.getContext('2d', { alpha: true }) as CanvasRenderingContext2D;
     this.knob = this.root.querySelector('.knob') as HTMLDivElement;
     this.speedBtn = this.root.querySelector('.speed') as HTMLButtonElement;
     this.muteBtn = this.root.querySelector('.mute') as HTMLButtonElement;
@@ -79,12 +111,51 @@ export class Scrubber {
   }
 
   layout(): void {
-    /* nothing measured; the gauge is sized in percent */
+    this.dpr = Math.min(2, window.devicePixelRatio || 1);
+    const r = this.track.getBoundingClientRect();
+    const w = Math.max(1, Math.round(r.width * this.dpr));
+    const height = Math.max(1, Math.round(r.height * this.dpr));
+    if (this.canvas.width !== w || this.canvas.height !== height) {
+      this.canvas.width = w;
+      this.canvas.height = height;
+    }
+    this.lastDrawYear = NaN; // force a redraw at the new size
   }
 
-  private uAt(clientX: number): number {
-    const r = this.track.getBoundingClientRect();
-    return clamp((clientX - r.left) / r.width, 0, 1);
+  // Draws the elapsed strata from START_YEAR up to the fixed playhead. Cheap: a
+  // handful of fillRect calls, skipped by update() unless the year visibly moved.
+  private drawStrata(year: number): void {
+    const w = this.canvas.width;
+    const hgt = this.canvas.height;
+    if (w < 2 || hgt < 2) return;
+    const ctx = this.ctx;
+    ctx.clearRect(0, 0, w, hgt);
+    const knobX = w * KNOB_FRAC;
+    // a thin strip, not a slab: the control should stay quiet over the picture
+    const bandH = Math.max(2, Math.round(3.5 * this.dpr));
+    const y0 = Math.round((hgt - bandH) / 2);
+    const span = Math.max(1, year - START_YEAR);
+    const pxPerYear = knobX / span;
+    let houseX0 = 0;
+    let houseX1 = 0;
+    for (let i = 0; i < STRATA.length; i++) {
+      const [yf, yt, color] = STRATA[i];
+      if (yt <= START_YEAR || yf >= year) continue;
+      const x0 = clamp((Math.max(yf, START_YEAR) - START_YEAR) * pxPerYear, 0, knobX);
+      const x1 = clamp((Math.min(yt, year) - START_YEAR) * pxPerYear, 0, knobX);
+      if (i === HOUSE_BAND) {
+        houseX0 = x0;
+        houseX1 = x1;
+        continue; // drawn last, on top, so its hairline is never painted over
+      }
+      if (x1 - x0 < 0.4) continue;
+      ctx.fillStyle = color;
+      ctx.fillRect(x0, y0, x1 - x0, bandH);
+    }
+    if (year <= STRATA[HOUSE_BAND][0]) return;
+    ctx.fillStyle = STRATA[HOUSE_BAND][2];
+    // the house layer stands a little proud of the others so the hair stays findable
+    ctx.fillRect(houseX0, y0 - this.dpr, Math.max(this.dpr, houseX1 - houseX0), bandH + 2 * this.dpr);
   }
 
   private onDown = (e: PointerEvent) => {
@@ -94,9 +165,7 @@ export class Scrubber {
     } catch {
       /* capture is a nicety */
     }
-    const r = this.track.getBoundingClientRect();
-    const knobX = r.left + this.h.getU() * r.width;
-    if (Math.abs(e.clientX - knobX) > 26) this.h.setU(this.uAt(e.clientX));
+    // The playhead is fixed; any touch on the bar starts a relative drag, it never jumps.
     this.drag = { id: e.pointerId, x: e.clientX, y0: e.clientY, u: this.h.getU() };
     this.h.setScrubbing(true);
     this.root.classList.add('active');
@@ -123,11 +192,16 @@ export class Scrubber {
   };
 
   update(season: number, seasonality: number, fade: number, year: number, exposure: number): void {
-    const frac = year <= HOUSE_TO ? 1 : (HOUSE_TO - HOUSE_FROM) / (year - HOUSE_FROM);
-    this.era.style.width = `max(1px, ${(frac * 100).toFixed(4)}%)`;
+    // Redraw only once the compressed past would visibly shift (roughly half a device px
+    // at the playhead), so a slow crawl through deep time costs almost nothing per frame.
+    const knobX = this.canvas.width * KNOB_FRAC;
+    const denom = Math.max(1, year - START_YEAR);
+    const eps = knobX > 0 ? (0.5 * denom) / knobX : Infinity;
+    if (!Number.isFinite(this.lastDrawYear) || Math.abs(year - this.lastDrawYear) > eps) {
+      this.drawStrata(year);
+      this.lastDrawYear = year;
+    }
     this.root.style.setProperty('--rush', exposure.toFixed(3));
-    const u = this.h.getU();
-    this.knob.style.left = `${(u * 100).toFixed(3)}%`;
     // The knob carries the only hint of the season.
     const hues = [[190, 12, 78], [95, 32, 72], [120, 30, 58], [35, 40, 66]];
     const s4 = season * 4;

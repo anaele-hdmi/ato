@@ -186,6 +186,9 @@ void main() {
   vec3 sharp = vec3(texture2D(tColor, vUv + off).r, texture2D(tColor, vUv).g, texture2D(tColor, vUv - off).b);
   vec3 blur = vec3(texture2D(tBlur, vUv + off).r, b.g, texture2D(tBlur, vUv - off).b);
   vec3 c = mix(sharp, blur, t);
+  // halation: bright parts bleed softly into their surroundings, as on film
+  vec3 wide = texture2D(tBlur, vUv).rgb;
+  c += max(wide - 0.62, 0.0) * 0.55 * vec3(1.0, 0.93, 0.85);
   c = clamp((c - 0.45) * uContrast + 0.45, 0.0, 1.0);
   float l = dot(c, vec3(0.299, 0.587, 0.114));
   float g = hash(vUv * 1731.0 + fract(uTime * 7.13)) - 0.5;

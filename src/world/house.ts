@@ -119,6 +119,25 @@ export class House {
       const end = rng() < 0.3 ? 2360 + rng() * 800 : 4000 + rng() * (DEEP_END_STONES - 4000);
       b.add(box, M(-9.3 + (rng() - 0.5) * 0.12, G - 0.05 + 0.2, z, 0.52, 0.5, 0.6, (rng() - 0.5) * 0.2), stone(), HOUSE_BIRTH, end);
     }
+    // a picket fence round the kitchen garden, a woodpile
+    const post = new THREE.Color(0.38, 0.33, 0.27);
+    const fenceTo = 2072;
+    const fx0 = -6.6, fx1 = 2.6, fz0 = -11.6, fz1 = -5.4;
+    const rail = (ax: number, az: number, bx: number, bz: number) => {
+      const len = Math.hypot(bx - ax, bz - az), ang = Math.atan2(bz - az, bx - ax);
+      for (let t = 0; t <= len; t += 1.1) {
+        const x = ax + ((bx - ax) * t) / len, z = az + ((bz - az) * t) / len;
+        b.add(box, M(x, G + 0.45, z, 0.07, 0.95, 0.07, (rng() - 0.5) * 0.1), post.clone().multiplyScalar(0.85 + rng() * 0.3), 1884, fenceTo);
+      }
+      for (const h of [0.35, 0.75]) b.add(box, M((ax + bx) / 2, G + h, (az + bz) / 2, len, 0.05, 0.04, -ang), post, 1884, fenceTo);
+    };
+    rail(fx0, fz0, fx1, fz0);
+    rail(fx0, fz1, fx1 - 1.4, fz1);
+    rail(fx0, fz0, fx0, fz1);
+    rail(fx1, fz0, fx1, fz1);
+    for (let i = 0; i < 9; i++) {
+      b.add(new THREE.CylinderGeometry(0.11, 0.11, 1.1, 6).rotateZ(Math.PI / 2), M(3.9, G + 0.12 + (i % 3) * 0.2, -2.9 + Math.floor(i / 3) * 0.22, 1, 1, 1), new THREE.Color(0.36, 0.28, 0.2).multiplyScalar(0.8 + rng() * 0.4), 1884, 2060);
+    }
     const pm = paintedMaterials({ vis: true, vertexColors: true, wrap: 0.2, noise: 0.18 });
     const props = new THREE.Mesh(b.build(), pm.main);
     props.frustumCulled = false;
