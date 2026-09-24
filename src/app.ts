@@ -9,7 +9,8 @@ import { PerfGovernor } from './render/perf';
 import { SunShadow } from './render/shadow';
 import { shared } from './render/shared';
 import { Clock } from './time/clock';
-import { type Env, evaluateEnv, win, yearToU } from './time/time-model';
+import { type Env, ORIGIN_GROUND, evaluateEnv, win, yearToU } from './time/time-model';
+import { EndTitle } from './ui/end-title';
 import { Scrubber } from './ui/scrubber';
 import { clamp, lerp, smoothstep } from './util/rand';
 import { Atmosphere } from './world/atmosphere';
@@ -21,6 +22,7 @@ import { Smoke } from './world/smoke';
 import { Terrain } from './world/terrain';
 import { Town } from './world/town';
 import { Vegetation } from './world/vegetation';
+import { Water } from './world/water';
 import { Wind } from './world/wind';
 
 export class App {
@@ -39,6 +41,8 @@ export class App {
   private figures: Figures;
   private town: Town;
   private smoke = new Smoke();
+  private water = new Water();
+  private endTitle: EndTitle;
   private wind = new Wind();
   private audio = new AudioEngine();
   private ui: Scrubber;
@@ -68,7 +72,7 @@ export class App {
     this.house = new House(this.shadow);
     this.figures = new Figures((x, z) => this.hf.height(x, z, this.disp), this.shadow);
     this.town = new Town((x, z) => this.hf.height(x, z, 0), this.shadow);
-    this.scene.add(this.atmos.sky, this.terrain.mesh, this.grass.mesh, this.veg.group, this.house.group, this.figures.group, this.town.group, this.smoke.points);
+    this.scene.add(this.atmos.sky, this.terrain.mesh, this.grass.mesh, this.veg.group, this.house.group, this.figures.group, this.town.group, this.smoke.points, this.water.mesh);
     const collider = new Collider(this.town.data.boxes, [
       ...this.town.data.cottages,
       { x: 0, y: this.house.position.y, z: 0, rot: 0, scale: 1, birth: HOUSE_BIRTH, death: HOUSE_DEATH, color: new THREE.Color(), seed: 0 },
@@ -84,6 +88,8 @@ export class App {
       toggleMute: () => { this.audio.setMuted(!this.audio.isMuted()); return this.audio.isMuted(); },
       isMuted: () => this.audio.isMuted(),
     });
+
+    this.endTitle = new EndTitle(stage);
 
     // The first touch anywhere opens the sound; later touches keep it alive.
     const unlock = () => this.audio.unlock();
@@ -183,7 +189,11 @@ export class App {
     s.uCamTarget.value.copy(this.cam.target);
     s.uCamDist.value = dist;
     s.uDisp.value = env.terrainDisp;
-    s.uSeaLevel.value = env.seaLevel;
+    // At the end the sea is there for whoever looks from high enough.
+    const endSea = env.terminal * smoothstep(0.52, 0.78, alt);
+    const seaLevel = lerp(env.seaLevel, ORIGIN_GROUND + 2.5, endSea);
+    s.uSeaLevel.value = seaLevel;
+    env.stems.water = clamp(1 - (this.hf.height(this.cam.target.x, this.cam.target.z, env.terrainDisp) - seaLevel) / 25, 0, 1) * 0.9 + 0.15 * alt * smoothstep(3.5, 4.5, env.L);
     s.uGravel.value = env.gravel;
     s.uPaved.value = env.paved;
     s.uAvenue.value = env.avenue;
@@ -205,6 +215,7 @@ export class App {
     this.figures.update(dt, env.year, env.people);
     this.town.update(env.year, env.dots, projScale);
     this.smoke.update(env.year, projScale);
+    this.water.update(camera.position);
     BLOCK_DAMAGE.value = smoothstep(2300, 2326, env.year);
 
     this.shadow.render(this.renderer, this.scene, this.cam.target, dist, this.atmos.sunDir);
@@ -241,6 +252,8 @@ export class App {
 
     const hudFade = 1 - smoothstep(6, 10, this.cam.idle) * env.terminal;
     this.ui.update(c.season, c.seasonality, hudFade);
+    const fc = shared.uFogColor.value;
+    this.endTitle.update(dt, env.terminal, this.atmos.night < 0.3 && fc.r * 0.3 + fc.g * 0.59 + fc.b * 0.11 > 0.5);
 
     if (this.debugEl) {
       const info = this.renderer.info.render;

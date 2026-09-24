@@ -60,7 +60,7 @@ export class WindStem extends Stem {
   constructor(kit: Kit, dest: AudioNode) {
     super('wind', kit, dest);
     const { ctx } = kit;
-    this.farBoost = 0.6;
+    this.farBoost = 0.3;
     this.level = 1.0;
     this.lp = filter(ctx, 'lowpass', 500, 0.5);
     this.body = gain(ctx, 0.3);
@@ -500,7 +500,8 @@ export class WaterStem extends Stem {
   constructor(kit: Kit, dest: AudioNode) {
     super('water', kit, dest);
     const { ctx } = kit;
-    this.farBoost = 0.3;
+    this.farBoost = 0.1;
+    this.level = 0.7;
     this.lp = filter(ctx, 'lowpass', 500, 0.5);
     this.g = gain(ctx, 0);
     loopNoise(kit, kit.pink, 1).connect(this.lp).connect(this.g).connect(this.out);
