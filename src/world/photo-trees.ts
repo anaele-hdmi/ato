@@ -114,7 +114,8 @@ void main() {
     tq = mat2(cos(a), -sin(a), sin(a), cos(a)) * d.xz / (vWH.x * 1.05) + 0.5;
   }
   float wTop = hedge ? smoothstep(0.3, 0.7, n.y) : smoothstep(0.25, 0.75, n.y);
-  bool useTop = hash12(gl_FragCoord.xy + seed * 37.0) < wTop;
+  // hedges switch by facing, not by dither: the dither reads as beads from high up
+  bool useTop = hedge ? n.y > 0.42 : hash12(gl_FragCoord.xy + seed * 37.0) < wTop;
   vec4 r;
   vec2 uv;
   vec4 t;
@@ -129,7 +130,7 @@ void main() {
     vec2 u2 = mix(r.xy, r.zw, clamp(uv, 0.0, 1.0));
     t = hedge ? texture2D(uHedge, u2) : conifer ? texture2D(uSideC, u2) : texture2D(uSideD, u2);
   }
-  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || t.a < 0.5) discard;
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || t.a < (hedge && useTop ? 0.2 : 0.5)) discard;
   float bare = bareness(kind);
   if (bare > 0.01 && vnoise(uv * 60.0 + seed * 13.0) < bare * 0.7) discard;
 #ifdef DEPTH_PASS
