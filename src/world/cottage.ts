@@ -78,6 +78,13 @@ void main() {
 const frag = /* glsl */ `
 ${COMMON}
 uniform float uWear;
+// See blocks.ts: each window lights up at its own point in the dusk (function of
+// uNight, not wall time) with a soft transition, and long exposure (uShadowFade
+// -> 0) averages that into one steady glow instead of flicker.
+float duskGate(float thr, float width, float night) {
+  float g = smoothstep(thr - width, thr + width, night);
+  return mix(night, g, uShadowFade);
+}
 varying vec3 vWorld;
 varying vec3 vNormal;
 varying vec3 vLocal;
@@ -115,25 +122,40 @@ void main() {
     vec2 q; float along;
     if (abs(n.z) > 0.5) { q = vec2(vLocal.x, vLocal.y); along = sign(n.z); }
     else { q = vec2(vLocal.z, vLocal.y); along = 2.0 * sign(n.x); }
-    float win = 0.0, door = 0.0;
+    float win1 = 0.0, win2 = 0.0, door = 0.0;
+    float cx1 = 0.0, cx2 = 0.0;
     if (along > 0.5 && along < 1.5) {
-      win = rect(q, vec2(-1.7, 1.55), vec2(0.42, 0.5)) + rect(q, vec2(1.7, 1.55), vec2(0.42, 0.5));
+      cx1 = -1.7; cx2 = 1.7;
+      win1 = rect(q, vec2(cx1, 1.55), vec2(0.42, 0.5));
+      win2 = rect(q, vec2(cx2, 1.55), vec2(0.42, 0.5));
       door = rect(q, vec2(0.0, 1.05), vec2(0.42, 0.95));
     } else if (along < -0.5 && along > -1.5) {
-      win = rect(q, vec2(-1.2, 1.55), vec2(0.38, 0.45)) + rect(q, vec2(1.6, 1.55), vec2(0.38, 0.45));
+      cx1 = -1.2; cx2 = 1.6;
+      win1 = rect(q, vec2(cx1, 1.55), vec2(0.38, 0.45));
+      win2 = rect(q, vec2(cx2, 1.55), vec2(0.38, 0.45));
     } else {
-      win = rect(q, vec2(0.0, 1.55), vec2(0.36, 0.45));
+      cx1 = 3.1;
+      win1 = rect(q, vec2(0.0, 1.55), vec2(0.36, 0.45));
     }
+    float win = win1 + win2;
     vec3 glass = mix(uSkyAmb * 0.25, vec3(0.05, 0.06, 0.07), 0.5);
     col = mix(col, glass, win);
     col = mix(col, vec3(0.2, 0.15, 0.12), door);
-    lit = win * step(0.25, hash11(vSeed * 91.0 + floor(uTime / 97.0 + vSeed * 13.0) * 0.37));
+    // each window is fixed lit-or-not (no wall-time turnover, so nothing pops) and
+    // has its own point in the dusk ramp with its own soft transition width.
+    float w1ever = step(0.25, hash11(vSeed * 91.0 + along * 13.0 + cx1 * 29.0));
+    float w1thr = 0.12 + 0.68 * (hash11(vSeed * 53.0 + cx1 * 17.0) + hash11(vSeed * 71.0 + cx1 * 31.0 + 5.0)) * 0.5;
+    float w1gate = duskGate(w1thr, 0.05 + 0.06 * hash11(vSeed * 97.0 + cx1 * 3.0), uNight);
+    float w2ever = step(0.25, hash11(vSeed * 91.0 + along * 13.0 + cx2 * 29.0 + 3.0));
+    float w2thr = 0.12 + 0.68 * (hash11(vSeed * 53.0 + cx2 * 17.0) + hash11(vSeed * 71.0 + cx2 * 31.0 + 5.0)) * 0.5;
+    float w2gate = duskGate(w2thr, 0.05 + 0.06 * hash11(vSeed * 97.0 + cx2 * 3.0), uNight);
+    lit = win1 * w1ever * w1gate + win2 * w2ever * w2gate;
   }
   float sh = sampleShadow(vWorld, n);
   vec3 c = shade(col, n, vWorld, 0.25, sh);
   // a little ambient occlusion where walls meet the ground
   c *= mix(0.72, 1.0, smoothstep(0.0, 1.2, vLocal.y));
-  c += vec3(1.0, 0.68, 0.36) * lit * uNight * 0.9;
+  c += vec3(1.0, 0.68, 0.36) * lit * 0.9;
   gl_FragColor = finalOut(applyFog(c, vWorld));
 }
 `;

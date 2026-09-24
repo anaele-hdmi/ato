@@ -94,6 +94,15 @@ void main() {
 
 const frag = /* glsl */ `
 ${COMMON}
+// Artificial lights switch on across the dusk instead of all at once: each light
+// gets its own darkness threshold and a soft width, so the gate is a function of
+// uNight (not wall time) and stays gradual whatever speed the day passes at. In
+// long exposure (uShadowFade -> 0) the per-light randomness collapses toward the
+// shared uNight curve, reading as one calm averaged glow instead of flicker.
+float duskGate(float thr, float width, float night) {
+  float g = smoothstep(thr - width, thr + width, night);
+  return mix(night, g, uShadowFade);
+}
 varying vec3 vWorld;
 varying vec3 vNormal;
 varying vec3 vObj;
@@ -141,10 +150,12 @@ void main() {
     // rooftop plant
     vec2 q = vObj.xz;
     col *= 1.0 - 0.25 * box(fract(q / 7.0 + seed), vec2(0.2), vec2(0.55));
-    // aviation light on tall roofs
+    // aviation light on tall roofs; the blink is a real-time detail only — in long
+    // exposure it averages to a steady half-brightness instead of strobing.
     float tall = step(60.0, vSize.y);
     float corner = step(vSize.x * 0.5 - 1.2, abs(q.x)) * step(vSize.z * 0.5 - 1.2, abs(q.y));
-    glow += corner * tall * uNight * step(0.5, fract(uTime * 0.5 + seed)) * 3.0 * (1.0 - abandon);
+    float blink = mix(0.5, step(0.5, fract(uTime * 0.5 + seed)), uShadowFade);
+    glow += corner * tall * uNight * blink * 3.0 * (1.0 - abandon);
     glowCol = vec3(1.0, 0.15, 0.1);
   } else {
     float a = abs(n.x) > 0.5 ? vObj.z * sign(n.x) : -vObj.x * sign(n.z);
@@ -182,12 +193,19 @@ void main() {
     float glyph = step(0.55, hash12(floor(vec2(a * 2.6, y * 3.0)) + seed));
     col = mix(col, glass, win);
     col = mix(col, mix(signCol, signCol * 0.35, glyph * 0.8), sign);
-    // lit windows: slow turnover; lopsided and failing when things break down
-    float slot = floor(uTime / 41.0 + hash12(vec2(bay, fl) + seed) * 3.0);
-    float r = hash12(vec2(bay * 1.7 + slot * 0.13, fl * 3.1) + seed * 17.0);
-    float side = vnoise(vWorld.xz * 0.004 + floor(uTime * 0.05) * 0.37);
+    // lit windows: which windows ever light up is fixed per building (no wall-time
+    // turnover, so nothing pops); lopsided and failing when things break down.
+    float r = hash12(vec2(bay * 1.7, fl * 3.1) + seed * 17.0);
+    float side = vnoise(vWorld.xz * 0.004 + floor(uYear * 0.02) * 0.37);
     float frac = mix(0.42, mix(0.05, 0.75, step(0.5, side)), uChaos) * (1.0 - abandon);
-    float lit = win * step(r, frac) * uNight;
+    // each window's own point in the dusk ramp: two hashes averaged so most sit
+    // mid-dusk, with a few early and a few late, and its own soft transition width.
+    float thrA = hash12(vec2(bay, fl) + seed * 53.0);
+    float thrB = hash12(vec2(fl, bay) + seed * 71.0 + 11.0);
+    float onThr = 0.12 + 0.68 * (thrA + thrB) * 0.5;
+    float gateW = 0.05 + 0.06 * hash12(vec2(fl, bay) + seed * 97.0);
+    float gate = duskGate(onThr, gateW, uNight);
+    float lit = win * step(r, frac) * gate;
     glowCol = mix(vec3(1.0, 0.72, 0.42), vec3(0.72, 0.84, 1.0), step(0.6, hash12(vec2(bay, fl) + seed * 3.0)));
     glow += lit * (0.7 + 0.5 * r);
     glow += sign * (0.6 + 0.6 * glyph) * uNight * (1.0 - abandon) * 1.6;
