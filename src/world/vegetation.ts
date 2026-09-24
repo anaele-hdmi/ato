@@ -18,6 +18,7 @@ export interface TreeRec {
   x: number; z: number; size: number;
   birth: number; death: number;
   kind: number; deep: boolean; seed: number;
+  dir: number; // hedge line angle (radians); unused by other kinds
 }
 
 export const APPLE_TREE = { x: -6.2, z: 4.4 };
@@ -30,18 +31,23 @@ function placeTrees(): TreeRec[] {
     for (const l of LANES) d = Math.min(d, distToPolyline(x, z, l.pts).d);
     return d;
   };
-  out.push({ ...APPLE_TREE, size: 4.4, birth: 1893, death: 2166, kind: KIND.apple, deep: false, seed: 0.37 });
+  out.push({ ...APPLE_TREE, size: 4.4, birth: 1893, death: 2166, kind: KIND.apple, deep: false, seed: 0.37, dir: 0 });
 
   // a few old trees on the hill, not arranged around the house
   for (const [x, z, sz] of [[-31, -24, 13], [-38, -9, 11], [33, -33, 14], [48, -21, 10], [-63, 27, 12], [19, -52, 15], [74, 12, 9], [-18, 46, 8]]) {
-    out.push({ x, z, size: sz, birth: 1800 + rng() * 60, death: urbanYear(x, z) + 4 + rng() * 10, kind: KIND.decid, deep: false, seed: rng() });
+    out.push({ x, z, size: sz, birth: 1800 + rng() * 60, death: urbanYear(x, z) + 4 + rng() * 10, kind: KIND.decid, deep: false, seed: rng(), dir: 0 });
   }
   // hedgerows along the old field edges near the house
   for (const [ax, az, bx, bz] of [[-70, -34, 60, -40], [60, -40, 90, 40], [-70, -34, -95, 45]]) {
     const len = Math.hypot(bx - ax, bz - az);
+    const dir = Math.atan2(bz - az, bx - ax); // straight line, so one angle serves the whole row
+    const perpX = -(bz - az) / len, perpZ = (bx - ax) / len;
+    // jitter only across the line, never along it, so the bushes' overlapping
+    // hulls stay lined up and the row reads as one hedge, not a broken trail
     for (let t = 0; t < len; t += 1.3 + rng() * 0.8) {
-      const x = ax + ((bx - ax) * t) / len + (rng() - 0.5) * 1.5, z = az + ((bz - az) * t) / len + (rng() - 0.5) * 1.5;
-      out.push({ x, z, size: 2.4 + rng() * 1.6, birth: 1884 + rng() * 10, death: urbanYear(x, z) - rng() * 5, kind: KIND.hedge, deep: false, seed: rng() });
+      const off = (rng() - 0.5) * 0.9;
+      const x = ax + ((bx - ax) * t) / len + perpX * off, z = az + ((bz - az) * t) / len + perpZ * off;
+      out.push({ x, z, size: 2.4 + rng() * 1.6, birth: 1884 + rng() * 10, death: urbanYear(x, z) - rng() * 5, kind: KIND.hedge, deep: false, seed: rng(), dir });
     }
   }
   // countryside: woodlots, hedgerows and lone trees, felled as the city arrives
@@ -62,7 +68,7 @@ function placeTrees(): TreeRec[] {
         birth: planted ? 1905 + rng() * 70 : 1780 + rng() * 100,
         death: Math.min(uy - 3 + rng() * 14, 2320),
         kind: rng() < (wood > 0.3 ? 0.35 : 0.1) ? KIND.conifer : KIND.decid,
-        deep: false, seed: rng(),
+        deep: false, seed: rng(), dir: 0,
       });
     }
   }
@@ -74,7 +80,7 @@ function placeTrees(): TreeRec[] {
     for (const side of [1, -1]) {
       const x = p[0] - dir[1] * 9.6 * side, z = p[1] + dir[0] * 9.6 * side;
       if (Math.abs(x) < 16 && Math.abs(z) < 16) continue;
-      out.push({ x, z, size: 6 + rng() * 2, birth: 1996 + rng() * 6, death: 2322 + rng() * 60, kind: KIND.decid, deep: false, seed: rng() });
+      out.push({ x, z, size: 6 + rng() * 2, birth: 1996 + rng() * 6, death: 2322 + rng() * 60, kind: KIND.decid, deep: false, seed: rng(), dir: 0 });
     }
   }
   // what comes back: seeded into rubble and roads after people leave
@@ -88,7 +94,7 @@ function placeTrees(): TreeRec[] {
         birth: 2345 + rng() * 240 + Math.max(0, 2050 - urbanYear(px, pz)) * 0.2,
         death: FOREVER,
         kind: rng() < 0.3 ? KIND.conifer : KIND.decid,
-        deep: true, seed: rng(),
+        deep: true, seed: rng(), dir: 0,
       });
     }
   }
@@ -106,7 +112,7 @@ function placeTrees(): TreeRec[] {
         birth: START_YEAR + 700 + rng() * 2600 + r * 0.3,
         death: grove && r > 60 ? Math.min(urbanYear(px, pz) - 2, 2300) : cleared,
         kind: rng() < 0.4 ? KIND.conifer : KIND.decid,
-        deep: false, seed: rng(),
+        deep: false, seed: rng(), dir: 0,
       });
     }
   }
@@ -330,15 +336,17 @@ export class Vegetation {
     this.trees = placeTrees();
     this.births = this.trees.map((t) => t.birth);
     const n = this.trees.length;
-    const pos = new Float32Array(n * 3), life = new Float32Array(n * 2), meta = new Float32Array(n * 3);
+    const pos = new Float32Array(n * 3), life = new Float32Array(n * 2), meta = new Float32Array(n * 3), dir = new Float32Array(n);
     this.trees.forEach((t, i) => {
       pos.set([t.x, t.z, t.size], i * 3);
       life.set([t.birth, t.death], i * 2);
       meta.set([t.kind, t.seed, t.deep ? 1 : 0], i * 3);
+      dir[i] = t.dir;
     });
     const aPos = new THREE.InstancedBufferAttribute(pos, 3);
     const aLife = new THREE.InstancedBufferAttribute(life, 2);
     const aMeta = new THREE.InstancedBufferAttribute(meta, 3);
+    const aDir = new THREE.InstancedBufferAttribute(dir, 1);
     this.uniforms = { ...shared, uCover: { value: 1 }, uLodDist: { value: 700 }, uProjScale: { value: 800 } };
 
     const mk = (vs: string, fs: string, depth = false, extra: Partial<THREE.ShaderMaterialParameters> = {}) =>
@@ -367,7 +375,7 @@ export class Vegetation {
     this.points.frustumCulled = false;
     this.crowns = crowns;
     this.trunks = trunks;
-    this.photo = new PhotoTrees({ aPos, aLife, aMeta }, this.uniforms);
+    this.photo = new PhotoTrees({ aPos, aLife, aMeta, aDir }, this.uniforms);
     this.geos.push(this.photo.geometry);
     shadow.add(this.photo.mesh, this.photo.depth);
     this.group.add(trunks, crowns, this.points, this.photo.mesh);

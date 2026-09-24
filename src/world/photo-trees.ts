@@ -12,11 +12,13 @@ ${TERRAIN_FN}
 ${CROWN_ATTR}
 ${CROWN_COLOR}
 attribute float aPart;   // 0 crown hull, 1 trunk
+attribute float aDir;    // hedge line angle (radians); 0 for non-hedge instances
 varying vec3 vWorld;
 varying vec3 vN;
 varying vec3 vRoot;
 varying vec2 vWH;
 varying vec3 vMeta;
+varying float vDir;
 void main() {
   vec2 xz = aPos.xy;
   float gy = terrainHeight(xz);
@@ -32,12 +34,16 @@ void main() {
   float W = H * (conifer ? 0.5 : hedge ? 1.3 : 0.95);
   vec3 p = position;
   vec3 n = normal;
-  float a = seed * 6.2831;
+  // hedges are aligned along their planted line, not spun by seed, so
+  // neighbouring bushes form one continuous ridge rather than random blobs
+  float a = hedge ? aDir : seed * 6.2831;
   mat2 rot = mat2(cos(a), -sin(a), sin(a), cos(a));
   if (aPart < 0.5) {
     // the hull a little larger than the photographed tree, so the photo's own
-    // outline, not the hull, is what the eye sees
-    vec3 r = conifer ? vec3(W * 0.55, H * 0.46, W * 0.55) : hedge ? vec3(W * 0.55, H * 0.55, W * 0.4) : vec3(W * 0.56, H * 0.4, W * 0.56);
+    // outline, not the hull, is what the eye sees; hedges get an elongated
+    // hull (long axis along the line) that overlaps its neighbours so the
+    // row reads as one hedge with no gaps between bushes
+    vec3 r = conifer ? vec3(W * 0.55, H * 0.46, W * 0.55) : hedge ? vec3(W * 0.7, H * 0.55, W * 0.32) : vec3(W * 0.56, H * 0.4, W * 0.56);
     float cy = conifer ? H * 0.54 : hedge ? H * 0.46 : H * 0.6;
     p = p * r + vec3(0.0, cy, 0.0);
     n = normalize(n / r);
@@ -53,6 +59,7 @@ void main() {
   vRoot = root;
   vWH = vec2(W, H);
   vMeta = aMeta;
+  vDir = aDir;
   gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
 }
 `;
@@ -65,16 +72,19 @@ uniform sampler2D uSideC;
 uniform sampler2D uTopD;
 uniform sampler2D uTopC;
 uniform sampler2D uHedge;
+uniform sampler2D uHedgeTop;
 uniform vec4 uRectSD[4];
 uniform vec4 uRectSC[4];
 uniform vec4 uRectTD[4];
 uniform vec4 uRectTC[4];
 uniform vec4 uRectHS;
+uniform vec4 uRectHT;
 varying vec3 vWorld;
 varying vec3 vN;
 varying vec3 vRoot;
 varying vec2 vWH;
 varying vec3 vMeta;
+varying float vDir;
 vec4 cellRect(vec4 rs[4], int i) { return i == 0 ? rs[0] : i == 1 ? rs[1] : i == 2 ? rs[2] : rs[3]; }
 void main() {
   float kind = vMeta.x, seed = vMeta.y;
@@ -86,23 +96,36 @@ void main() {
   // side photo projected from the eye's side, top photo projected from above;
   // the surface's own facing decides which one this point shows
   vec3 camR = normalize(vec3(viewMatrix[0][0], 0.0, viewMatrix[2][0]) + 1e-5);
-  vec2 su = vec2(dot(d, camR) / vWH.x + 0.5, d.y / vWH.y);
   float a = seed * 6.2831;
-  vec2 tq = mat2(cos(a), -sin(a), sin(a), cos(a)) * d.xz / (vWH.x * 1.05) + 0.5;
-  float wTop = hedge ? 0.0 : smoothstep(0.25, 0.75, n.y);
+  vec2 su;
+  vec2 tq;
+  float along = 0.0, across = 0.0;
+  if (hedge) {
+    // world-space position along the hedge's own line, not the bush's own
+    // root, so the texture continues seamlessly from bush to bush
+    vec2 dirVec = vec2(cos(vDir), sin(vDir));
+    vec2 perpVec = vec2(-dirVec.y, dirVec.x);
+    along = dot(vWorld.xz, dirVec);
+    across = dot(d.xz, perpVec);
+    su = vec2(fract(along / 2.0), d.y / vWH.y);
+    tq = vec2(fract(along / 2.2), clamp(across / (vWH.x * 0.64) + 0.5, 0.0, 1.0));
+  } else {
+    su = vec2(dot(d, camR) / vWH.x + 0.5, d.y / vWH.y);
+    tq = mat2(cos(a), -sin(a), sin(a), cos(a)) * d.xz / (vWH.x * 1.05) + 0.5;
+  }
+  float wTop = hedge ? smoothstep(0.3, 0.7, n.y) : smoothstep(0.25, 0.75, n.y);
   bool useTop = hash12(gl_FragCoord.xy + seed * 37.0) < wTop;
   vec4 r;
   vec2 uv;
   vec4 t;
   if (useTop) {
     uv = tq;
-    r = conifer ? cellRect(uRectTC, cell) : cellRect(uRectTD, cell);
+    r = hedge ? uRectHT : conifer ? cellRect(uRectTC, cell) : cellRect(uRectTD, cell);
     vec2 u2 = mix(r.xy, r.zw, clamp(uv, 0.0, 1.0));
-    t = conifer ? texture2D(uTopC, u2) : texture2D(uTopD, u2);
+    t = hedge ? texture2D(uHedgeTop, u2) : conifer ? texture2D(uTopC, u2) : texture2D(uTopD, u2);
   } else {
     uv = su;
-    if (hedge) r = vec4(fract(seed * 3.1) * 0.7, uRectHS.y, fract(seed * 3.1) * 0.7 + 0.3, uRectHS.w);
-    else r = conifer ? cellRect(uRectSC, cell) : cellRect(uRectSD, cell);
+    r = hedge ? uRectHS : conifer ? cellRect(uRectSC, cell) : cellRect(uRectSD, cell);
     vec2 u2 = mix(r.xy, r.zw, clamp(uv, 0.0, 1.0));
     t = hedge ? texture2D(uHedge, u2) : conifer ? texture2D(uSideC, u2) : texture2D(uSideD, u2);
   }
@@ -133,6 +156,7 @@ export interface SpriteRects {
   tree_side_deciduous_sheet: number[][];
   tree_side_conifer_sheet: number[][];
   hedge_side: number[][];
+  hedge_topdown: number[][];
 }
 
 export class PhotoTrees {
@@ -140,7 +164,7 @@ export class PhotoTrees {
   readonly depth: THREE.ShaderMaterial;
   private uniforms: Record<string, THREE.IUniform>;
 
-  constructor(attrs: { aPos: THREE.InstancedBufferAttribute; aLife: THREE.InstancedBufferAttribute; aMeta: THREE.InstancedBufferAttribute }, treeUniforms: Record<string, THREE.IUniform>) {
+  constructor(attrs: { aPos: THREE.InstancedBufferAttribute; aLife: THREE.InstancedBufferAttribute; aMeta: THREE.InstancedBufferAttribute; aDir: THREE.InstancedBufferAttribute }, treeUniforms: Record<string, THREE.IUniform>) {
     const hull = new THREE.SphereGeometry(1, 9, 7);
     const trunk = new THREE.CylinderGeometry(1, 1.3, 1, 5, 1, true);
     const g = new THREE.InstancedBufferGeometry();
@@ -163,13 +187,15 @@ export class PhotoTrees {
     g.setAttribute('aPos', attrs.aPos);
     g.setAttribute('aLife', attrs.aLife);
     g.setAttribute('aMeta', attrs.aMeta);
+    g.setAttribute('aDir', attrs.aDir);
     const v4 = () => Array.from({ length: 4 }, () => new THREE.Vector4());
     this.uniforms = {
       ...shared,
       ...treeUniforms,
       uRectSD: { value: v4() }, uRectSC: { value: v4() }, uRectTD: { value: v4() }, uRectTC: { value: v4() },
       uRectHS: { value: new THREE.Vector4(0, 0.3, 1, 0.7) },
-      uSideD: { value: null }, uSideC: { value: null }, uTopD: { value: null }, uTopC: { value: null }, uHedge: { value: null },
+      uRectHT: { value: new THREE.Vector4(0, 0.35, 1, 0.6) },
+      uSideD: { value: null }, uSideC: { value: null }, uTopD: { value: null }, uTopC: { value: null }, uHedge: { value: null }, uHedgeTop: { value: null },
       uMeanD: { value: new THREE.Vector3(0.1, 0.15, 0.03) }, uMeanH: { value: new THREE.Vector3(0.1, 0.1, 0.04) },
     };
     const mat = new THREE.ShaderMaterial({ uniforms: this.uniforms, vertexShader: vert, fragmentShader: frag, side: THREE.DoubleSide });
@@ -193,20 +219,22 @@ export class PhotoTrees {
     set('uRectTD', r.canopy_deciduous_sheet);
     set('uRectTC', r.canopy_conifer_sheet);
     (this.uniforms.uRectHS.value as THREE.Vector4).fromArray(r.hedge_side[0]);
+    (this.uniforms.uRectHT.value as THREE.Vector4).fromArray(r.hedge_topdown[0]);
     const loader = new THREE.TextureLoader();
     const tex = async (f: string) => {
       const t = await loader.loadAsync(`${base}${f}.webp`);
       t.anisotropy = 4;
       return t;
     };
-    const [sd, sc, td, tc, hs] = await Promise.all([
-      tex('tree_side_deciduous_sheet'), tex('tree_side_conifer_sheet'), tex('canopy_deciduous_sheet'), tex('canopy_conifer_sheet'), tex('hedge_side'),
+    const [sd, sc, td, tc, hs, ht] = await Promise.all([
+      tex('tree_side_deciduous_sheet'), tex('tree_side_conifer_sheet'), tex('canopy_deciduous_sheet'), tex('canopy_conifer_sheet'), tex('hedge_side'), tex('hedge_topdown'),
     ]);
     this.uniforms.uSideD.value = sd;
     this.uniforms.uSideC.value = sc;
     this.uniforms.uTopD.value = td;
     this.uniforms.uTopC.value = tc;
     this.uniforms.uHedge.value = hs;
+    this.uniforms.uHedgeTop.value = ht;
     this.mesh.visible = true;
   }
 }
