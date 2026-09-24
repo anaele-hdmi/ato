@@ -40,7 +40,7 @@ void main() {
   vec3 camRight = normalize(vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]));
   vec3 toCam = normalize(cameraPosition - (root + vec3(0.0, H * 0.5, 0.0)));
   // 0 when seen from the side, 1 when seen from straight above
-  float topness = hedge ? 0.0 : smoothstep(0.55, 0.88, toCam.y);
+  float topness = hedge ? 0.0 : smoothstep(0.3, 0.55, toCam.y);
   vec3 p;
   vec4 r;
   if (aQuad < 0.5) {
@@ -49,7 +49,9 @@ void main() {
     float aspect = (r.z - r.x) / max(r.w - r.y, 1e-3);
     float W = H * aspect * (hedge ? 1.4 : 1.0);
     // hedges are low and seen from above too: let them lean back toward the eye
-    vec3 upv = hedge ? normalize(vec3(0.0, 1.0, 0.0) + max(toCam.y, 0.0) * -toCam * 0.6) : vec3(0.0, 1.0, 0.0);
+    // stand the cut-out upright on the picture as the eye rises, so it never lies flat
+    vec3 camUp = normalize(vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]));
+    vec3 upv = normalize(mix(vec3(0.0, 1.0, 0.0), camUp, smoothstep(0.05, 0.45, toCam.y)));
     p = root + camRight * (aCorner.x * 0.5 * W) + upv * ((aCorner.y * 0.5 + 0.5) * H - 0.15);
     vN = normalize(toCam * vec3(1.0, 0.0, 1.0) + vec3(0.0, 0.6, 0.0));
     vW = 1.0 - topness;
