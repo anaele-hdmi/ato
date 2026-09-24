@@ -109,8 +109,8 @@ export class Atmosphere {
     zenith.lerp(nz, night);
     horizon.lerp(nh, night);
     // chaos: the air goes brown and flat before anything else changes
-    zenith.lerp(new THREE.Color(0.42, 0.38, 0.34), env.chaos * 0.6);
-    horizon.lerp(new THREE.Color(0.5, 0.43, 0.36), env.chaos * 0.6);
+    zenith.lerp(new THREE.Color(0.42, 0.38, 0.34).multiplyScalar(0.08 + 0.92 * day), env.chaos * 0.6);
+    horizon.lerp(new THREE.Color(0.5, 0.43, 0.36).multiplyScalar(0.1 + 0.9 * day), env.chaos * 0.6);
 
     const sunCol = new THREE.Color(1.0, 0.94, 0.84)
       .lerp(new THREE.Color(1.0, 0.56, 0.26), low)
@@ -129,7 +129,7 @@ export class Atmosphere {
     s.uSkyAmb.value.copy(skyAmb);
     s.uGroundAmb.value.copy(groundAmb);
     s.uFogColor.value.copy(fog);
-    s.uFogDensity.value = 0.00016 + turb * 0.0004 + env.smoke * 0.0008;
+    s.uFogDensity.value = 0.00016 + turb * 0.0004 + env.smoke * 0.00015;
     s.uMist.value = mist;
     s.uNight.value = night;
     s.uLightPollution.value = lp;

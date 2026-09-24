@@ -31,7 +31,8 @@ void main() {
   float top = step(0.5, p.y);
   // broken tops: each corner falls at its own pace
   float corner = hash12(vec2(sign(p.x) + seed * 13.0, sign(p.z) + seed * 7.0));
-  float hc = h * build * mix(1.0, 0.05 + 0.12 * seed, collapse * mix(0.75, 1.0, corner));
+  float rubble = min(h * 0.2, 5.0 + seed * 9.0) * (1.0 - 0.6 * smoothstep(aDecay.y + 400.0, aDecay.y + 3000.0, uYear));
+  float hc = mix(h * build, rubble, collapse) * mix(1.0, 0.8 + 0.2 * corner, collapse);
   hc = max(hc, 1.5);
   float y = mix(-3.0, hc, top);
   vec4 w = modelMatrix * instanceMatrix * vec4(p.x, 0.0, p.z, 1.0);
@@ -52,14 +53,27 @@ varying vec3 vNormal;
 varying vec3 vObj;
 varying vec3 vSize;
 varying vec4 vInfo;
+uniform float uDamage;
 float box(vec2 p, vec2 lo, vec2 hi) { return step(lo.x, p.x) * step(p.x, hi.x) * step(lo.y, p.y) * step(p.y, hi.y); }
 void main() {
+  float kind = vInfo.x, seed = vInfo.y, abandon = vInfo.z, collapse = vInfo.w;
+  // jagged broken tops once falling; holes torn in some during the bad years
+  float aa = vObj.x + vObj.z;
+  float ragged = (collapse > 0.001 ? collapse : abandon * 0.15) * (2.0 + 10.0 * vnoise(vec2(aa * 0.21, seed * 50.0)));
+  if (vObj.y > vSize.y - ragged) discard;
+  float hurt = uDamage * step(0.55, fract(seed * 5.13)) + collapse * 0.8;
+  if (hurt > 0.01 && vnoise(vec2(aa * 0.07 + seed * 30.0, vObj.y * 0.06)) > 1.0 - 0.28 * hurt && vObj.y > 3.0) discard;
 #ifdef DEPTH_PASS
   gl_FragColor = vec4(1.0);
   return;
 #endif
   vec3 n = normalize(vNormal);
-  float kind = vInfo.x, seed = vInfo.y, abandon = vInfo.z, collapse = vInfo.w;
+  if (!gl_FrontFacing) {
+    // the inside of a broken building
+    vec3 c0 = shade(vec3(0.12, 0.11, 0.1), -n, vWorld, 0.5, 1.0) * 0.6;
+    gl_FragColor = finalOut(applyFog(c0, vWorld));
+    return;
+  }
   bool shop = kind > 1.5 && kind < 2.5;
   bool tower = kind > 0.5 && kind < 1.5;
   // facade palette: concrete, beige, brick, dark tower skin
@@ -137,6 +151,9 @@ void main() {
 }
 `;
 
+/** Damage from the bad years; set by the app from the environment. */
+export const BLOCK_DAMAGE = { value: 0 };
+
 export function buildBlocks(list: BoxRec[]): { mesh: THREE.InstancedMesh; depth: THREE.ShaderMaterial; births: number[] } {
   const sorted = [...list].sort((a, b) => a.birth - b.birth);
   const n = Math.max(1, sorted.length);
@@ -147,9 +164,9 @@ export function buildBlocks(list: BoxRec[]): { mesh: THREE.InstancedMesh; depth:
   for (let f = 0; f < idx.length; f += 6) if (f !== 3 * 6) for (let k = 0; k < 6; k++) keep.push(idx[f + k]);
   geo.setIndex(keep);
   const life = new Float32Array(n * 2), shape = new Float32Array(n * 4), times = new Float32Array(n * 4), dec = new Float32Array(n * 2);
-  const uniforms = { ...shared };
-  const main = new THREE.ShaderMaterial({ uniforms, vertexShader: vert, fragmentShader: frag });
-  const depth = new THREE.ShaderMaterial({ uniforms, vertexShader: vert, fragmentShader: frag, defines: { DEPTH_PASS: 1 } });
+  const uniforms = { ...shared, uDamage: BLOCK_DAMAGE };
+  const main = new THREE.ShaderMaterial({ uniforms, vertexShader: vert, fragmentShader: frag, side: THREE.DoubleSide });
+  const depth = new THREE.ShaderMaterial({ uniforms, vertexShader: vert, fragmentShader: frag, defines: { DEPTH_PASS: 1 }, side: THREE.DoubleSide });
   const mesh = new THREE.InstancedMesh(geo, main, n);
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
   sorted.forEach((b, i) => {

@@ -128,7 +128,7 @@ export function evaluateEnv(year: number, season: number, seasonality: number, d
   const lightPollution =
     (smoothstep(1950, 2050, y) * 0.45 + smoothstep(2110, 2200, y) * 0.55) * (1 - smoothstep(2322, 2370, y));
   const turbidity = clamp(
-    0.12 + 0.18 * smoothstep(1950, 2000, y) + 0.3 * smoothstep(2120, 2240, y) + 0.35 * chaos
+    0.12 + 0.18 * smoothstep(1950, 2000, y) + 0.3 * smoothstep(2120, 2240, y) + 0.12 * chaos
       - 0.5 * smoothstep(2330, 2500, y) + 0.25 * glacial,
     0.08, 1,
   );

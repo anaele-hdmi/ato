@@ -1,6 +1,7 @@
 // Wires time, world, camera, post and audio together. Owns the frame loop only.
 import * as THREE from 'three';
 import { AudioEngine, type AudioFrame } from './audio/audio-engine';
+import { BLOCK_DAMAGE } from './world/blocks';
 import { Collider } from './camera/collider';
 import { TouchCamera } from './camera/touch-camera';
 import { DofPipeline } from './post/dof';
@@ -16,6 +17,7 @@ import { Figures } from './world/figures';
 import { Grass } from './world/grass';
 import { Heightfield } from './world/heightfield';
 import { HOUSE_BIRTH, HOUSE_DEATH, House } from './world/house';
+import { Smoke } from './world/smoke';
 import { Terrain } from './world/terrain';
 import { Town } from './world/town';
 import { Vegetation } from './world/vegetation';
@@ -36,6 +38,7 @@ export class App {
   private house: House;
   private figures: Figures;
   private town: Town;
+  private smoke = new Smoke();
   private wind = new Wind();
   private audio = new AudioEngine();
   private ui: Scrubber;
@@ -65,7 +68,7 @@ export class App {
     this.house = new House(this.shadow);
     this.figures = new Figures((x, z) => this.hf.height(x, z, this.disp), this.shadow);
     this.town = new Town((x, z) => this.hf.height(x, z, 0), this.shadow);
-    this.scene.add(this.atmos.sky, this.terrain.mesh, this.grass.mesh, this.veg.group, this.house.group, this.figures.group, this.town.group);
+    this.scene.add(this.atmos.sky, this.terrain.mesh, this.grass.mesh, this.veg.group, this.house.group, this.figures.group, this.town.group, this.smoke.points);
     const collider = new Collider(this.town.data.boxes, [
       ...this.town.data.cottages,
       { x: 0, y: this.house.position.y, z: 0, rot: 0, scale: 1, birth: HOUSE_BIRTH, death: HOUSE_DEATH, color: new THREE.Color(), seed: 0 },
@@ -201,6 +204,8 @@ export class App {
     this.house.update(env.year, c.season, c.seasonality, c.day);
     this.figures.update(dt, env.year, env.people);
     this.town.update(env.year, env.dots, projScale);
+    this.smoke.update(env.year, projScale);
+    BLOCK_DAMAGE.value = smoothstep(2300, 2326, env.year);
 
     this.shadow.render(this.renderer, this.scene, this.cam.target, dist, this.atmos.sunDir);
 
@@ -213,7 +218,8 @@ export class App {
       maxFrac: lerp(0.05, 0.026, smoothstep(0.5, 2.5, ld)),
       grain: 0.028,
       ca: 0.55,
-      contrast: 1 + 0.35 * env.chaos,
+      // contrast breaks before anything else does
+      contrast: 1 + 0.38 * win(env.year, 2284, 2300, 2330, 2350),
       time: this.elapsed,
     });
 
