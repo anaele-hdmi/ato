@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { shared } from '../render/shared';
 import { COMMON, ROADS_FN, TERRAIN_FN } from '../render/glsl';
+import { PHOTO_FN } from '../render/photo-tex';
 import { BLOCK_U, BLOCK_V, GRID_ANGLE, GRID_OFFSET, VOID_HALF } from './layout';
 
 export const GRID_DEFINES = {
@@ -90,9 +91,9 @@ ${COMMON}
 ${TERRAIN_FN}
 ${ROADS_FN}
 ${GRID_FN}
+${PHOTO_FN}
 varying vec3 vWorld;
 varying vec4 vRaw;
-uniform float uPhoto;
 uniform sampler2D uTexGrass;
 uniform sampler2D uTexGravel;
 // a real photograph's grain, at two scales and two rotations so tiles never line up
@@ -151,7 +152,17 @@ void main() {
   // a meadow is a patchwork: clover, tussock, sorrel, dry grass
   grass = mix(grass, grass * vec3(0.66, 0.78, 0.7), smoothstep(0.5, 0.8, fbm3(p * 0.07 + 4.0)) * 0.6);
   grass = mix(grass, grass * vec3(1.25, 1.12, 0.82), smoothstep(0.55, 0.8, fbm3(p * 0.03 + 9.0)) * 0.5);
-  if (uPhoto > 0.5) grass *= mix(1.0, photoGrain(uTexGrass, p, dist, 0.35, 0.06), 0.8 * (1.0 - smoothstep(600.0, 2500.0, dist)));
+  if (uPhoto > 0.5) {
+    mat2 r1 = mat2(0.8, -0.6, 0.6, 0.8), r2 = mat2(0.28, 0.96, -0.96, 0.28);
+    vec3 d1 = photoDetail(uTexMeadow, uMeanMeadow, r1 * p / 2.4, 0.5);
+    vec3 d2 = photoDetail(uTexMeadow2, uMeanMeadow2, r2 * p / 3.3 + 0.37, 0.5);
+    vec3 dm = photoDetail(uTexMacro, uMeanMacro, p / 41.0, 0.25);
+    float mixA = smoothstep(0.35, 0.65, vnoise(p * 0.03));
+    vec3 near = mix(d1, d2, mixA);
+    float far = smoothstep(30.0, 400.0, dist);
+    vec3 dd = mix(near, vec3(1.0), far * 0.6) * mix(vec3(1.0), dm, 0.35 + 0.4 * far);
+    grass *= mix(vec3(1.0), dd, 0.9 * (1.0 - smoothstep(1500.0, 5000.0, dist)));
+  }
   // wind running over the meadow as travelling bands of light
   float gustBand = sin(dot(p, uWindDir) * 0.09 - uTime * 1.3 + vnoise(p * 0.02) * 4.0);
   grass *= 1.0 + 0.09 * uWind * gustBand * (1.0 - urban) * (1.0 - smoothstep(150.0, 600.0, dist));
@@ -191,6 +202,7 @@ void main() {
     vec2 cf = abs(fract(pr / psz) - 0.5) * psz;
     float edge = smoothstep(psz.x * 0.5 - 1.6, psz.x * 0.5 - 0.8, cf.x) + smoothstep(psz.y * 0.5 - 1.6, psz.y * 0.5 - 0.8, cf.y);
     edge = 1.0 - clamp(edge, 0.0, 1.0);
+    if (uPhoto > 0.5) fc *= mix(vec3(1.0), photoDetail(uTexSoil, uMeanSoil, (vec2(dot(p, dir), dot(p, vec2(-dir.y, dir.x)))) / 3.2, 0.4), 0.7);
     col = mix(col, fc * (0.9 + 0.2 * h), fieldZone * step(0.35, h) * edge);
   }
 
@@ -207,6 +219,7 @@ void main() {
     float lived = smoothstep(1882.0, 1884.0, uYear) * (1.0 - smoothstep(2060.0, 2075.0, uYear));
     float furrow = 0.5 + 0.5 * sin(gq.x * 5.2);
     vec3 soil = vec3(0.26, 0.2, 0.14) * (0.8 + 0.35 * furrow);
+    if (uPhoto > 0.5) soil = vec3(0.24, 0.18, 0.12) * photoDetail(uTexSoil, uMeanSoil, gq.yx / 3.2, 0.6);
     vec3 crop = mix(soil, grassColor(0.2) * 1.1, smoothstep(0.3, 0.45, uSeason) * (1.0 - smoothstep(0.75, 0.85, uSeason)) * furrow);
     col = mix(col, crop, plot * lived);
   }
@@ -232,7 +245,7 @@ void main() {
   float rut = (1.0 - uGravel) * (1.0 - smoothstep(0.12, 0.3, abs(rd.r - 0.75))) * mainRoad;
   vec3 track = mix(roadSurface(rd.r, p, max(uPaved, max(lanePaved * lane, street)), decayed), grass * 0.8, (1.0 - uGravel) * 0.55);
   track = mix(track, vec3(0.27, 0.22, 0.16), rut * 0.8);
-  if (uPhoto > 0.5) track *= mix(1.0, photoGrain(uTexGravel, p, dist, 0.6, 0.12), 0.7 * (1.0 - smoothstep(400.0, 2000.0, dist)));
+  if (uPhoto > 0.5) track *= mix(vec3(1.0), photoDetail(uTexTrack, uMeanTrack, p / 2.0, 0.6), 0.85 * (1.0 - smoothstep(600.0, 3000.0, dist)));
   // sidewalks along the avenue
   float kerb = smoothstep(mainW * 0.5, mainW * 0.5 + 0.2, rd.r) * (1.0 - smoothstep(mainW * 0.5 + 2.6, mainW * 0.5 + 2.8, rd.r)) * uAvenue * (1.0 - roadGone);
   col = mix(col, vec3(0.48, 0.47, 0.44) * (0.9 + 0.2 * fine), kerb * (1.0 - grow * 0.8));

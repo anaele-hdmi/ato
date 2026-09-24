@@ -6,6 +6,7 @@ import { Collider } from './camera/collider';
 import { TouchCamera } from './camera/touch-camera';
 import { DofPipeline } from './post/dof';
 import { PerfGovernor } from './render/perf';
+import { loadPhotoTextures } from './render/photo-tex';
 import { SunShadow } from './render/shadow';
 import { shared } from './render/shared';
 import { Clock } from './time/clock';
@@ -129,6 +130,7 @@ export class App {
     if (q.has('day')) this.clock.day = parseFloat(q.get('day') as string);
     if (q.has('speed')) this.clock.speed = parseInt(q.get('speed') as string, 10);
     if (q.has('nointro')) this.intro = 0;
+    if (q.has('photo')) void loadPhotoTextures(this.renderer).catch(() => undefined);
     if (q.has('phototex')) {
       const load = (f: string) => {
         const t = new THREE.TextureLoader().load(`./textures-test/${f}`);

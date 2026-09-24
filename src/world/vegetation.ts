@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { shared } from '../render/shared';
 import { COMMON, TERRAIN_FN } from '../render/glsl';
+import { PHOTO_FN } from '../render/photo-tex';
 import type { SunShadow } from '../render/shadow';
 import { fbm, mulberry32 } from '../util/rand';
 import { DEEP_BASE_YEAR, START_YEAR } from '../time/time-model';
@@ -205,6 +206,7 @@ void main() {
 
 const crownFrag = /* glsl */ `
 ${COMMON}
+${PHOTO_FN}
 ${CROWN_COLOR}
 varying vec2 vCorner;
 varying vec3 vCenter;
@@ -249,6 +251,8 @@ void main() {
   vec3 n = normalize((vec4(nv, 0.0) * viewMatrix).xyz);
   vec3 wp = vCenter + n * vR * 0.8;
   vec3 col = crownColor(kind, seed) * (0.85 + 0.3 * cl.w);
+  // a photograph of real leaves lends the crown its grain
+  if (uPhoto > 0.5) col *= photoDetail(uTexLeaves, uMeanLeaves, vCorner * 0.45 * vR / 3.0 + seed * 7.0, 0.15);
   col = mix(col, vec3(0.24, 0.19, 0.15), bare);
   if (kind > 1.5) {
     float dots = step(0.8, vnoise(vCorner * 16.0 + 3.0));

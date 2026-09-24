@@ -1,0 +1,49 @@
+{
+ "source": "Poly Haven (CC0)",
+ "files": {
+  "meadow": "forrest_ground_01",
+  "meadow2": "leafy_grass",
+  "macro": "aerial_grass_rock",
+  "track": "grass_path_2",
+  "soil": "farm_furrows",
+  "roof": "grey_roof_tiles",
+  "leaves": "forest_leaves_02"
+ },
+ "meanLinear": {
+  "meadow": [
+   0.2971,
+   0.2526,
+   0.1194
+  ],
+  "meadow2": [
+   0.3256,
+   0.2396,
+   0.1051
+  ],
+  "macro": [
+   0.1725,
+   0.1226,
+   0.0255
+  ],
+  "track": [
+   0.2888,
+   0.2358,
+   0.137
+  ],
+  "soil": [
+   0.1109,
+   0.073,
+   0.0314
+  ],
+  "roof": [
+   0.126,
+   0.1125,
+   0.0771
+  ],
+  "leaves": [
+   0.299,
+   0.1805,
+   0.0545
+  ]
+ }
+}

@@ -3,6 +3,7 @@
 import * as THREE from 'three';
 import { shared } from '../render/shared';
 import { COMMON } from '../render/glsl';
+import { PHOTO_FN } from '../render/photo-tex';
 import { GeoBuilder } from './geo';
 
 export const COTTAGE = { w: 6.0, d: 5.0, wall: 2.7, ridge: 1.9, over: 0.32 };
@@ -77,6 +78,7 @@ void main() {
 
 const frag = /* glsl */ `
 ${COMMON}
+${PHOTO_FN}
 uniform float uWear;
 // See blocks.ts: each window lights up at its own point in the dusk (function of
 // uNight, not wall time) with a soft transition, and long exposure (uShadowFade
@@ -114,6 +116,8 @@ void main() {
   float streak = vnoise(vec2(vLocal.x * 3.0 + vLocal.z * 3.0, vLocal.y * 0.4)) * smoothstep(1.2, 2.7, vLocal.y);
   wall *= 1.0 - 0.12 * streak * (0.3 + age);
   vec3 roof = mix(vec3(0.24, 0.2, 0.19), vec3(0.36, 0.17, 0.13), step(0.55, vSeed)) * (0.85 + 0.2 * vnoise(vLocal.xz * 2.0));
+  // slates run along the ridge; distance down the slope is roughly |z| + height
+  if (uPhoto > 0.5) roof *= photoDetail(uTexRoof, uMeanRoof, vec2(vLocal.x, abs(vLocal.z) * 1.15 + vLocal.y * 0.5) / 2.2, 0.35);
   vec3 stone = vec3(0.42, 0.4, 0.37) * (0.8 + 0.3 * vnoise(vLocal.xy * 4.0 + vLocal.zz));
   vec3 brick = vec3(0.35, 0.22, 0.17);
   vec3 col = vPart < 0.5 ? wall : vPart < 1.5 ? roof : vPart < 2.5 ? brick : stone;
