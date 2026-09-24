@@ -1,9 +1,7 @@
 // The only words ever shown. They come once the end has been held for a while,
 // fade to almost nothing, and vanish the moment time is pulled back.
 
-// The brief names the end title 「定点」 while also asking for 「跡」 as the only
-// on-screen text; change this one constant if the latter is meant.
-export const END_TITLE = '定点';
+export const END_TITLE = '跡';
 
 const HOLD_SECONDS = 4.5;
 
