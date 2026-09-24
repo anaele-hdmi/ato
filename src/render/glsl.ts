@@ -151,7 +151,9 @@ vec3 grassColor(float var) {
 }
 float snowCover() {
   float w = win(uSeason, -0.1, 0.0, 0.08, 0.14) + smoothstep(0.96, 1.0, uSeason);
-  return clamp(w * uSeasonality * 0.9 + uGlacial, 0.0, 1.0);
+  // not every winter brings snow
+  float snowy = step(0.55, hash11(floor(uYear + 0.2) * 1.37));
+  return clamp(w * uSeasonality * 0.85 * snowy + uGlacial, 0.0, 1.0);
 }
 `;
 
@@ -189,7 +191,11 @@ uniform float uRoadExt;
 // r: distance to main road, g: distance to lanes, b: lane birth (norm), a: urban year (norm)
 vec4 roadRaw(vec2 xz) {
   vec2 uv = xz / (2.0 * uRoadExt) + 0.5;
-  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) return vec4(999.0, 999.0, 9.0, 9.0);
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
+    // beyond the baked area the city front is the smooth part of urbanYear()
+    float uy = 1936.0 + length(xz - vec2(-900.0, -640.0)) / 19.5;
+    return vec4(999.0, 999.0, 9.0, (uy - 1900.0) / 400.0);
+  }
   return texture2D(uRoads, uv);
 }
 float yearN(float n) { return 1900.0 + n * 400.0; }

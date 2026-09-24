@@ -9,6 +9,8 @@ const LOG_MIN = Math.log(MIN_DIST);
 const LOG_MAX = Math.log(MAX_DIST);
 
 type GroundFn = (x: number, z: number) => number;
+/** Returns the usable fraction of the target->eye segment. */
+export type ClipFn = (from: THREE.Vector3, to: THREE.Vector3) => number;
 
 interface Ptr { x: number; y: number }
 
@@ -32,6 +34,8 @@ export class TouchCamera {
   private cooldownUntil = 0;
   private lastMoveT = 0;
   private mouseButton = -1;
+  private clipFn: ClipFn | null = null;
+  private clipDist = Infinity;
   /** Seconds since the last camera gesture. */
   idle = 0;
 
@@ -50,13 +54,18 @@ export class TouchCamera {
     return Math.exp(this.logDist);
   }
 
+  /** Actual eye-to-target distance after collisions. */
+  get eyeDist(): number {
+    return this.camera.position.distanceTo(this.target);
+  }
+
   /** 0 at grass level, 1 at the highest view. */
   get altitude(): number {
     return (this.logDist - LOG_MIN) / (LOG_MAX - LOG_MIN);
   }
 
-  setGround(fn: GroundFn): void {
-    this.ground = fn;
+  setClip(fn: ClipFn): void {
+    this.clipFn = fn;
   }
 
   resize(w: number, h: number): void {
@@ -202,6 +211,13 @@ export class TouchCamera {
       this.target.y + d * Math.sin(this.elevation),
       this.target.z + d * ce * Math.cos(this.azimuth),
     );
+    if (this.clipFn) {
+      // Pull in at once when blocked, ease back out when the way clears.
+      const f = this.clipFn(this.target, pos);
+      const want = Math.max(MIN_DIST, f * d - 1.2);
+      this.clipDist = want < this.clipDist ? want : this.clipDist + (want - this.clipDist) * (1 - Math.exp(-dt * 3));
+      if (this.clipDist < d) pos.sub(this.target).multiplyScalar(this.clipDist / d).add(this.target);
+    }
     const floor = this.ground(pos.x, pos.z) + 0.3;
     if (pos.y < floor) {
       pos.y = floor;
@@ -210,8 +226,9 @@ export class TouchCamera {
     const cam = this.camera;
     cam.position.copy(pos);
     cam.lookAt(this.target);
-    cam.near = clamp(d * 0.012, 0.03, 30);
-    cam.far = Math.max(4000, d * 7 + 6000);
+    const e = pos.distanceTo(this.target);
+    cam.near = clamp(e * 0.012, 0.03, 30);
+    cam.far = Math.max(4000, e * 7 + 6000);
     cam.updateProjectionMatrix();
   }
 }

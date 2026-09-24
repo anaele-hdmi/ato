@@ -1,6 +1,7 @@
 // Wires time, world, camera, post and audio together. Owns the frame loop only.
 import * as THREE from 'three';
 import { AudioEngine, type AudioFrame } from './audio/audio-engine';
+import { Collider } from './camera/collider';
 import { TouchCamera } from './camera/touch-camera';
 import { DofPipeline } from './post/dof';
 import { PerfGovernor } from './render/perf';
@@ -14,8 +15,9 @@ import { Atmosphere } from './world/atmosphere';
 import { Figures } from './world/figures';
 import { Grass } from './world/grass';
 import { Heightfield } from './world/heightfield';
-import { House } from './world/house';
+import { HOUSE_BIRTH, HOUSE_DEATH, House } from './world/house';
 import { Terrain } from './world/terrain';
+import { Town } from './world/town';
 import { Vegetation } from './world/vegetation';
 import { Wind } from './world/wind';
 
@@ -33,6 +35,7 @@ export class App {
   private veg: Vegetation;
   private house: House;
   private figures: Figures;
+  private town: Town;
   private wind = new Wind();
   private audio = new AudioEngine();
   private ui: Scrubber;
@@ -61,7 +64,13 @@ export class App {
     this.veg = new Vegetation(this.shadow);
     this.house = new House(this.shadow);
     this.figures = new Figures((x, z) => this.hf.height(x, z, this.disp), this.shadow);
-    this.scene.add(this.atmos.sky, this.terrain.mesh, this.grass.mesh, this.veg.group, this.house.group, this.figures.group);
+    this.town = new Town((x, z) => this.hf.height(x, z, 0), this.shadow);
+    this.scene.add(this.atmos.sky, this.terrain.mesh, this.grass.mesh, this.veg.group, this.house.group, this.figures.group, this.town.group);
+    const collider = new Collider(this.town.data.boxes, [
+      ...this.town.data.cottages,
+      { x: 0, y: this.house.position.y, z: 0, rot: 0, scale: 1, birth: HOUSE_BIRTH, death: HOUSE_DEATH, color: new THREE.Color(), seed: 0 },
+    ]);
+    this.cam.setClip((a, b) => collider.clip(a.x, a.y, a.z, b.x, b.y, b.z, this.clock.year));
 
     this.ui = new Scrubber(stage, {
       getU: () => this.clock.u,
@@ -99,6 +108,8 @@ export class App {
     (this.cam as unknown as { logTarget: number }).logTarget = this.cam.logDist;
     if (q.has('az')) this.cam.azimuth = parseFloat(q.get('az') as string);
     if (q.has('el')) this.cam.elevation = parseFloat(q.get('el') as string);
+    if (q.has('tx')) this.cam.target.x = parseFloat(q.get('tx') as string);
+    if (q.has('tz')) this.cam.target.z = parseFloat(q.get('tz') as string);
     if (q.has('day')) this.clock.day = parseFloat(q.get('day') as string);
     if (q.has('speed')) this.clock.speed = parseInt(q.get('speed') as string, 10);
     if (q.has('nointro')) this.intro = 0;
@@ -189,12 +200,14 @@ export class App {
     this.veg.update(env.year, env.year < 2330 + 3000 ? 1 : env.forest * (1 - env.glacial), projScale);
     this.house.update(env.year, c.season, c.seasonality, c.day);
     this.figures.update(dt, env.year, env.people);
+    this.town.update(env.year, env.dots, projScale);
 
     this.shadow.render(this.renderer, this.scene, this.cam.target, dist, this.atmos.sunDir);
 
-    const ld = Math.log10(dist);
+    const eye = this.cam.eyeDist;
+    const ld = Math.log10(eye);
     this.dof.render(this.renderer, this.scene, camera, {
-      focus: dist,
+      focus: eye,
       cocFrac: lerp(0.024, 0.0055, smoothstep(0.1, 3.0, ld)),
       tilt: 0.022 * smoothstep(1.9, 3.5, ld),
       maxFrac: lerp(0.05, 0.026, smoothstep(0.5, 2.5, ld)),
@@ -210,7 +223,7 @@ export class App {
     camera.getWorldDirection(fwd);
     const frameA: AudioFrame = {
       env, altitude: alt, scrubRate: c.scrubRate, night: this.atmos.night, morning, summer,
-      wind: this.wind.value, poleNear: 0,
+      wind: this.wind.value, poleNear: this.town.utilities.nearness(camera.position, env.year),
       listener: { x: camera.position.x, y: camera.position.y, z: camera.position.z, fx: fwd.x, fy: fwd.y, fz: fwd.z },
       house: {
         x: 1.5, y: this.house.position.y + 4, z: -0.9,

@@ -26,7 +26,7 @@ float gridStreetDist(vec2 p) {
   return min(m.x, m.y);
 }
 float voidMask(vec2 p) {
-  vec2 a = abs(p);
+  vec2 a = abs(toGrid(p) - vec2(GRID_OFF_U, GRID_OFF_V));
   return 1.0 - smoothstep(VOID_HALF - 1.0, VOID_HALF, max(a.x, a.y));
 }
 float plinthHeight(vec2 p) {
@@ -141,23 +141,29 @@ void main() {
   col = mix(col, vec3(0.33, 0.28, 0.22) * (0.8 + 0.4 * fine), steep);
 
   // fields: parcels on gentle ground, before the city arrives
-  float fieldZone = smoothstep(0.25, 0.4, vnoise(p / 160.0 + 3.1)) * (1.0 - steep) * uFields
+  float fieldZone = smoothstep(0.56, 0.64, fbm3(p / 220.0 + 3.1)) * (1.0 - steep) * uFields
     * (1.0 - urban) * smoothstep(40.0, 70.0, length(p)) * smoothstep(3.0, 9.0, min(rd.r, rd.g));
   if (fieldZone > 0.001) {
-    vec2 cellId = floor(p / vec2(46.0, 38.0) + vec2(0.3, 0.7) * vnoise(p / 90.0));
+    // parcels follow a slightly skewed local grid of their own
+    float rot = (vnoise(p / 700.0) - 0.5) * 1.2;
+    vec2 pr = mat2(cos(rot), -sin(rot), sin(rot), cos(rot)) * p;
+    vec2 psz = vec2(58.0, 31.0);
+    vec2 cellId = floor(pr / psz);
     float h = hash12(cellId);
     float ang = h * 3.14159;
     vec2 dir = vec2(cos(ang), sin(ang));
-    float rows = 0.5 + 0.5 * sin(dot(p, dir) * 3.3);
+    float rows = 0.75 + 0.25 * sin(dot(p, dir) * 3.3);
     float sn = uSeason;
-    vec3 soil = vec3(0.32, 0.24, 0.17);
-    vec3 young = vec3(0.34, 0.45, 0.16);
-    vec3 ripe = mix(vec3(0.62, 0.52, 0.24), vec3(0.3, 0.42, 0.14), step(0.5, h));
+    vec3 soil = vec3(0.24, 0.18, 0.12);
+    vec3 young = vec3(0.2, 0.3, 0.09);
+    vec3 ripe = mix(vec3(0.5, 0.42, 0.19), vec3(0.18, 0.28, 0.08), step(0.5, h));
     vec3 fc = mix(soil, young, smoothstep(0.25, 0.4, sn) * rows);
     fc = mix(fc, ripe, smoothstep(0.45, 0.62, sn) * (1.0 - smoothstep(0.78, 0.86, sn)));
     fc = mix(fc, soil * 1.1, smoothstep(0.8, 0.9, sn));
-    fc = mix(vec3(0.34, 0.42, 0.18), fc, uSeasonality);
-    float edge = smoothstep(0.0, 1.2, min(abs(fract(p.x / 46.0) - 0.5), abs(fract(p.y / 38.0) - 0.5)) * 40.0);
+    fc = mix(vec3(0.22, 0.28, 0.11), fc, uSeasonality);
+    vec2 cf = abs(fract(pr / psz) - 0.5) * psz;
+    float edge = smoothstep(psz.x * 0.5 - 1.6, psz.x * 0.5 - 0.8, cf.x) + smoothstep(psz.y * 0.5 - 1.6, psz.y * 0.5 - 0.8, cf.y);
+    edge = 1.0 - clamp(edge, 0.0, 1.0);
     col = mix(col, fc * (0.9 + 0.2 * h), fieldZone * step(0.35, h) * edge);
   }
 
@@ -210,11 +216,14 @@ void main() {
 
   // street light: pools along roads, never inside the square
   float lightsOn = urban * uNight * (1.0 - smoothstep(2318.0, 2340.0, uYear)) * (1.0 - voidM);
-  float pools = 0.35 + 0.65 * smoothstep(0.75, 1.0, 0.5 + 0.5 * sin(dot(p, vec2(0.62, 0.78)) * 0.2));
-  float nearRoad = 1.0 - smoothstep(2.0, 14.0, min(min(rd.r, rd.g), gridStreetDist(p)));
+  // lamps every ~30 m along streets
+  vec2 g = toGrid(p);
+  float lampU = abs(fract(g.x / 28.0) - 0.5) * 28.0, lampV = abs(fract(g.y / 28.0) - 0.5) * 28.0;
+  float pools = exp(-min(lampU, lampV) * min(lampU, lampV) / 40.0) * 0.8 + 0.2;
+  float nearRoad = 1.0 - smoothstep(1.0, 9.0, min(min(rd.r, rd.g), gridStreetDist(p)));
   float flicker = 1.0 - uChaos * step(0.55, vnoise(p * 0.02 + floor(uTime * 0.3)));
-  lit += vec3(1.0, 0.62, 0.3) * 0.22 * lightsOn * nearRoad * pools * flicker;
-  lit += vec3(0.9, 0.55, 0.3) * 0.025 * lightsOn * (1.0 - voidM);
+  lit += vec3(1.0, 0.62, 0.3) * 0.16 * lightsOn * nearRoad * pools * flicker;
+  lit += vec3(0.9, 0.55, 0.3) * 0.006 * lightsOn * (1.0 - voidM);
 
   gl_FragColor = finalOut(applyFog(lit, vWorld));
 }

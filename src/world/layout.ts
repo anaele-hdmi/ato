@@ -66,8 +66,15 @@ export function urbanYear(x: number, z: number): number {
   return 1936 + d / 19.5 + fbm(x / 380, z / 380, 3, 77) * 14 - 11 * Math.exp(-main / 70);
 }
 
+/** The square left empty around the house site, aligned with the city grid. */
 export function inVoid(x: number, z: number, pad = 0): boolean {
-  return Math.abs(x) < VOID_HALF + pad && Math.abs(z) < VOID_HALF + pad;
+  const [u, v] = toGrid(x, z);
+  return Math.abs(u - GRID_OFFSET[0]) < VOID_HALF + pad && Math.abs(v - GRID_OFFSET[1]) < VOID_HALF + pad;
+}
+
+/** The smooth part of urbanYear(); used where nothing was baked. */
+export function urbanYearFar(x: number, z: number): number {
+  return 1936 + Math.hypot(x - CITY_CENTER[0], z - CITY_CENTER[1]) / 19.5;
 }
 
 /** Point and tangent at arc length s along a polyline. */
