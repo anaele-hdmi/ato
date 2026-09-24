@@ -39,7 +39,7 @@ void main() {
   vec3 c = vec3(0.12, 0.115, 0.11) * (uSkyAmb + uSunColor * 0.25);
   // smoke is itself part of the air; let the haze take only half of it
   c = mix(c, applyFog(c, vWorld), 0.5);
-  gl_FragColor = vec4(pow(tonemap(c), vec3(1.0 / 2.2)), a);
+  gl_FragColor = vec4(pow(grade(tonemap(c)), vec3(1.0 / 2.2)), a);
 }
 `;
 

@@ -9,7 +9,7 @@ import { PerfGovernor } from './render/perf';
 import { SunShadow } from './render/shadow';
 import { shared } from './render/shared';
 import { Clock } from './time/clock';
-import { type Env, ORIGIN_GROUND, evaluateEnv, win, yearToU } from './time/time-model';
+import { type Env, evaluateEnv, win, yearToU } from './time/time-model';
 import { EndTitle } from './ui/end-title';
 import { Scrubber } from './ui/scrubber';
 import { clamp, lerp, smoothstep } from './util/rand';
@@ -193,9 +193,12 @@ export class App {
     s.uCamTarget.value.copy(this.cam.target);
     s.uCamDist.value = dist;
     s.uDisp.value = env.terrainDisp;
-    // At the end the sea is there for whoever looks from high enough.
-    const endSea = env.terminal * smoothstep(0.52, 0.78, alt);
-    const seaLevel = lerp(env.seaLevel, ORIGIN_GROUND + 2.5, endSea);
+    // The sea arrives over the site and stays; at the very end it breathes as a
+    // slow tide, the hill surfacing and going under.
+    const originH = this.hf.height(0, 0, env.terrainDisp);
+    const transgress = smoothstep(6.9, 8.25, env.L);
+    const tide = env.terminal * 3.2 * Math.sin((this.elapsed / 46) * Math.PI * 2);
+    const seaLevel = lerp(env.seaLevel, originH + 1.2 + tide, transgress);
     s.uSeaLevel.value = seaLevel;
     env.stems.water = clamp(1 - (this.hf.height(this.cam.target.x, this.cam.target.z, env.terrainDisp) - seaLevel) / 25, 0, 1) * 0.9 + 0.15 * alt * smoothstep(3.5, 4.5, env.L);
     s.uGravel.value = env.gravel;
@@ -208,10 +211,11 @@ export class App {
     s.uWild.value = env.wild;
     s.uForest.value = env.forest;
     s.uGlacial.value = env.glacial;
+    s.uArid.value = env.arid;
     s.uChaos.value = env.chaos;
     s.uIntro.value = smoothstep(0, 1, this.intro);
 
-    this.atmos.update(env, mist);
+    this.atmos.update(env, mist, c.exposure);
     this.grass.update(camera.position, this.cam.target, dist);
     const projScale = (this.renderer.getDrawingBufferSize(this.tmpV2).y / 2) / Math.tan((camera.fov * Math.PI) / 360);
     this.veg.update(env.year, env.year < 2330 + 3000 ? 1 : env.forest * (1 - env.glacial), projScale);
@@ -260,7 +264,7 @@ export class App {
     this.audio.update(frameA);
 
     const hudFade = 1 - smoothstep(6, 10, this.cam.idle) * env.terminal;
-    this.ui.update(c.season, c.seasonality, hudFade);
+    this.ui.update(c.season, c.seasonality, hudFade, env.year, c.exposure);
     const fc = shared.uFogColor.value;
     this.endTitle.update(dt, env.terminal, this.atmos.night < 0.3 && fc.r * 0.3 + fc.g * 0.59 + fc.b * 0.11 > 0.5);
 

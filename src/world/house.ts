@@ -68,7 +68,7 @@ void main() {
   vec2 q = gl_PointCoord * 2.0 - 1.0;
   float a = (1.0 - smoothstep(0.2, 1.0, length(q))) * vA * 0.35;
   vec3 c = (uSkyAmb * 0.9 + uSunColor * 0.25) * vec3(0.8, 0.8, 0.82);
-  gl_FragColor = vec4(pow(tonemap(applyFog(c, vWorld)), vec3(1.0 / 2.2)), a);
+  gl_FragColor = vec4(pow(grade(tonemap(applyFog(c, vWorld))), vec3(1.0 / 2.2)), a);
 }
 `;
 

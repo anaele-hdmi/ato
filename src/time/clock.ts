@@ -3,11 +3,11 @@ import { clamp, smoothstep } from '../util/rand';
 import { DEEP_U0, uToYear, yearToU } from './time-model';
 
 export const SPEEDS = 4; // 0 stop, 1 slow, 2 mid, 3 fast
-const YEARS_PER_SEC = [0, 1 / 45, 0.6, 7];
+// slow: a day in under two seconds, the sun sweeps; mid: days strobe into an
+// averaged light, a year in ~18 s; fast: years per second.
+const YEARS_PER_SEC = [0, 0.6 / 365.25, 20 / 365.25, 7];
 // In deep time years stop meaning anything, so playback advances the scrub itself.
 const DEEP_U_PER_SEC = [0, 0.0011, 0.0045, 0.016];
-// One day takes this many seconds of wall time.
-const DAY_SECONDS = 240;
 
 export class Clock {
   u = yearToU(1900.28);
@@ -21,6 +21,10 @@ export class Clock {
   season = this.year % 1;
   seasonality = 1;
   day = 0.36;
+  /** 0 = the sun is seen moving; 1 = days blur into one long exposure. */
+  exposure = 0;
+  /** Days per second, smoothed. */
+  dayRate = 0;
   private lastU = this.u;
 
   setU(u: number): void {
@@ -61,9 +65,13 @@ export class Clock {
     const want = (1 - smoothstep(1.5, 14, Math.abs(this.yearRate))) * (1 - deep);
     this.seasonality += (want - this.seasonality) * (1 - Math.exp(-dt * 2));
 
-    // Day runs on wall time; near the end it settles at dusk and holds.
-    const dayRate = (1 / DAY_SECONDS) * (1 - terminal);
-    this.day = (this.day + dayRate * dt) % 1;
+    // The day is simulated time too, so a day is always shorter than a year.
+    const dYears = this.year - prevYear;
+    // Past a few thousand years the day phase is meaningless; exposure hides it.
+    if (Math.abs(dYears) < 50) this.day = (((this.day + dYears * 365.25) % 1) + 1) % 1;
+    this.dayRate = Math.abs(this.yearRate) * 365.25;
+    const expTarget = smoothstep(0.9, 6, this.dayRate);
+    this.exposure += (expTarget - this.exposure) * (1 - Math.exp(-dt * 3));
     if (terminal > 0) {
       let dd = 0.775 - this.day;
       dd -= Math.round(dd);

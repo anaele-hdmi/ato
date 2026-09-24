@@ -132,6 +132,10 @@ void main() {
   grass *= 0.78 + 0.3 * macro + 0.12 * (fine - 0.5) + 0.06 * (vnoise(p * 7.0) - 0.5) * (1.0 - smoothstep(20.0, 60.0, dist));
   // clumps of darker growth, patches of clover and bare
   grass = mix(grass, grass * vec3(0.7, 0.8, 0.7), smoothstep(0.55, 0.85, fbm3(p * 0.09 + 4.0)) * 0.35);
+  // photographic grain of real ground when close: tufts, bare specks
+  float near = 1.0 - smoothstep(15.0, 90.0, dist);
+  grass *= 1.0 + near * (0.14 * (vnoise(p * 3.3) - 0.5) + 0.1 * (vnoise(p * 12.0) - 0.5));
+  grass = mix(grass, vec3(0.3, 0.26, 0.2), near * smoothstep(0.78, 0.9, vnoise(p * 2.1 + 9.0)) * 0.5);
   // wet spring morning ground
   grass *= 1.0 - 0.18 * uMist;
   vec3 col = grass;

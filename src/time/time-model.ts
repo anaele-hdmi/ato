@@ -93,6 +93,7 @@ export interface Env {
   // deep time
   deep: number;
   glacial: number;
+  arid: number;
   seaLevel: number;
   terrainDisp: number;
   terminal: number;
@@ -116,20 +117,22 @@ export function evaluateEnv(year: number, season: number, seasonality: number, d
   const human = 1 - smoothstep(2330, 2500, y);
   const urbanNear = smoothstep(1978, 2060, y) * (1 - decay);
   const wild = smoothstep(2345, 2650, y);
-  const forest = smoothstep(2.3, 3.2, L) * (1 - smoothstep(7.9, 8.3, L) * 0.6);
+  // Deep time runs one way only: forest, one long ice, a dry age wearing the land
+  // down into new shapes, then the sea comes and stays. Nothing returns.
   const deep = smoothstep(3.6, 4.2, L);
-  const glacial =
-    deep * Math.min(1, bump(L, 4.45, 4.75, 5.05, 5.35) + 0.85 * bump(L, 6.05, 6.3, 6.6, 6.9) + 0.35 * bump(L, 7.75, 7.9, 8.0, 8.15));
-  const transgress = bump(L, 5.35, 5.6, 5.85, 6.05) * 1.0 + bump(L, 7.0, 7.25, 7.55, 7.75) * 1.15;
-  const seaLevel = -2 + transgress * (ORIGIN_GROUND + 4) - glacial * 8;
-  const terrainDisp = bump(L, 3.9, 5.4, 7.3, 8.3) + 0.06 * smoothstep(3.9, 5, L);
+  const glacial = bump(L, 3.95, 4.25, 4.85, 5.25);
+  const arid = bump(L, 5.1, 5.7, 7.1, 7.8);
+  const forest = smoothstep(2.3, 3.2, L) * (1 - arid * 0.85) * (1 - smoothstep(7.4, 8.0, L) * 0.7);
+  const transgress = smoothstep(6.9, 8.25, L);
+  const seaLevel = -2 - glacial * 8 + transgress * 26;
+  const terrainDisp = smoothstep(4.6, 7.4, L);
   const terminal = smoothstep(0.962, 0.985, u);
 
   const lightPollution =
     (smoothstep(1950, 2050, y) * 0.45 + smoothstep(2110, 2200, y) * 0.55) * (1 - smoothstep(2322, 2370, y));
   const turbidity = clamp(
     0.12 + 0.18 * smoothstep(1950, 2000, y) + 0.3 * smoothstep(2120, 2240, y) + 0.12 * chaos
-      - 0.5 * smoothstep(2330, 2500, y) + 0.25 * glacial,
+      - 0.5 * smoothstep(2330, 2500, y) + 0.25 * glacial + 0.2 * arid,
     0.08, 1,
   );
   const smoke = chaos;
@@ -151,8 +154,8 @@ export function evaluateEnv(year: number, season: number, seasonality: number, d
     metal: chaos + 0.35 * bump(y, 2330, 2345, 2450, 2600),
     creak: bump(y, 2328, 2360, 2700, 3400),
     insects: clamp((1 - urbanNear) * (1 - smoothstep(1990, 2020, y)) + 0.9 * wild * (1 - glacial), 0, 1) * (1 - 0.6 * deep),
-    rain: bump(L, 2.2, 2.6, 4.1, 4.6) * (1 - glacial),
-    animals: bump(L, 2.3, 2.8, 4.0, 4.5),
+    rain: bump(L, 2.2, 2.6, 3.9, 4.2) * (1 - glacial),
+    animals: bump(L, 2.3, 2.8, 3.9, 4.2) + 0.4 * bump(L, 5.2, 5.6, 6.8, 7.4),
     ice: glacial,
     water: 0, // filled in by the app from the shoreline distance
   };
@@ -168,7 +171,7 @@ export function evaluateEnv(year: number, season: number, seasonality: number, d
     wear: smoothstep(1900, 2100, y),
     people, dots,
     turbidity, lightPollution, smoke, chaos, decay, wild, forest, human,
-    deep, glacial, seaLevel, terrainDisp, terminal,
+    deep, glacial, arid, seaLevel, terrainDisp, terminal,
     stems,
     silence: 0.6 * chaos + 0.25 * smoothstep(7.8, 8.4, L),
   };

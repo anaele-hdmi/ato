@@ -118,17 +118,18 @@ vec4 blobOf(float kind, float i, float seed) {
 const CROWN_COLOR = /* glsl */ `
 vec3 crownColor(float kind, float seed) {
   float s = uSeason;
-  if (kind > 0.5 && kind < 1.5) return vec3(0.12, 0.2, 0.12) * (0.85 + 0.3 * seed);
-  vec3 spring = vec3(0.4, 0.56, 0.2);
-  vec3 summer = vec3(0.19, 0.31, 0.12);
-  vec3 autumn = mix(vec3(0.62, 0.34, 0.12), vec3(0.66, 0.54, 0.18), seed);
-  vec3 winter = vec3(0.3, 0.26, 0.21);
+  if (kind > 0.5 && kind < 1.5) return vec3(0.11, 0.16, 0.11) * (0.85 + 0.3 * seed);
+  vec3 spring = vec3(0.3, 0.38, 0.17);
+  vec3 summer = vec3(0.15, 0.22, 0.1);
+  vec3 autumn = mix(vec3(0.46, 0.3, 0.15), vec3(0.5, 0.42, 0.2), seed);
+  vec3 winter = vec3(0.27, 0.23, 0.19);
   vec3 c = winter;
   c = mix(c, spring, smoothstep(0.2, 0.32, s));
   c = mix(c, summer, smoothstep(0.42, 0.56, s));
   c = mix(c, autumn, smoothstep(0.68, 0.8, s));
   c = mix(c, winter, smoothstep(0.86, 0.95, s));
-  c = mix(vec3(0.24, 0.37, 0.14), c, uSeasonality);
+  c = mix(vec3(0.21, 0.28, 0.13), c, uSeasonality);
+  c = mix(c, vec3(0.32, 0.28, 0.17), uArid * 0.6);
   return c * (0.85 + 0.3 * seed);
 }
 float bareness(float kind) {
@@ -178,11 +179,30 @@ varying vec2 vCorner;
 varying vec3 vCenter;
 varying float vR;
 varying vec3 vMeta;
+// Nearest leaf cluster: distance, offset to its centre, and an id.
+vec4 clusters(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  float best = 9.0;
+  vec2 bo = vec2(0.0);
+  float id = 0.0;
+  for (int y = -1; y <= 1; y++) {
+    for (int x = -1; x <= 1; x++) {
+      vec2 g = vec2(float(x), float(y));
+      vec2 o = vec2(hash12(i + g), hash12(i + g + 17.3)) * 0.8 + 0.1;
+      vec2 r = g + o - f;
+      float d = dot(r, r);
+      if (d < best) { best = d; bo = r; id = hash12(i + g + 3.7); }
+    }
+  }
+  return vec4(sqrt(best), bo, id);
+}
 void main() {
   float kind = vMeta.x, seed = vMeta.y;
   float r2 = dot(vCorner, vCorner);
   float lump = vnoise(vCorner * 3.2 + seed * 40.0);
-  if (r2 > 1.0 - 0.3 * lump) discard;
+  vec4 cl = clusters(vCorner * 4.2 + seed * 13.0);
+  // a scalloped, leafy outline instead of a smooth ball
+  if (r2 + 0.45 * cl.x * smoothstep(0.35, 1.0, r2) > 1.0 - 0.18 * lump) discard;
   float bare = bareness(kind);
   float holes = vnoise(vCorner * 11.0 + seed * 17.0);
   if (holes < bare * 0.72 + 0.04) discard;
@@ -191,20 +211,24 @@ void main() {
   return;
 #endif
   vec3 nv = vec3(vCorner, sqrt(max(1.0 - r2, 0.0)));
-  nv.xy += (vec2(vnoise(vCorner * 7.0 + seed), vnoise(vCorner * 7.0 + seed + 5.0)) - 0.5) * 0.7;
+  // each cluster bulges on its own, so light breaks up across the crown
+  nv.xy -= cl.yz * 0.9;
+  nv.xy += (vec2(vnoise(vCorner * 19.0 + seed), vnoise(vCorner * 19.0 + seed + 5.0)) - 0.5) * 0.35;
   nv = normalize(nv);
   vec3 n = normalize((vec4(nv, 0.0) * viewMatrix).xyz);
   vec3 wp = vCenter + n * vR * 0.8;
-  vec3 col = crownColor(kind, seed);
+  vec3 col = crownColor(kind, seed) * (0.85 + 0.3 * cl.w);
   col = mix(col, vec3(0.24, 0.19, 0.15), bare);
   if (kind > 1.5) {
     float dots = step(0.8, vnoise(vCorner * 16.0 + 3.0));
     float blossom = win(uSeason, 0.25, 0.28, 0.34, 0.38) * uSeasonality;
     float fruit = win(uSeason, 0.63, 0.67, 0.76, 0.8) * uSeasonality;
-    col = mix(col, vec3(0.93, 0.84, 0.84), dots * blossom);
-    col = mix(col, vec3(0.62, 0.1, 0.07), dots * fruit);
+    col = mix(col, vec3(0.86, 0.8, 0.8), dots * blossom);
+    col = mix(col, vec3(0.5, 0.12, 0.08), dots * fruit);
   }
   col = mix(col, vec3(0.85, 0.87, 0.9), snowCover() * smoothstep(0.2, 0.8, n.y) * 0.8);
+  // deep gaps between clusters
+  col *= mix(0.45, 1.0, 1.0 - smoothstep(0.3, 0.8, cl.x));
   float ao = 0.55 + 0.45 * smoothstep(-1.0, 0.9, vCorner.y + nv.z * 0.4);
   float sh = sampleShadow(wp, n);
   vec3 c = shade(col * ao, n, wp, 0.45, sh);

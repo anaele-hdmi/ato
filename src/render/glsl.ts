@@ -25,6 +25,8 @@ uniform sampler2D uShadowMap;
 uniform mat4 uShadowMatrix;
 uniform float uShadowTexel;
 uniform float uShadowOn;
+uniform float uShadowFade;
+uniform float uArid;
 uniform float uGravel;
 uniform float uPaved;
 uniform float uAvenue;
@@ -87,7 +89,7 @@ float sampleShadow(vec3 wp, vec3 n) {
   float s10 = step(c.z - bias, texture2D(uShadowMap, b + vec2(uShadowTexel, 0.0)).r);
   float s01 = step(c.z - bias, texture2D(uShadowMap, b + vec2(0.0, uShadowTexel)).r);
   float s11 = step(c.z - bias, texture2D(uShadowMap, b + vec2(uShadowTexel)).r);
-  float s = mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y);
+  float s = mix(1.0, mix(mix(s00, s10, f.x), mix(s01, s11, f.x), f.y), uShadowFade);
   // Fade out at the edge of the shadow frustum instead of cutting.
   vec2 e = smoothstep(0.0, 0.06, c.xy) * smoothstep(1.0, 0.94, c.xy);
   return mix(1.0, s, e.x * e.y);
@@ -128,23 +130,33 @@ vec3 tonemap(vec3 x) {
   const float a = 2.51; const float b = 0.03; const float c = 2.43; const float d = 0.59; const float e = 0.14;
   return clamp((x * (a * x + b)) / (x * (c * x + d) + e), 0.0, 1.0);
 }
+// Matte photographic print: colour held back, blacks lifted, shadows a little cool.
+// Real places shot like models, never vivid.
+vec3 grade(vec3 c) {
+  float l = dot(c, vec3(0.2126, 0.7152, 0.0722));
+  c = mix(vec3(l), c, 0.66);
+  c = mix(c * vec3(0.93, 0.98, 1.06), c, smoothstep(0.0, 0.55, l));
+  return c * 0.9 + vec3(0.045, 0.047, 0.05);
+}
 vec4 finalOut(vec3 c) {
-  return vec4(pow(tonemap(c), vec3(1.0 / 2.2)), 1.0);
+  return vec4(pow(grade(tonemap(c)), vec3(1.0 / 2.2)), 1.0);
 }
 
 // Seasonal grass colour; seasonality pulls toward late spring while scrubbing.
 vec3 grassColor(float var) {
   float s = uSeason;
-  vec3 spring = vec3(0.19, 0.31, 0.085);
-  vec3 summer = vec3(0.12, 0.21, 0.06);
-  vec3 autumn = vec3(0.34, 0.27, 0.11);
-  vec3 winter = vec3(0.25, 0.22, 0.15);
+  vec3 spring = vec3(0.22, 0.29, 0.12);
+  vec3 summer = vec3(0.15, 0.21, 0.09);
+  vec3 autumn = vec3(0.33, 0.28, 0.15);
+  vec3 winter = vec3(0.27, 0.25, 0.19);
   vec3 c = winter;
   c = mix(c, spring, smoothstep(0.17, 0.30, s));
   c = mix(c, summer, smoothstep(0.42, 0.55, s));
   c = mix(c, autumn, smoothstep(0.66, 0.78, s));
   c = mix(c, winter, smoothstep(0.86, 0.97, s));
-  c = mix(vec3(0.17, 0.27, 0.08), c, uSeasonality);
+  c = mix(vec3(0.19, 0.26, 0.11), c, uSeasonality);
+  // the dry age: ochre and dust
+  c = mix(c, vec3(0.36, 0.3, 0.18), uArid * 0.85);
   // dry, yellower patches against lush, bluer ones
   c = mix(c * vec3(0.85, 0.95, 1.1), c * vec3(1.25, 1.1, 0.8), var);
   return c;

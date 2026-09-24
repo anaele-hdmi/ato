@@ -1,6 +1,10 @@
 // The only persistent controls: time scrub, playback speed, mute. No numbers, no words.
-import { DEEP_BASE_YEAR, yearToU } from '../time/time-model';
 import { clamp } from '../util/rand';
+
+// The span the first house stood. After it is gone this span is drawn to scale
+// against all the time since, so it thins to a hair.
+const HOUSE_FROM = 1880;
+const HOUSE_TO = 2104;
 
 const SPEED_GLYPHS = [
   '<rect x="8" y="8" width="8" height="8" rx="1"/>',
@@ -24,7 +28,7 @@ export interface ScrubberHooks {
 export class Scrubber {
   readonly root: HTMLDivElement;
   private track: HTMLDivElement;
-  private ticks: HTMLCanvasElement;
+  private era: HTMLElement;
   private knob: HTMLDivElement;
   private speedBtn: HTMLButtonElement;
   private muteBtn: HTMLButtonElement;
@@ -35,13 +39,13 @@ export class Scrubber {
     this.root = document.createElement('div');
     this.root.className = 'hud';
     this.root.innerHTML = `
-      <div class="scrub"><div class="track"><canvas class="ticks"></canvas><div class="knob"></div></div></div>
+      <div class="scrub"><div class="track"><div class="gauge"><i></i></div><div class="knob"></div></div></div>
       <button class="btn speed" aria-label="speed"><svg viewBox="0 0 24 24" fill="currentColor"></svg></button>
       <button class="btn mute" aria-label="sound"><svg viewBox="0 0 24 24" fill="currentColor"></svg></button>`;
     parent.appendChild(this.root);
     const scrub = this.root.querySelector('.scrub') as HTMLDivElement;
     this.track = this.root.querySelector('.track') as HTMLDivElement;
-    this.ticks = this.root.querySelector('.ticks') as HTMLCanvasElement;
+    this.era = this.root.querySelector('.gauge i') as HTMLElement;
     this.knob = this.root.querySelector('.knob') as HTMLDivElement;
     this.speedBtn = this.root.querySelector('.speed') as HTMLButtonElement;
     this.muteBtn = this.root.querySelector('.mute') as HTMLButtonElement;
@@ -75,18 +79,7 @@ export class Scrubber {
   }
 
   layout(): void {
-    const w = this.track.clientWidth, dpr = Math.min(2, window.devicePixelRatio || 1);
-    const c = this.ticks;
-    c.width = Math.max(1, Math.floor(w * dpr));
-    c.height = Math.floor(12 * dpr);
-    const g = c.getContext('2d');
-    if (!g) return;
-    g.clearRect(0, 0, c.width, c.height);
-    g.fillStyle = 'rgba(255,255,255,0.28)';
-    const mark = (u: number, hgt: number) => g.fillRect(Math.round(u * (c.width - 1)), (c.height - hgt * dpr) / 2, Math.max(1, dpr * 0.75), hgt * dpr);
-    // Only density: decades while people count years, powers of ten afterwards.
-    for (let y = 1910; y < DEEP_BASE_YEAR; y += 10) mark(yearToU(y), y % 50 === 0 ? 7 : 4);
-    for (let k = 1; k <= 8; k++) for (const m of [1, 3]) mark(yearToU(DEEP_BASE_YEAR + m * Math.pow(10, k)), m === 1 ? 7 : 4);
+    /* nothing measured; the gauge is sized in percent */
   }
 
   private uAt(clientX: number): number {
@@ -129,7 +122,10 @@ export class Scrubber {
     this.root.classList.remove('active');
   };
 
-  update(season: number, seasonality: number, fade: number): void {
+  update(season: number, seasonality: number, fade: number, year: number, exposure: number): void {
+    const frac = year <= HOUSE_TO ? 1 : (HOUSE_TO - HOUSE_FROM) / (year - HOUSE_FROM);
+    this.era.style.width = `max(1px, ${(frac * 100).toFixed(4)}%)`;
+    this.root.style.setProperty('--rush', exposure.toFixed(3));
     const u = this.h.getU();
     this.knob.style.left = `${(u * 100).toFixed(3)}%`;
     // The knob carries the only hint of the season.

@@ -26,6 +26,9 @@ export const shared = {
   uShadowMatrix: { value: new THREE.Matrix4() },
   uShadowTexel: { value: 1 / 2048 },
   uShadowOn: { value: 1 },
+  /** 1 = crisp shadows; falls as the hours blur into one exposure. */
+  uShadowFade: { value: 1 },
+  uArid: { value: 0 },
   // terrain
   uHeightNear: { value: null as THREE.Texture | null },
   uHeightFar: { value: null as THREE.Texture | null },
