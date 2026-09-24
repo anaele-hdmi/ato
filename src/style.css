@@ -1,0 +1,52 @@
+html, body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #c9cfd2;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+body { position: fixed; inset: 0; }
+#stage { position: fixed; inset: 0; touch-action: none; }
+#view { display: block; width: 100%; height: 100%; touch-action: none; }
+#veil {
+  position: absolute; inset: 0; pointer-events: none;
+  background: #c9cfd2; opacity: 1; transition: opacity 2.4s ease;
+}
+#veil.gone { opacity: 0; }
+
+.hud {
+  position: absolute; left: 0; right: 0;
+  bottom: 0;
+  padding: 0 max(10px, env(safe-area-inset-right)) max(6px, env(safe-area-inset-bottom)) max(14px, env(safe-area-inset-left));
+  display: flex; align-items: center; gap: 2px;
+  touch-action: none;
+  color: rgba(255, 255, 255, 0.62);
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.28));
+}
+.scrub { flex: 1; height: 56px; display: flex; align-items: center; cursor: pointer; touch-action: none; }
+.track { position: relative; width: 100%; height: 12px; }
+.track::before {
+  content: ''; position: absolute; left: 0; right: 0; top: 50%; height: 1px;
+  background: rgba(255, 255, 255, 0.34);
+}
+.ticks { position: absolute; left: 0; top: 0; width: 100%; height: 12px; }
+.knob {
+  position: absolute; top: 50%; width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px;
+  border-radius: 50%; background: #dde; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.55);
+  transition: transform 0.2s ease;
+}
+.hud.active .knob { transform: scale(1.5); }
+.btn {
+  width: 44px; height: 48px; padding: 12px; border: 0; margin: 0;
+  background: none; color: inherit; opacity: 0.8; touch-action: manipulation;
+}
+.btn svg { width: 20px; height: 20px; display: block; }
+.btn:focus { outline: none; }
+.debug {
+  position: absolute; top: 4px; left: 6px; font: 10px/1.3 ui-monospace, monospace;
+  color: rgba(255,255,255,0.8); pointer-events: none; white-space: pre; text-shadow: 0 0 2px #000;
+}
