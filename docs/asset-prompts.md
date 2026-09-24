@@ -12,6 +12,8 @@
 
 ## 優先（1905年テストで使う）
 
+木と生け垣は「真上から」と「横から」の両方を使います（カメラの角度で切り替えるため）。
+
 ### canopy_deciduous_sheet
 ```
 Square image, 1024x1024, transparent background. Four separate deciduous tree crowns (oak, ash, lime, beech) photographed from directly above, arranged in a 2x2 grid with space between them. True top-down aerial view, no perspective, no trunks visible, no ground, no shadows cast on the ground. Soft overcast daylight, natural spring-green foliage with individual leaf clusters and small gaps showing the dark interior. Realistic aerial photograph, neutral colour, no filter, no vignette.
@@ -30,6 +32,21 @@ Square image, 1024x1024. Dense temperate mixed forest canopy photographed from d
 ### hedge_topdown
 ```
 Square image, 1024x1024, transparent background. A single long old hawthorn and blackthorn hedgerow photographed from directly above, running horizontally straight across the whole width of the image, about one fifth of the image tall, irregular bushy edges, small gaps, a few white blossoms. True top-down view, soft overcast light, no ground, no cast shadow. Realistic aerial photograph, neutral colour.
+```
+
+### tree_side_deciduous_sheet
+```
+Square image, 1024x1024, transparent background. Four separate whole deciduous trees (oak, ash, lime, beech) seen from the side at eye level, arranged in a 2x2 grid with space between them, each showing the full tree from the base of the trunk to the top of the crown. Orthographic side view, no perspective, no ground, no cast shadows. Soft overcast daylight, natural spring-green foliage with leaf clusters and small gaps where the sky shows through. Realistic photograph, neutral colour, no filter.
+```
+
+### tree_side_conifer_sheet
+```
+Square image, 1024x1024, transparent background. Four separate whole conifer trees (spruce, pine, fir, larch) seen from the side at eye level, in a 2x2 grid with space between them, each full height from trunk base to tip. Orthographic side view, no perspective, no ground, no cast shadows. Soft overcast light, dark blue-green needles. Realistic photograph, neutral colour.
+```
+
+### hedge_side
+```
+Square image, 1024x1024, transparent background. A long old hawthorn and blackthorn hedgerow seen from the side at eye level, running horizontally across the whole width of the image, about one third of the image tall, dense twiggy base, irregular top, small gaps, a few white blossoms. Orthographic side view, no ground, no cast shadow, soft overcast light. Realistic photograph, neutral colour.
 ```
 
 ### wall_whitewash
