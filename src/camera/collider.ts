@@ -63,18 +63,26 @@ export class Collider {
   }
 
   /**
-   * Fraction of the target->eye segment at which the eye is outside any building.
-   * Only the eye itself is tested; buildings in between may hide the target,
-   * which keeps high views possible over a dense city.
+   * Fraction of the target->eye segment the eye may use. Close in, the eye stops
+   * at the first wall so the look point stays visible among towers; far out only
+   * the eye itself must be outside, so high views over the city stay possible.
    */
   clip(fx: number, fy: number, fz: number, tx: number, ty: number, tz: number, year: number): number {
-    if (!this.inside(tx, ty, tz, year)) return 1;
     const len = Math.hypot(tx - fx, ty - fy, tz - fz);
     const steps = Math.min(240, Math.ceil(len / 1.5));
-    for (let i = steps - 1; i >= 1; i--) {
-      const t = i / steps;
-      if (!this.inside(fx + (tx - fx) * t, fy + (ty - fy) * t, fz + (tz - fz) * t, year)) return t;
+    const at = (t: number) => this.inside(fx + (tx - fx) * t, fy + (ty - fy) * t, fz + (tz - fz) * t, year);
+    if (len < 350) {
+      // a look point inside a building (panned there) must not trap the eye
+      let wasOutside = false;
+      for (let i = 1; i <= steps; i++) {
+        const hit = at(i / steps);
+        if (hit && wasOutside) return Math.max(0, (i - 1) / steps);
+        if (!hit) wasOutside = true;
+      }
+      return 1;
     }
+    if (!at(1)) return 1;
+    for (let i = steps - 1; i >= 1; i--) if (!at(i / steps)) return i / steps;
     return 0;
   }
 }
