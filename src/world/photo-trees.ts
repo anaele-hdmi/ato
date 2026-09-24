@@ -1,6 +1,6 @@
-// Trees drawn from photographs: an upright cut-out that turns to the eye, and a
-// crown seen from above lying at crown height. Which one shows depends on how
-// steeply the eye looks down; the change is dithered so nothing needs sorting.
+// Trees drawn from photographs laid onto a tree-shaped hull: the side photo is cast
+// onto it from the eye's side, the photo from above onto its upward faces. The hull
+// gives true volume (no cut-out lying flat), the photos give outline and leaves.
 import * as THREE from 'three';
 import { shared } from '../render/shared';
 import { COMMON, TERRAIN_FN } from '../render/glsl';
@@ -11,19 +11,12 @@ ${COMMON}
 ${TERRAIN_FN}
 ${CROWN_ATTR}
 ${CROWN_COLOR}
-uniform vec4 uRectSD[4];
-uniform vec4 uRectSC[4];
-uniform vec4 uRectTD[4];
-uniform vec4 uRectTC[4];
-uniform vec4 uRectHS;
-attribute vec2 aCorner;
-attribute float aQuad;
-varying vec2 vUv;
+attribute float aPart;   // 0 crown hull, 1 trunk
 varying vec3 vWorld;
 varying vec3 vN;
-varying float vW;
+varying vec3 vRoot;
+varying vec2 vWH;
 varying vec3 vMeta;
-varying float vSide;
 void main() {
   vec2 xz = aPos.xy;
   float gy = terrainHeight(xz);
@@ -35,42 +28,32 @@ void main() {
   float kind = aMeta.x, seed = aMeta.y;
   bool conifer = kind > 0.5 && kind < 1.5;
   bool hedge = kind > 2.5;
-  int cell = int(floor(fract(seed * 7.77) * 3.999));
   float H = aPos.z * treeGrow() * (hedge ? 0.55 : 1.05);
-  vec3 camRight = normalize(vec3(viewMatrix[0][0], viewMatrix[1][0], viewMatrix[2][0]));
-  vec3 toCam = normalize(cameraPosition - (root + vec3(0.0, H * 0.5, 0.0)));
-  // 0 when seen from the side, 1 when seen from straight above
-  float topness = hedge ? 0.0 : smoothstep(0.3, 0.55, toCam.y);
-  vec3 p;
-  vec4 r;
-  if (aQuad < 0.5) {
-    r = hedge ? vec4(fract(seed * 3.1) * 0.7, uRectHS.y, fract(seed * 3.1) * 0.7 + 0.3, uRectHS.w)
-              : (conifer ? uRectSC[cell] : uRectSD[cell]);
-    float aspect = (r.z - r.x) / max(r.w - r.y, 1e-3);
-    float W = H * aspect * (hedge ? 1.4 : 1.0);
-    // hedges are low and seen from above too: let them lean back toward the eye
-    // stand the cut-out upright on the picture as the eye rises, so it never lies flat
-    vec3 camUp = normalize(vec3(viewMatrix[0][1], viewMatrix[1][1], viewMatrix[2][1]));
-    vec3 upv = normalize(mix(vec3(0.0, 1.0, 0.0), camUp, smoothstep(0.05, 0.45, toCam.y)));
-    p = root + camRight * (aCorner.x * 0.5 * W) + upv * ((aCorner.y * 0.5 + 0.5) * H - 0.15);
-    vN = normalize(toCam * vec3(1.0, 0.0, 1.0) + vec3(0.0, 0.6, 0.0));
-    vW = 1.0 - topness;
-    vSide = 1.0;
+  float W = H * (conifer ? 0.5 : hedge ? 1.3 : 0.95);
+  vec3 p = position;
+  vec3 n = normal;
+  float a = seed * 6.2831;
+  mat2 rot = mat2(cos(a), -sin(a), sin(a), cos(a));
+  if (aPart < 0.5) {
+    // the hull a little larger than the photographed tree, so the photo's own
+    // outline, not the hull, is what the eye sees
+    vec3 r = conifer ? vec3(W * 0.55, H * 0.46, W * 0.55) : hedge ? vec3(W * 0.55, H * 0.55, W * 0.4) : vec3(W * 0.56, H * 0.4, W * 0.56);
+    float cy = conifer ? H * 0.54 : hedge ? H * 0.46 : H * 0.6;
+    p = p * r + vec3(0.0, cy, 0.0);
+    n = normalize(n / r);
   } else {
     if (hedge) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
-    r = conifer ? uRectTC[cell] : uRectTD[cell];
-    float R = H * (conifer ? 0.28 : 0.42);
-    float a = seed * 6.2831;
-    vec2 c = mat2(cos(a), -sin(a), sin(a), cos(a)) * aCorner * R;
-    p = root + vec3(c.x, H * (conifer ? 0.62 : 0.7), c.y);
-    vN = vec3(0.0, 1.0, 0.0);
-    vW = topness;
-    vSide = 0.0;
+    p = vec3(p.x * W * 0.07, (p.y + 0.5) * H * 0.55 - 0.2, p.z * W * 0.07);
   }
-  vUv = mix(r.xy, r.zw, aCorner * 0.5 + 0.5);
-  vWorld = p;
+  p.xz = rot * p.xz;
+  n.xz = rot * n.xz;
+  vec3 w = root + p;
+  vWorld = w;
+  vN = n;
+  vRoot = root;
+  vWH = vec2(W, H);
   vMeta = aMeta;
-  gl_Position = projectionMatrix * viewMatrix * vec4(p, 1.0);
+  gl_Position = projectionMatrix * viewMatrix * vec4(w, 1.0);
 }
 `;
 
@@ -82,40 +65,64 @@ uniform sampler2D uSideC;
 uniform sampler2D uTopD;
 uniform sampler2D uTopC;
 uniform sampler2D uHedge;
-uniform vec3 uMeanD;
-uniform vec3 uMeanH;
-varying vec2 vUv;
+uniform vec4 uRectSD[4];
+uniform vec4 uRectSC[4];
+uniform vec4 uRectTD[4];
+uniform vec4 uRectTC[4];
+uniform vec4 uRectHS;
 varying vec3 vWorld;
 varying vec3 vN;
-varying float vW;
+varying vec3 vRoot;
+varying vec2 vWH;
 varying vec3 vMeta;
-varying float vSide;
+vec4 cellRect(vec4 rs[4], int i) { return i == 0 ? rs[0] : i == 1 ? rs[1] : i == 2 ? rs[2] : rs[3]; }
 void main() {
   float kind = vMeta.x, seed = vMeta.y;
   bool conifer = kind > 0.5 && kind < 1.5;
   bool hedge = kind > 2.5;
-  vec4 t = hedge ? texture2D(uHedge, vUv)
-         : vSide > 0.5 ? (conifer ? texture2D(uSideC, vUv) : texture2D(uSideD, vUv))
-                       : (conifer ? texture2D(uTopC, vUv) : texture2D(uTopD, vUv));
-  if (t.a < 0.5) discard;
-  // cross-fade between the two views by screen-door so no sorting is needed
-  if (hash12(gl_FragCoord.xy + seed * 91.0) > vW) discard;
+  int cell = int(floor(fract(seed * 7.77) * 3.999));
+  vec3 n = normalize(vN);
+  vec3 d = vWorld - vRoot;
+  // side photo projected from the eye's side, top photo projected from above;
+  // the surface's own facing decides which one this point shows
+  vec3 camR = normalize(vec3(viewMatrix[0][0], 0.0, viewMatrix[2][0]) + 1e-5);
+  vec2 su = vec2(dot(d, camR) / vWH.x + 0.5, d.y / vWH.y);
+  float a = seed * 6.2831;
+  vec2 tq = mat2(cos(a), -sin(a), sin(a), cos(a)) * d.xz / (vWH.x * 1.05) + 0.5;
+  float wTop = hedge ? 0.0 : smoothstep(0.25, 0.75, n.y);
+  bool useTop = hash12(gl_FragCoord.xy + seed * 37.0) < wTop;
+  vec4 r;
+  vec2 uv;
+  vec4 t;
+  if (useTop) {
+    uv = tq;
+    r = conifer ? cellRect(uRectTC, cell) : cellRect(uRectTD, cell);
+    vec2 u2 = mix(r.xy, r.zw, clamp(uv, 0.0, 1.0));
+    t = conifer ? texture2D(uTopC, u2) : texture2D(uTopD, u2);
+  } else {
+    uv = su;
+    if (hedge) r = vec4(fract(seed * 3.1) * 0.7, uRectHS.y, fract(seed * 3.1) * 0.7 + 0.3, uRectHS.w);
+    else r = conifer ? cellRect(uRectSC, cell) : cellRect(uRectSD, cell);
+    vec2 u2 = mix(r.xy, r.zw, clamp(uv, 0.0, 1.0));
+    t = hedge ? texture2D(uHedge, u2) : conifer ? texture2D(uSideC, u2) : texture2D(uSideD, u2);
+  }
+  if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0 || t.a < 0.5) discard;
   float bare = bareness(kind);
-  if (bare > 0.01 && vnoise(vUv * 60.0 + seed * 13.0) < bare * 0.7) discard;
+  if (bare > 0.01 && vnoise(uv * 60.0 + seed * 13.0) < bare * 0.7) discard;
 #ifdef DEPTH_PASS
   gl_FragColor = vec4(1.0);
   return;
 #endif
   vec3 lin = pow(t.rgb, vec3(2.2));
-  // the photo was taken in spring; the scene's season and age decide the colour
   vec3 spring = conifer ? vec3(0.11, 0.16, 0.11) : vec3(0.3, 0.38, 0.17);
   vec3 tint = crownColor(kind, seed) / (spring * (0.85 + 0.3 * seed));
   vec3 col = lin * mix(vec3(1.0), tint, 0.85);
   col = mix(col, vec3(0.2, 0.17, 0.14) * (0.6 + dot(lin, vec3(1.0))), bare * 0.7);
-  col = mix(col, vec3(0.85, 0.87, 0.9), snowCover() * 0.5 * (1.0 - vSide * 0.6));
-  float sh = sampleShadow(vWorld, vN);
-  // the photo already holds its own shading; add only the day's light and shadow
-  vec3 lightC = uSkyAmb * 1.05 + uSunColor * sh * (0.25 + 0.45 * max(dot(vN, uSunDir), 0.0));
+  col = mix(col, vec3(0.85, 0.87, 0.9), snowCover() * smoothstep(0.3, 0.8, n.y) * 0.6);
+  if (!gl_FrontFacing) n = -n;
+  float sh = sampleShadow(vWorld, n);
+  // the photo holds its own modelling; the hull adds the day's direction of light
+  vec3 lightC = uSkyAmb * (0.75 + 0.35 * n.y) + uSunColor * sh * (0.15 + 0.55 * max(dot(n, uSunDir), 0.0));
   gl_FragColor = finalOut(applyFog(col * lightC * 1.6, vWorld));
 }
 `;
@@ -134,17 +141,24 @@ export class PhotoTrees {
   private uniforms: Record<string, THREE.IUniform>;
 
   constructor(attrs: { aPos: THREE.InstancedBufferAttribute; aLife: THREE.InstancedBufferAttribute; aMeta: THREE.InstancedBufferAttribute }, treeUniforms: Record<string, THREE.IUniform>) {
+    const hull = new THREE.SphereGeometry(1, 9, 7);
+    const trunk = new THREE.CylinderGeometry(1, 1.3, 1, 5, 1, true);
     const g = new THREE.InstancedBufferGeometry();
-    const corner: number[] = [], quad: number[] = [], idx: number[] = [];
-    for (let q = 0; q < 2; q++) {
-      const o = q * 4;
-      corner.push(-1, -1, 1, -1, 1, 1, -1, 1);
-      quad.push(q, q, q, q);
-      idx.push(o, o + 1, o + 2, o, o + 2, o + 3);
+    const pos: number[] = [], nor: number[] = [], part: number[] = [], idx: number[] = [];
+    for (const [geo, tag] of [[hull, 0], [trunk, 1]] as const) {
+      const off = pos.length / 3;
+      const pa = geo.getAttribute('position'), na = geo.getAttribute('normal');
+      for (let i = 0; i < pa.count; i++) {
+        pos.push(pa.getX(i), pa.getY(i), pa.getZ(i));
+        nor.push(na.getX(i), na.getY(i), na.getZ(i));
+        part.push(tag);
+      }
+      const ia = geo.getIndex()!;
+      for (let i = 0; i < ia.count; i++) idx.push(ia.getX(i) + off);
     }
-    g.setAttribute('position', new THREE.Float32BufferAttribute(new Array(8 * 3).fill(0), 3));
-    g.setAttribute('aCorner', new THREE.Float32BufferAttribute(corner, 2));
-    g.setAttribute('aQuad', new THREE.Float32BufferAttribute(quad, 1));
+    g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+    g.setAttribute('aPart', new THREE.Float32BufferAttribute(part, 1));
     g.setIndex(idx);
     g.setAttribute('aPos', attrs.aPos);
     g.setAttribute('aLife', attrs.aLife);

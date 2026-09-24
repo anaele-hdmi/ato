@@ -206,7 +206,7 @@ export class Atmosphere {
     s.uSkyAmb.value.copy(L.skyAmb);
     s.uGroundAmb.value.copy(L.groundAmb);
     s.uFogColor.value.copy(this.fog);
-    s.uFogDensity.value = 0.00009 + turb * 0.00032 + env.smoke * 0.00015 + this.overcast * 0.0012;
+    s.uFogDensity.value = 0.00009 + turb * 0.00032 + env.smoke * 0.00015 + this.overcast * 0.0006;
     s.uMist.value = Math.max(mist, this.overcast * 0.85) * (1 - exposure);
     s.uNight.value = L.night;
     s.uLightPollution.value = env.lightPollution;

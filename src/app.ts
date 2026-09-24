@@ -25,6 +25,7 @@ import { Terrain } from './world/terrain';
 import { Town } from './world/town';
 import { Vegetation } from './world/vegetation';
 import { Water } from './world/water';
+import { Weather } from './world/weather';
 import { Wind } from './world/wind';
 
 export class App {
@@ -56,6 +57,8 @@ export class App {
   private intro = 1;
   private debugEl: HTMLDivElement | null = null;
   private disp = 0;
+  private weather = new Weather();
+  private weatherFixed: number | null = null;
   private tmpV2 = new THREE.Vector2();
   private fwd = new THREE.Vector3();
   private poleNear = 0;
@@ -130,8 +133,9 @@ export class App {
     if (q.has('day')) this.clock.day = parseFloat(q.get('day') as string);
     if (q.has('speed')) this.clock.speed = parseInt(q.get('speed') as string, 10);
     if (q.has('nointro')) this.intro = 0;
-    if (q.has('overcast')) this.atmos.overcast = parseFloat(q.get('overcast') as string) || 1;
-    if (q.has('photo')) {
+    if (q.has('overcast')) this.weatherFixed = parseFloat(q.get('overcast') as string);
+    // photographic materials are the default look; ?nophoto shows the bare procedural world
+    if (!q.has('nophoto')) {
       void loadPhotoTextures(this.renderer).catch(() => undefined);
       void this.veg.photo.load().catch(() => undefined);
     }
@@ -196,6 +200,8 @@ export class App {
     const alt = this.cam.altitude;
 
     this.wind.update(dt, 0.45 + 0.25 * env.stems.wind + 0.3 * env.glacial);
+    this.weather.update(dt, c.exposure);
+    this.atmos.overcast = this.weatherFixed ?? this.weather.cloud;
     this.intro = Math.max(0, this.intro - dt / 5.5);
 
     const spring = win(c.season, 0.12, 0.2, 0.4, 0.5) * c.seasonality + 0.3 * (1 - c.seasonality);

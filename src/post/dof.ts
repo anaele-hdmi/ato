@@ -333,7 +333,7 @@ export class DofPipeline {
         uContrast: { value: 1 },
         uTime: { value: 0 },
         uDebug: { value: new URLSearchParams(location.search).has('dofdebug') ? 1 : 0 },
-        uStyle: { value: parseFloat(new URLSearchParams(location.search).get('style') ?? '0') || 0 },
+        uStyle: { value: parseFloat(new URLSearchParams(location.search).get('style') ?? '4') },
       },
       vertexShader: fsVert, fragmentShader: compFrag, depthTest: false, depthWrite: false,
     });
