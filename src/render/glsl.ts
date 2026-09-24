@@ -205,7 +205,10 @@ vec4 roadRaw(vec2 xz) {
   vec2 uv = xz / (2.0 * uRoadExt) + 0.5;
   if (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0) {
     // beyond the baked area the city front is the smooth part of urbanYear()
-    float uy = 1936.0 + length(xz - vec2(-900.0, -640.0)) / 19.5;
+    vec2 dc = xz - vec2(-900.0, -640.0);
+    float a = atan(dc.y, dc.x) - 0.6181442259351873;
+    float lobe = 1.0 + 0.2 * sin(3.0 * a) + 0.13 * sin(5.0 * a) + 0.08 * sin(8.0 * a);
+    float uy = 1936.0 + length(dc) * lobe / 19.5;
     return vec4(999.0, 999.0, 9.0, (uy - 1900.0) / 400.0);
   }
   return texture2D(uRoads, uv);
