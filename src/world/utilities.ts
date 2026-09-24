@@ -5,6 +5,7 @@ import { shared } from '../render/shared';
 import { COMMON } from '../render/glsl';
 import type { SunShadow } from '../render/shadow';
 import type { PoleRec } from './settlement';
+import { hash2 } from '../util/rand';
 
 const wireVert = /* glsl */ `
 ${COMMON}
@@ -43,7 +44,7 @@ export class Utilities {
     const vis = new Float32Array(Math.max(1, poles.length) * 2);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), up = new THREE.Vector3(0, 1, 0);
     poles.forEach((p, i) => {
-      q.setFromAxisAngle(up, p.rot + (Math.random() - 0.5) * 0.04);
+      q.setFromAxisAngle(up, p.rot + (hash2(i, p.line, 71) - 0.5) * 0.04);
       m.compose(new THREE.Vector3(p.x, p.y - 0.3, p.z), q, new THREE.Vector3(1, 1, 1));
       mesh.setMatrixAt(i, m);
       vis.set([p.birth, p.death], i * 2);
