@@ -27,6 +27,7 @@ uniform float uShadowTexel;
 uniform float uShadowOn;
 uniform float uShadowFade;
 uniform float uArid;
+uniform float uCliff;
 uniform float uGravel;
 uniform float uPaved;
 uniform float uAvenue;
@@ -174,6 +175,27 @@ float snowCover() {
   // not every winter brings snow
   float snowy = step(0.55, hash11(floor(uYear + 0.2) * 1.37));
   return clamp(w * uSeasonality * 0.85 * snowy + uGlacial, 0.0, 1.0);
+}
+`;
+
+import { CLIFF_AZ, CLIFF_HALF_ARC, CLIFF_R } from '../world/cliff-shape';
+
+// The sea-cut cliff at the very end: 0..1, how much of the ground at world xz the sea
+// has taken in front of the rock face. Mirrors cliff-shape.ts's cliffCarve(x, z) exactly
+// (same edges), so the terrain, grass and the rock face itself all agree on the cut.
+// Any material that samples terrain height near the site should subtract
+// uCliff * <CLIFF_FLOOR> * cliffCarve(xz) from it, the way world/terrain.ts does.
+export const CLIFF_FN = /* glsl */ `
+float smoothCarve(float a, float b, float x) {
+  float t = clamp((x - a) / (b - a), 0.0, 1.0);
+  return t * t * (3.0 - 2.0 * t);
+}
+float cliffCarve(vec2 p) {
+  float r = length(p);
+  float da = atan(p.x, p.y) - ${CLIFF_AZ.toFixed(6)};
+  da = atan(sin(da), cos(da));
+  return smoothCarve(${(CLIFF_R - 0.6).toFixed(3)}, ${(CLIFF_R - 0.1).toFixed(3)}, r)
+    * smoothCarve(${(CLIFF_HALF_ARC + 0.25).toFixed(6)}, ${(CLIFF_HALF_ARC - 0.1).toFixed(6)}, abs(da));
 }
 `;
 

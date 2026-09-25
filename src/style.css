@@ -72,3 +72,9 @@ body { position: fixed; inset: 0; }
   font-weight: 300; font-size: 15px; letter-spacing: 0.5em; text-indent: 0.5em;
   opacity: 0; transition: opacity 0.6s ease;
 }
+/* The ruler standing up at the end: a copy of the strip, turned about its old end. */
+.strata-ghost {
+  position: absolute; left: 0; top: 0; pointer-events: none; display: none;
+  transform-origin: 0 50%; image-rendering: pixelated;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.25));
+}

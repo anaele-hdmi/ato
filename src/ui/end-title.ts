@@ -1,9 +1,9 @@
-// The only words ever shown. They come once the end has been held for a while,
+// The only words ever shown. They come when the end sequence has run its course,
 // fade to almost nothing, and vanish the moment time is pulled back.
 
 export const END_TITLE = '跡';
 
-const HOLD_SECONDS = 4.5;
+const HOLD_SECONDS = 1.5;
 
 export class EndTitle {
   private el: HTMLDivElement;
@@ -17,8 +17,8 @@ export class EndTitle {
     parent.appendChild(this.el);
   }
 
-  update(dt: number, terminal: number, dark: boolean): void {
-    if (terminal < 0.98) {
+  update(dt: number, show: boolean, dark: boolean): void {
+    if (!show) {
       this.held = 0;
       this.shown = 0;
       this.el.style.transition = 'none';

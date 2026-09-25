@@ -2,8 +2,9 @@
 // Roads, fields and paving are painted in the fragment shader from the road texture.
 import * as THREE from 'three';
 import { shared } from '../render/shared';
-import { COMMON, ROADS_FN, TERRAIN_FN } from '../render/glsl';
+import { CLIFF_FN, COMMON, ROADS_FN, TERRAIN_FN } from '../render/glsl';
 import { PHOTO_FN } from '../render/photo-tex';
+import { CLIFF_FLOOR } from './cliff-shape';
 import { BLOCK_U, BLOCK_V, GRID_ANGLE, GRID_OFFSET, VOID_HALF } from './layout';
 
 export const GRID_DEFINES = {
@@ -74,12 +75,16 @@ const vert = /* glsl */ `
 ${COMMON}
 ${TERRAIN_FN}
 ${GRID_FN}
+${CLIFF_FN}
 varying vec3 vWorld;
 varying vec4 vRaw;
 void main() {
   vec2 xz = position.xz;
   vec4 s = terrainRaw(xz);
   float h = heightOf(s) + plinthHeight(xz);
+  // the sea-cut cliff at the very end: the ground beyond the rock face drops to the
+  // carved sea floor so the face stands clear of it (see world/cliff.ts)
+  h -= uCliff * ${CLIFF_FLOOR.toFixed(3)} * cliffCarve(xz);
   vRaw = s;
   vWorld = vec3(xz.x, h, xz.y);
   gl_Position = projectionMatrix * viewMatrix * vec4(vWorld, 1.0);
@@ -126,6 +131,13 @@ void main() {
     vec3 fn = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
     if (fn.y < 0.0) fn = -fn;
     n = normalize(mix(n, fn, clamp(uDisp * 1.5, 0.0, 0.8)));
+  }
+  // the carved sea floor bends away sharply near the cliff; the baked heightmap
+  // normal doesn't know about that cut, so blend in the real (screen-derivative) one
+  if (uCliff > 0.001) {
+    vec3 fn = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
+    if (fn.y < 0.0) fn = -fn;
+    n = normalize(mix(n, fn, clamp(uCliff * 1.2, 0.0, 0.9)));
   }
   float dist = length(vWorld - cameraPosition);
   // small undulations the heightmap is too coarse to hold: tussocks, old furrows, hollows

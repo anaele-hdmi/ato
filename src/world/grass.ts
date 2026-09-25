@@ -2,8 +2,9 @@
 // seeded from their world cell so they never swim as the grid moves.
 import * as THREE from 'three';
 import { shared } from '../render/shared';
-import { COMMON, ROADS_FN, TERRAIN_FN } from '../render/glsl';
+import { CLIFF_FN, COMMON, ROADS_FN, TERRAIN_FN } from '../render/glsl';
 import { mulberry32 } from '../util/rand';
+import { CLIFF_FLOOR } from './cliff-shape';
 import { GRID_DEFINES, GRID_FN } from './terrain';
 
 const N = 64;
@@ -14,6 +15,7 @@ ${COMMON}
 ${TERRAIN_FN}
 ${ROADS_FN}
 ${GRID_FN}
+${CLIFF_FN}
 uniform vec2 uCenter;
 attribute vec2 aCell;
 attribute float aH;
@@ -38,6 +40,9 @@ void main() {
   // around the house the ground is trodden
   float trod = (1.0 - smoothstep(3.5, 6.5, length(xz - vec2(0.0, 0.5)))) * step(1880.0, uYear);
   float h0 = terrainHeight(xz);
+  // the sea-cut cliff at the very end carves this ground away too, or floods it --
+  // grass should not stand where the rock face itself now stands or where the tide has come in
+  h0 -= uCliff * ${CLIFF_FLOOR.toFixed(3)} * cliffCarve(xz);
   float wet = step(h0, uSeaLevel + 0.3);
   float dCam = length(vec3(xz.x, h0, xz.y) - cameraPosition);
   float fade = 1.0 - smoothstep(11.0, 16.0, dCam);

@@ -11,8 +11,11 @@ import { SunShadow } from './render/shadow';
 import { shared } from './render/shared';
 import { Clock } from './time/clock';
 import { type Env, evaluateEnv, win, yearToU } from './time/time-model';
+import { Cliff } from './world/cliff';
+import { EndSequence } from './ui/end-sequence';
+import { CLIFF_AZ, CLIFF_FLOOR, CLIFF_R, cliffCarve } from './world/cliff-shape';
 import { EndTitle } from './ui/end-title';
-import { Scrubber } from './ui/scrubber';
+import { KNOB_FRAC, Scrubber } from './ui/scrubber';
 import { clamp, lerp, smoothstep } from './util/rand';
 import { Atmosphere } from './world/atmosphere';
 import { Figures } from './world/figures';
@@ -47,6 +50,10 @@ export class App {
   private smoke = new Smoke();
   private water = new Water();
   private endTitle: EndTitle;
+  private endSeq: EndSequence;
+  private cliff = new Cliff();
+  private cliffAmount = 0;
+  private seaLevel = -1e4;
   private wind = new Wind();
   private audio = new AudioEngine();
   private ui: Scrubber;
@@ -77,13 +84,15 @@ export class App {
     s.uHeightFar.value = this.hf.farTex;
     s.uRoads.value = this.hf.roadTex;
 
-    this.cam = new TouchCamera(canvas, (x, z) => this.hf.height(x, z, this.disp));
+    // the eye knows where the sea has cut the hill away, and stays out of the water
+    this.cam = new TouchCamera(canvas, (x, z) =>
+      Math.max(this.hf.height(x, z, this.disp) - cliffCarve(x, z) * this.cliffAmount * CLIFF_FLOOR, this.seaLevel + 0.4));
     this.veg = new Vegetation(this.shadow);
     this.house = new House(this.shadow);
     this.figures = new Figures((x, z) => this.hf.height(x, z, this.disp), this.shadow);
     this.town = new Town((x, z) => this.hf.height(x, z, 0), this.shadow);
     this.crowd = new Crowd(this.shadow);
-    this.scene.add(this.atmos.sky, this.terrain.mesh, this.grass.mesh, this.veg.group, this.house.group, this.figures.group, this.town.group, this.crowd.group, this.smoke.points, this.water.mesh);
+    this.scene.add(this.atmos.sky, this.terrain.mesh, this.grass.mesh, this.veg.group, this.house.group, this.figures.group, this.town.group, this.crowd.group, this.smoke.points, this.water.mesh, this.cliff.mesh);
     const collider = new Collider(this.town.data.boxes, [
       ...this.town.data.cottages,
       { x: 0, y: this.house.position.y, z: 0, rot: 0, scale: 1, birth: HOUSE_BIRTH, death: HOUSE_DEATH, color: new THREE.Color(), seed: 0 },
@@ -101,6 +110,7 @@ export class App {
     });
 
     this.endTitle = new EndTitle(stage);
+    this.endSeq = new EndSequence(stage);
 
     // The first touch anywhere opens the sound; later touches keep it alive.
     const unlock = () => this.audio.unlock();
@@ -196,6 +206,11 @@ export class App {
     this.env = env;
     this.disp = env.terrainDisp;
 
+    const eo = this.endSeq.out;
+    if (eo.steer > 0) {
+      const tx = Math.sin(CLIFF_AZ) * (CLIFF_R + 2), tz = Math.cos(CLIFF_AZ) * (CLIFF_R + 2);
+      this.cam.steer(tx, tz, CLIFF_AZ, 0.04, 22, eo.steer * (1 - Math.exp(-dt * 0.8)));
+    }
     this.cam.update(dt);
     const camera = this.cam.camera;
     const dist = this.cam.dist;
@@ -225,9 +240,15 @@ export class App {
     // slow tide, the hill surfacing and going under.
     const originH = this.hf.height(0, 0, env.terrainDisp);
     const transgress = smoothstep(6.9, 8.25, env.L);
-    const tide = env.terminal * 3.2 * Math.sin((this.elapsed / 46) * Math.PI * 2);
+    // left alone at the end, the tide goes out and stays out, baring the cut face
+    const tide = env.terminal * 3.2 * lerp(Math.sin((this.elapsed / 46) * Math.PI * 2), -1.6, eo.ebb);
     const seaLevel = lerp(env.seaLevel, originH + 1.2 + tide, transgress);
     s.uSeaLevel.value = seaLevel;
+    this.seaLevel = seaLevel;
+    this.cliffAmount = env.terminal;
+    s.uCliff.value = env.terminal;
+    // the face is laid from the ruler's own pixels: the strip sits centred in its canvas
+    this.cliff.update(env.terminal, originH, this.ui.canvas, env.terminal > 0.001, 0.5, KNOB_FRAC);
     env.stems.water = clamp(1 - (this.hf.height(this.cam.target.x, this.cam.target.z, env.terrainDisp) - seaLevel) / 25, 0, 1) * 0.9 + 0.15 * alt * smoothstep(3.5, 4.5, env.L);
     s.uGravel.value = env.gravel;
     s.uPaved.value = env.paved;
@@ -244,6 +265,9 @@ export class App {
     s.uIntro.value = smoothstep(0, 1, this.intro);
 
     this.atmos.update(env, mist, c.exposure);
+    // the air clears over the face while the end plays out, so its bands can be read
+    s.uFogDensity.value *= 1 - 0.75 * eo.steer;
+    s.uMist.value *= 1 - eo.steer;
     this.grass.update(camera.position, this.cam.target, dist);
     const projScale = (this.renderer.getDrawingBufferSize(this.tmpV2).y / 2) / Math.tan((camera.fov * Math.PI) / 360);
     this.veg.update(env.year, env.year < 2330 + 3000 ? 1 : env.forest * (1 - env.glacial), projScale);
@@ -294,10 +318,11 @@ export class App {
     };
     this.audio.update(frameA);
 
-    const hudFade = 1 - smoothstep(6, 10, this.cam.idle) * env.terminal;
-    this.ui.update(c.season, c.seasonality, hudFade, env.year, c.exposure);
-    const fc = shared.uFogColor.value;
-    this.endTitle.update(dt, env.terminal, this.atmos.night < 0.3 && fc.r * 0.3 + fc.g * 0.59 + fc.b * 0.11 > 0.5);
+    this.ui.update(c.season, c.seasonality, 1 - eo.hideHud, env.year, c.exposure);
+    this.endSeq.update(dt, env.terminal, this.cam.idle, c.scrubbing, camera, originH,
+      this.ui.canvas, this.ui.track, KNOB_FRAC);
+    // it always lands over the dark cut rock, so it is always pale
+    this.endTitle.update(dt, eo.title, false);
 
     if (this.debugEl) {
       const info = this.renderer.info.render;
