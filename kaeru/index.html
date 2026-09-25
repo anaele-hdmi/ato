@@ -130,6 +130,7 @@
     pointer-events: none;
     white-space: nowrap;
   }
+  #diagOut { font-family: var(--mono); font-size: 11px; line-height: 1.7; color: var(--ink-dim); white-space: pre-wrap; word-break: break-all; border: 1px solid var(--line); padding: 12px; user-select: all; }
   #fallback { position: fixed; inset: 0; display: grid; place-items: center; padding-inline: 16px; color: var(--ink-dim); font-size: 13px; text-align: center; }
   @media (pointer: coarse) {
     button.b { padding: 10px 13px; font-size: 13px; }
@@ -205,6 +206,8 @@
       </table>
     </div>
     <p>画面は開いてから数秒かけて落ち着きます。早回し中の光の筋が流れて見えるのは、長時間露光のように数日分の光が重なっているためです。</p>
+    <p><button class="b" id="diagBtn" type="button">表示の診断</button> <button class="b" id="diagCopy" type="button" hidden>コピー</button></p>
+    <pre id="diagOut" hidden></pre>
   </div>
 </section>
 
@@ -1064,8 +1067,9 @@
       vec3 ro = uCam + (uCR * cos(la) + uCU * sin(la)) * lr;
       vec3 c = radiance(ro, normalize(fp - ro));
       if (any(isnan(c)) || any(isinf(c))) c = vec3(0);
-      c = min(c, vec3(60.0));
-      vec3 prev = texelFetch(uPrev, ivec2(gl_FragCoord.xy), 0).rgb;
+      // 最適化で isnan が消える環境（ANGLE/Direct3D など）でも NaN を 0 にするため、clamp で丸める
+      c = clamp(c, vec3(0.0), vec3(60.0));
+      vec3 prev = clamp(texelFetch(uPrev, ivec2(gl_FragCoord.xy), 0).rgb, vec3(0.0), vec3(60.0));
       o = vec4(mix(prev, c, uW), 1.0);
     }
   `;
@@ -1168,9 +1172,11 @@
     }
     return { p, u };
   }
-  let traceP, showP, moteP;
+  let traceP, showP, moteP, compileMs = 0;
   try {
+    const tc = performance.now();
     traceP = program(VS_QUAD, FS_TRACE);
+    compileMs = performance.now() - tc;
     showP = program(VS_QUAD, FS_SHOW);
     moteP = program(VS_MOTE, FS_MOTE);
   } catch (err) {
@@ -1372,7 +1378,7 @@
     const night = [0.16, 0.15, 0.22]; // 都市の夜空（街明かりで真っ暗にはならない）
     const sky = day.map((d, i) => night[i] + (d - night[i]) * dayness);
     if (kind === "moon") for (let i = 0; i < 3; i++) sky[i] += 0.05 * moon.frac;
-    return { sun, moon, kind, L, E: body && L[1] > 0 ? E : [0, 0, 0], sky, lit, weather: w, grain: 0.03 + 0.02 * (1 - dayness), exposure: 1 + 1.6 * (1 - dayness) };
+    return { sun, moon, kind, L, E: body && L[1] > 0 ? E : [0, 0, 0], sky, lit, weather: w, grain: 0.03 + 0.02 * (1 - dayness), exposure: 1.15 + 1.6 * (1 - dayness) + (w.cloudy ? 0.9 * dayness : 0) };
   }
 
   // ================= 蓄積バッファ =================
@@ -1418,10 +1424,38 @@
   function gpuName() {
     try { const ext = gl.getExtension("WEBGL_debug_renderer_info"); return ext ? gl.getParameter(ext.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER); } catch (e) { return "不明"; }
   }
+  // 蓄積バッファの生の値を16点読み、NaN・真っ黒を調べる
+  function probe() {
+    const buf = new Float32Array(4);
+    let nan = 0, sum = 0, n = 0;
+    try {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[ping]);
+      for (let k = 0; k < 16; k++) {
+        gl.readPixels(Math.floor(W * (0.1 + 0.8 * ((k % 4) / 3))), Math.floor(H * (0.1 + 0.8 * (Math.floor(k / 4) / 3))), 1, 1, gl.RGBA, gl.FLOAT, buf);
+        for (let c = 0; c < 3; c++) { if (!isFinite(buf[c])) nan++; else sum += buf[c]; }
+        n += 3;
+      }
+    } catch (e) { /* 読めない環境 */ }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return { nan, mean: n ? sum / n : 0, err: gl.getError() };
+  }
+  function diagText() {
+    const pr = probe();
+    return [
+      `GPU: ${gpuName()}`,
+      `ブラウザ: ${navigator.userAgent}`,
+      `描画サイズ: ${W}×${H}（倍率 ${scale.toFixed(2)}）`,
+      `1フレーム: ${avgMs.toFixed(0)}ms 蓄積: ${samples} フレーム: ${frameNo}`,
+      `シェーダの準備: ${compileMs.toFixed(0)}ms`,
+      `蓄積の値: 平均 ${pr.mean.toFixed(4)} NaN ${pr.nan} GLエラー ${pr.err}`,
+      `バッファ: ${fbBroken ? "不完全" : "正常"} コンテキスト: ${gl.isContextLost() ? "失われた" : "正常"}`,
+      `光: ${light ? light.kind : "-"} E=${light ? light.E.map((v) => v.toFixed(2)).join(",") : "-"} 空=${light ? light.sky.map((v) => v.toFixed(2)).join(",") : "-"}`,
+    ].join("\n");
+  }
   function showDiag() {
     const f = document.getElementById("fallback");
     f.style.pointerEvents = "none";
-    f.textContent = `画面が描けていないようです。GPU: ${gpuName()}（この表示を伝えてもらえると原因を調べられます）`;
+    f.textContent = `画面が描けていないようです。「しくみ」の「表示の診断」の内容を伝えてもらえると原因を調べられます。GPU: ${gpuName()}`;
     f.hidden = false;
   }
   cv.addEventListener("webglcontextlost", (e) => {
@@ -1506,6 +1540,17 @@
       for (const o of document.querySelectorAll("[data-speed]")) o.setAttribute("aria-pressed", String(o === b));
     });
   }
+  document.getElementById("diagBtn").addEventListener("click", () => {
+    const o = document.getElementById("diagOut");
+    o.textContent = diagText();
+    o.hidden = false;
+    document.getElementById("diagCopy").hidden = false;
+  });
+  document.getElementById("diagCopy").addEventListener("click", async (e) => {
+    const o = document.getElementById("diagOut");
+    try { await navigator.clipboard.writeText(o.textContent); e.target.textContent = "コピーしました"; }
+    catch (err) { const r = document.createRange(); r.selectNodeContents(o); const sel = getSelection(); sel.removeAllRanges(); sel.addRange(r); e.target.textContent = "選択しました"; }
+  });
   const openPanel = (id) => { document.getElementById(id).hidden = false; };
   document.getElementById("openBook").addEventListener("click", () => { renderBook(); openPanel("book"); });
   document.getElementById("openNotes").addEventListener("click", () => openPanel("notes"));
@@ -1687,12 +1732,10 @@
     gl.uniform1f(showP.u.uExposure, light.exposure);
     gl.uniform1f(showP.u.uFrameF, frameNo % 997);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    if (!checked && frameNo === 150) {
+    if (!checked && frameNo === 90) {
       checked = true;
-      const px = new Uint8Array(4);
-      let sum = 0;
-      for (let k = 0; k < 9; k++) { gl.readPixels(Math.floor(W * (0.2 + 0.3 * (k % 3))), Math.floor(H * (0.2 + 0.3 * Math.floor(k / 3))), 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px); sum += px[0] + px[1] + px[2]; }
-      if (sum < 30 || fbBroken) showDiag();
+      const pr = probe();
+      if (pr.nan > 0 || pr.mean < 0.002 || fbBroken) showDiag();
     }
 
     if (light.lit && speed === 0) {
