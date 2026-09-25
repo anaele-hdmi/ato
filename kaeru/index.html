@@ -59,6 +59,7 @@
   .right { display: flex; gap: 8px; }
   .left { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   #log {
+    margin-top: 12px;
     font-size: 12px;
     line-height: 1.8;
     color: var(--ink-dim);
@@ -143,6 +144,7 @@
   <div>
     <h1>還る部屋</h1>
     <div class="meta" id="meta"></div>
+    <div id="log" aria-live="polite"></div>
   </div>
   <div class="right">
     <button class="b" id="openBook" type="button">図鑑</button>
@@ -152,7 +154,6 @@
 
 <div class="hud bottom">
   <div class="left">
-    <div id="log" aria-live="polite"></div>
     <div class="tools">
       <button class="b" id="tWindow" type="button" aria-pressed="false">窓を開ける</button>
       <button class="b" id="tWater" type="button" aria-pressed="false">水をこぼす</button>
@@ -209,7 +210,7 @@
   const DAY = 86400000, YEAR = 365.2425 * DAY, R = Math.PI / 180;
   const RX = 2.1, RH = 2.7, ZS = -3.2, ZN = 3.6, WT = 0.22;
   const WIN = { x0: -1.0, x1: 0.2, y0: 0.8, y1: 2.1 };
-  const CAM = [1.2, 1.3, 2.9], TARGET = [-0.2, 0.85, -3.2];
+  const CAM = [1.0, 1.15, 0.6], TARGET = [-0.45, 0.2, -3.2];
   const SPEEDS = [365, 86400, 604800];
   const MAXB = 32, MAXF = 16, MAXM = 24;
 
@@ -496,7 +497,7 @@
       for (let i = 0; i < floor.n; i++) {
         const x = floor.pos[i * 3], z = floor.pos[i * 3 + 2];
         const dz = z - ZS;
-        if (dz < 1.0 && x > WIN.x0 - 0.35 && x < WIN.x1 + 0.35) floor.W[i] += w.amount * 0.7 * (1 - dz / 1.0) * (0.6 + 0.4 * r());
+        if (dz < 1.7 && x > WIN.x0 - 0.5 && x < WIN.x1 + 0.5) floor.W[i] += w.amount * 0.8 * (1 - dz / 1.7) * (0.6 + 0.4 * r());
       }
       const s = surfs[1];
       for (let i = 0; i < s.n; i++) {
@@ -979,7 +980,7 @@
       if (sf >= 0) {
         float n1 = noise(p * 38.0), n2 = noise(p * 71.0 + 3.0), n3 = noise(p * 22.0 + 9.0);
         a = mix(a, vec3(0.03, 0.04, 0.028) * (0.8 + 0.4 * n2), cov(g.r, n1) * 0.92);
-        vec3 moss = mix(vec3(0.16, 0.24, 0.09), vec3(0.40, 0.45, 0.33), noise(p * 140.0));
+        vec3 moss = mix(vec3(0.16, 0.36, 0.06), vec3(0.42, 0.52, 0.26), noise(p * 140.0));
         a = mix(a, moss, cov(g.g, n2));
         vec3 lv = vec3(0.05, 0.15, 0.04) * (0.75 + 0.5 * noise(p * vec3(28.0, 1.0, 28.0)));
         a = mix(a, lv, cov(g.b, n3));
@@ -1005,7 +1006,7 @@
             float sd = dens(q) * SIGS;
             vec3 s = vec3(0);
             if (uE.x + uE.y + uE.z > 0.0) { vec3 d = sunDir(); if (escapes(q, d)) s += uE * ph; }
-            s += skyNEE(q, vec3(0), true);
+            s += skyNEE(q, vec3(0), true) * 0.3;
             acc += s * sd;
           }
           L += thr * acc * seg * 0.5;
@@ -1049,7 +1050,7 @@
       vec2 jit = vec2(rnd(), rnd()) - 0.5;
       vec2 uv = ((gl_FragCoord.xy + jit) * 2.0 - uRes) / uRes.y;
       vec3 dir = normalize(uCR * uv.x * uTanF + uCU * uv.y * uTanF + uCF);
-      const float FOCUS = 3.6, APER = 0.006;
+      const float FOCUS = 2.8, APER = 0.006;
       vec3 fp = uCam + dir * (FOCUS / dot(dir, uCF));
       float lr = APER * sqrt(rnd()), la = 2.0 * PI * rnd();
       vec3 ro = uCam + (uCR * cos(la) + uCU * sin(la)) * lr;
@@ -1111,7 +1112,7 @@
       if (!lit) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vC = vec3(0); vB = 0.0; return; }
       gl_Position = vec4(dot(v, uCR) / (z * uTanF * uAspect), dot(v, uCU) / (z * uTanF), 0.0, 1.0);
       float core = (0.6 + sqrt(aP.w) * 0.22) * uH / 900.0;
-      float coc = abs(z - 3.6) / z * uH * 0.02;
+      float coc = abs(z - 2.8) / z * uH * 0.02;
       float size = max(core, coc);
       gl_PointSize = size * 2.0 + 1.0;
       float phase = hg(dot(normalize(v), uL), 0.72);
@@ -1288,7 +1289,7 @@
   function spawn(i, fresh) {
     let x, y, z;
     for (let k = 0; k < 24; k++) {
-      x = (mr() * 2 - 1) * RX * 0.95; y = mr() * RH * 0.95; z = ZS + 0.05 + mr() * (CAM[2] - ZS - 0.3);
+      x = (mr() * 2 - 1) * RX * 0.95; y = mr() * RH * 0.95; z = ZS + 0.05 + mr() * (CAM[2] - ZS - 0.2);
       if (!light || !light.lit || inBeam(x, y, z, light.L)) break;
     }
     const d = Math.exp(mr() * Math.log(40));
@@ -1326,7 +1327,7 @@
   // ================= 光 =================
   function lighting(ms) {
     const sun = sunPos(ms), moon = moonPos(ms, sun.lam);
-    const w = weather(Math.floor(ms / DAY));
+    const w = window.__kaeruWx ? { rain: false, amount: 0, cloudy: false, light: 1 } : weather(Math.floor(ms / DAY));
     const dayness = Math.min(1, Math.max(0, (sun.alt / R + 6) / 16));
     let body = null, E = [0, 0, 0], kind = "none";
     if (sun.alt > -1 * R) { body = sun; kind = "sun"; E = sunColor(Math.max(sun.alt, 0.2 * R)).map((v) => v * 14 * (w.light < 1 ? w.light * 0.3 : 1)); }
@@ -1334,7 +1335,7 @@
     const L = body ? dirOf(body) : [0, 0.5, -0.8];
     const lit = !!body && entersWindow(body) && E[0] > 0.5;
     const grey = w.cloudy ? 1 : 0;
-    const day = [0.95, 1.0, 1.1].map((v, i) => v * 1.5 * (grey ? 0.55 : 1) * (grey ? [1.05, 1.03, 1.0][i] : 1));
+    const day = [0.95, 1.0, 1.1].map((v, i) => v * 3.4 * (grey ? 0.6 : 1) * (grey ? [1.05, 1.03, 1.0][i] : 1));
     const night = [0.018, 0.026, 0.05];
     const sky = day.map((d, i) => night[i] + (d - night[i]) * dayness);
     if (kind === "moon") for (let i = 0; i < 3; i++) sky[i] += 0.05 * moon.frac;
@@ -1492,7 +1493,7 @@
     const p = floorPoint(e);
     if (!p) return;
     S.chair.x = Math.max(-RX + 0.3, Math.min(RX - 0.3, p[0]));
-    S.chair.z = Math.max(ZS + 0.35, Math.min(1.2, p[1]));
+    S.chair.z = Math.max(ZS + 0.35, Math.min(0.1, p[1]));
     boxesDirty = true;
   });
   const endDrag = () => { if (dragChair) { dragChair = false; clearDose(); addLog(S.tau, "椅子を動かした。影の落ちる場所が変わる。"); save(); } };
@@ -1622,7 +1623,7 @@
     renderLog(); renderBook();
   })();
   if (location.hash === "#debug") {
-    window.__kaeru = { run: (n) => { for (let i = 0; i < n; i++) stepDay(); S.tau = Math.max(S.tau, S.simDay * DAY + 0.5 * 3600000); texDirty = true; boxesDirty = true; }, state: () => S };
+    window.__kaeru = { run: (n) => { for (let i = 0; i < n; i++) stepDay(); S.tau = Math.max(S.tau, S.simDay * DAY + 0.5 * 3600000); texDirty = true; boxesDirty = true; }, state: () => S, surfs };
   }
   addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") save(); });
   addEventListener("pagehide", () => { if (S) { try { serialize().then((o) => localStore.save(o)); } catch (e) { /* 保存できない */ } } });
