@@ -387,7 +387,7 @@ function snapshot() {
 }
 function load(snap) {
   Object.assign(S, JSON.parse(JSON.stringify(snap)));
-  S.over = null; S.burn = null; S.auto = null; S.g = 0; S.slow = false; S.plan = null;
+  S.over = null; S.burn = null; S.auto = null; S.g = 0; S.slow = false; S.plan = null; S.teiCache = null; S.orbitVer = (S.orbitVer || 0) + 1;
   S.checkpoint = snapshot();
   trail.length = 0; lastTrailT = -1e9;
   predDirty = true; planDirty = true;
@@ -479,11 +479,37 @@ function windowInfo() {
     return null;
   }
   if (S.stage === 'tei' && !S.main.tei && S.captured) {
+    let c = S.teiCache;
+    if (!c || c.ver !== S.orbitVer || c.t < S.t - 0.5) { c = teiSearch(); if (c) S.teiCache = c; }
+    if (c && c.t >= S.t - 0.5) return { t: c.t, x: c.x, y: c.y, frame: 'moon', mt: c.t, dv: c.dv };
     const w = teiIgnition(true);
     const m = moonAt(w.t, S.th0);
     return { t: w.t, x: m[0] + w.px, y: m[1] + w.py, frame: 'moon', mt: w.t };
   }
   return null;
+}
+// Try a TEI burn from points around the current lunar orbit and keep the one whose Earth perigee lands nearest the target.
+const teiScratch = { n: 0, x: new Float64Array(8000), y: new Float64Array(8000), vx: new Float64Array(8000), vy: new Float64Array(8000), t: new Float64Array(8000), events: [] };
+function teiSearch() {
+  if (pred.ver !== S.orbitVer || pred.n < 20 || S.burn) return null;
+  let N = 0;
+  while (N < pred.n) { const m = moonAt(pred.t[N], S.th0); if (Math.hypot(pred.x[N] - m[0], pred.y[N] - m[1]) > SOI) break; N++; }
+  if (N < 10) return null;
+  const evalAt = i => {
+    const t = pred.t[i], m = moonAt(t, S.th0);
+    const r = Math.hypot(pred.x[i] - m[0], pred.y[i] - m[1]), v = Math.hypot(pred.vx[i] - m[2], pred.vy[i] - m[3]);
+    const dv = Math.max(0.2, Math.sqrt(0.83 ** 2 + 2 * MUM / r) - v);
+    predict({ s: [pred.x[i], pred.y[i], pred.vx[i], pred.vy[i]], t }, { tIgn: t, dv, dir: 'pro' }, teiScratch);
+    const pe = teiScratch.peAlt;
+    return { i, t, x: pred.x[i], y: pred.y[i], dv, pe, score: pe === null || teiScratch.crash ? 1e12 : Math.abs(pe - 700) };
+  };
+  const stride = Math.max(1, Math.floor(N / 40));
+  let best = null;
+  for (let i = 0; i < N; i += stride) { if (pred.t[i] < S.t + 3) continue; const r = evalAt(i); if (!best || r.score < best.score) best = r; }
+  if (!best) return null;
+  for (let i = Math.max(0, best.i - stride + 1); i < Math.min(N, best.i + stride); i++) { if (i === best.i || pred.t[i] < S.t + 3) continue; const r = evalAt(i); if (r.score < best.score) best = r; }
+  best.ver = S.orbitVer;
+  return best;
 }
 function loiNominal() {
   if (!pred.pm) return 0.6;
@@ -592,7 +618,7 @@ function metric(p) {
     if (p.crash) return { lab, val: '月面に衝突', pos: 0, band: BAND.pe, ok: false, bad: true, scale: 'pe' };
     if (p.peAlt === null) {
       const d = dominant(S.s, S.t), need = d.moon ? Math.sqrt(2 * MUM / d.r) - Math.hypot(d.vx, d.vy) : 0;
-      return { lab, val: need > 0 ? `脱出まで あと${Math.round(need * 1000)} m/s` : '月を離れない', pos: 1, band: BAND.pe, ok: false, scale: 'pe', esc: true };
+      return { lab, val: need > 0 ? `脱出まで あと${Math.round(need * 1000)} m/s` : '地球に戻らない', pos: 1, band: BAND.pe, ok: false, scale: 'pe', esc: true };
     }
     const v = p.peAlt;
     return { lab, val: fmtKm(v), pos: scalePos('pe', v), band: BAND.pe, ok: v >= BAND.pe.lo && v <= BAND.pe.hi, scale: 'pe', raw: v };
@@ -1092,7 +1118,7 @@ ui.burn.addEventListener('pointerdown', e => {
   e.preventDefault(); audioInit();
   if (S.mode !== 'A' || !mainAvailable() || S.burn) return;
   try { ui.burn.setPointerCapture(e.pointerId); } catch (_) {}
-  S.burn = { kind: 'main', dir: STAGES[S.stage].dir, a: THR, stage: S.stage, done: 0, nom: S.stage === 'tli' ? DV_NOM.tli : S.stage === 'loi' ? loiNominal() : DV_NOM.tei };
+  S.burn = { kind: 'main', dir: STAGES[S.stage].dir, a: THR, stage: S.stage, done: 0, nom: S.stage === 'tli' ? DV_NOM.tli : S.stage === 'loi' ? loiNominal() : ((windowInfo() || {}).dv || DV_NOM.tei) };
   S.skip = false; S._fine = false;
   ui.burn.classList.add('on'); sfx.pop();
 });
@@ -1110,7 +1136,7 @@ ui.burn.addEventListener('lostpointercapture', endMainBurn);
 
 // Correction thrusters: small, held.
 ui.corr.querySelectorAll('button').forEach(b => {
-  const start = e => { e.preventDefault(); audioInit(); if (S.over || S.fuel <= 0 || (S.burn && S.burn.kind === 'main') || S.auto) return; try { b.setPointerCapture(e.pointerId); } catch (_) {} S.burn = { kind: 'corr', dir: b.dataset.d, a: THR_CORR }; b.classList.add('on'); };
+  const start = e => { e.preventDefault(); audioInit(); if (S.over || S.fuel <= 0 || (S.burn && S.burn.kind === 'main') || S.auto) return; try { b.setPointerCapture(e.pointerId); } catch (_) {} S.burn = { kind: 'corr', dir: b.dataset.d, a: THR_CORR, done: 0 }; b.classList.add('on'); };
   const end = () => { if (S.burn && S.burn.kind === 'corr') { S.burn = null; predDirty = true; } b.classList.remove('on'); };
   b.addEventListener('pointerdown', start); b.addEventListener('pointerup', end); b.addEventListener('pointercancel', end); b.addEventListener('lostpointercapture', end);
 });
@@ -1119,7 +1145,7 @@ ui.corr.querySelectorAll('button').forEach(b => {
 S.plan = null;
 function defaultPlan() {
   const w = windowInfo(); if (!w) return null;
-  const dv = S.stage === 'tli' ? DV_NOM.tli : S.stage === 'loi' ? loiNominal() : DV_NOM.tei;
+  const dv = S.stage === 'tli' ? DV_NOM.tli : S.stage === 'loi' ? loiNominal() : (w.dv || DV_NOM.tei);
   // Start a little short so the player has to pull the plan into the band.
   return { base: w.t, shift: 0, dv0: dv, ddv: -0.03 * dv, dir: STAGES[S.stage].dir };
 }
@@ -1313,9 +1339,9 @@ function effWarp(burnB) {
       const base = burnB.stage === 'tli' ? 20 : 8;
       const near = nearTarget();
       S.slow = near;
-      eff = near ? (burnB.stage === 'tli' ? 0.1 : 0.25) : base;
+      eff = near ? Math.min(base, precisionRate(burnB) / burnB.a) : base;
     } else if (burnB.kind === 'main') eff = 10;
-    else { const near = nearTarget(); S.slow = near; eff = near ? 0.3 : Math.min(eff, 5); }
+    else { const near = nearTarget(); S.slow = near; eff = near ? Math.min(5, precisionRate(burnB) / burnB.a) : Math.min(eff, 5); }
   }
   return { eff, capped: eff < w && !burnB, why };
 }
@@ -1323,7 +1349,8 @@ function effWarp(burnB) {
 function nearTarget() {
   const mt = metric(pred); if (mt.pos === undefined || !mt.band) return false;
   const sc = mt.scale; const lo = scalePos(sc, mt.band.lo), hi = scalePos(sc, mt.band.hi);
-  if (S.stage === 'tli' && S.burn && S.burn.kind === 'main') { const el = elements(S.s[0], S.s[1], S.s[2], S.s[3], MUE); if (el.ra < 250000) return false; }
+  // TLI: the needle only moves in the last ~100 m/s, so slow down from a high apogee rather than from the needle.
+  if (S.stage === 'tli' && S.burn && S.burn.kind === 'main') { const el = elements(S.s[0], S.s[1], S.s[2], S.s[3], MUE); return el.ra > 280000 || el.en > 0; }
   if (mt.val === '—' || mt.val === '捕まっていない' || mt.esc) {
     if (S.stage === 'loi') { const d = dominant(S.s, S.t); const el = elements(d.rx, d.ry, d.vx, d.vy, MUM); return el.en < 0.12; }
     if (S.stage === 'tei') { const d = dominant(S.s, S.t); const el = elements(d.rx, d.ry, d.vx, d.vy, MUM); return el.en > -0.3; }
@@ -1346,6 +1373,30 @@ function nextEvent() {
 function holdGap() {
   if (!mainAvailable() || S.burn || S.auto || S.over) return null;
   const w = windowInfo(); return w ? w.t - S.t : null;
+}
+// Slow motion speed: cover the Δv still needed (to the band centre, or across the band once inside) in a few real seconds.
+function precisionRate(b) {
+  const mt = metric(pred), d = dominant(S.s, S.t);
+  let need = null;
+  // Before the needle has a value, estimate from the rough need so the approach never stalls.
+  if (mt.val === '捕まっていない') need = Math.max(0.06, (b.nom || 0.6) - (b.done || 0));
+  else if (mt.esc) need = Math.max(0.05, Math.sqrt(2 * d.mu / d.r) - Math.hypot(d.vx, d.vy) + 0.05);
+  else if (b.slope && mt.band) {
+    const lo = scalePos(mt.scale, mt.band.lo), hi = scalePos(mt.scale, mt.band.hi), sl = Math.abs(b.slope);
+    need = mt.ok ? (hi - lo) / sl * 1.25 : Math.abs((lo + hi) / 2 - mt.pos) / sl;
+  }
+  if (need === null || !isFinite(need)) return 0.006;
+  return Math.min(0.2, Math.max(0.0015, need / 2.5));
+}
+// How far the needle moves per km/s burned, smoothed; drives precisionRate.
+function updateBurnSlope() {
+  const b = S.burn; if (!b) return;
+  const mt = metric(pred);
+  if (b.ld !== undefined && b.done - b.ld > 1e-6 && !mt.esc) {
+    const sl = (mt.pos - b.lp) / (b.done - b.ld);
+    if (isFinite(sl) && sl !== 0) b.slope = b.slope ? b.slope * 0.6 + sl * 0.4 : sl;
+  }
+  b.lp = mt.pos; b.ld = b.done || 0;
 }
 function currentBurn() {
   if (S.auto) {
@@ -1371,9 +1422,10 @@ function advance(dtSim) {
     S.t += h; dtSim -= h; steps++;
     S.g = g / G0;
     if (b) {
+      S.orbitVer = (S.orbitVer || 0) + 1;
       const dv = b.a * h; S.fuel = Math.max(0, S.fuel - dv);
       if (b.kind === 'corr') S.corr += dv;
-      if (S.burn && S.burn.kind === 'main') S.burn.done += dv;
+      if (S.burn) S.burn.done = (S.burn.done || 0) + dv;
       if (S.auto && S.auto.firing) { S.auto.done += dv; if (S.auto.done >= S.auto.dv - 1e-7) { finishAuto(); } }
       if (S.fuel <= 0 && S.burn) { S.burn = null; toast('燃料切れ'); }
     }
@@ -1428,6 +1480,7 @@ function stageLogic() {
 
 function runPredict() {
   predict({ s: S.s, t: S.t }, null, pred);
+  pred.ver = S.orbitVer;
   predDirty = false;
   buildPredLine(pred, predLine, true);
 }
@@ -1669,7 +1722,7 @@ function frame(now) {
   }
   const b = currentBurn();
   if (b || S.auto) predDirty = true;
-  if ((predDirty && (b ? true : frameN % 3 === 0)) || frameN % 20 === 0) runPredict();
+  if ((predDirty && (b ? true : frameN % 3 === 0)) || frameN % 20 === 0) { runPredict(); if (b) updateBurnSlope(); }
   if (frameN % 20 === 0) planDirty = true;
   if (S.burn && S.burn.kind === 'main' && S.slow && !S._fine) { S._fine = true; toast('あと少し！ 緑で離す', 1400); }
   const planning = S.mode === 'B' && S.plan && !S.auto && mainAvailable();
@@ -1773,7 +1826,7 @@ openStart();
 applyMode();
 $('boot').remove();
 requestAnimationFrame(frame);
-window.__S = S; window.__pred = pred; window.__autopilot = () => autopilot(); window.__load = load; window.__step = (dt) => { advance(dt); stageLogic(); runPredict(); }; window.__metric = () => metric(pred); window.__win = () => windowInfo(); window.__planMetric = () => { const w2 = windowInfo(); if (w2 && S.plan) S.plan.base = w2.t; runPlan(); return metric(plan); }; window.__hud = () => updateHUD(effWarp(null)); window.__defaultPlan = defaultPlan; window.__endBurn = endMainBurn; window.__dbg = { predLine, trailLine, atmosphere, earth, cam, setFocus };
+window.__S = S; window.__pred = pred; window.__autopilot = () => autopilot(); window.__load = load; window.__step = (dt) => { advance(dt); stageLogic(); runPredict(); }; window.__metric = () => metric(pred); window.__win = () => windowInfo(); window.__frame = () => { const b = currentBurn(); const w = effWarp(b); advance(w.eff / 60); stageLogic(); runPredict(); if (currentBurn()) updateBurnSlope(); return w.eff; }; window.__sim = (sec) => { let f = 0, slowF = 0; const n = Math.round(sec * 60); for (let i = 0; i < n; i++) { const b = currentBurn(); const w = effWarp(b); advance(w.eff / 60); stageLogic(); runPredict(); if (currentBurn()) updateBurnSlope(); if (S.slow) slowF++; f++; if (!S.burn) break; } return slowF / 60; }; window.__planMetric = () => { const w2 = windowInfo(); if (w2 && S.plan) S.plan.base = w2.t; runPlan(); return metric(plan); }; window.__hud = () => updateHUD(effWarp(null)); window.__defaultPlan = defaultPlan; window.__endBurn = endMainBurn; window.__dbg = { predLine, trailLine, atmosphere, earth, cam, setFocus };
 </script>
 </body>
 </html>
