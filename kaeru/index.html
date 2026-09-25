@@ -1,0 +1,1630 @@
+<title>還る部屋</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #07080a;
+    --ink: #ebe5da;
+    --ink-dim: #a39d92;
+    --ink-faint: #6f6a62;
+    --line: rgba(235, 229, 218, 0.16);
+    --panel: rgba(8, 9, 11, 0.9);
+    --moss: #a9b98a;
+    --sun: #f2d7a6;
+    --mincho: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--mincho);
+    overflow: hidden;
+  }
+  #room {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+  }
+  #room.aim { cursor: crosshair; }
+  #room.grab { cursor: grab; }
+  .hud {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    pointer-events: none;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9);
+  }
+  .hud.top { top: calc(16px + env(safe-area-inset-top, 0px)); align-items: flex-start; }
+  .hud.bottom { bottom: calc(14px + env(safe-area-inset-bottom, 0px)); align-items: flex-end; flex-wrap: wrap; }
+  h1 { margin: 0; font-weight: 400; font-size: 15px; letter-spacing: 0.5em; }
+  .meta {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.8;
+    color: var(--ink-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .right { display: flex; gap: 8px; }
+  .left { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  #log {
+    font-size: 12px;
+    line-height: 1.8;
+    color: var(--ink-dim);
+    max-width: 34em;
+  }
+  #log div:last-child { color: var(--ink); }
+  #log .d { font-family: var(--mono); font-size: 10px; color: var(--ink-faint); margin-right: 8px; }
+  .tools, .speed { display: flex; gap: 6px; flex-wrap: wrap; }
+  button.b {
+    pointer-events: auto;
+    appearance: none;
+    border: 1px solid var(--line);
+    background: rgba(0, 0, 0, 0.28);
+    color: var(--ink-dim);
+    font-family: var(--mincho);
+    font-size: 12px;
+    letter-spacing: 0.12em;
+    padding: 7px 11px;
+    border-radius: 2px;
+    cursor: pointer;
+    backdrop-filter: blur(4px);
+  }
+  button.b:hover, button.b:focus-visible { color: var(--ink); border-color: var(--ink-dim); outline: none; }
+  button.b[aria-pressed="true"] { color: var(--ground); background: var(--ink); border-color: var(--ink); text-shadow: none; }
+  button.b:disabled { opacity: 0.35; cursor: default; }
+  .speed button.b { font-family: var(--mono); letter-spacing: 0; min-width: 44px; }
+  .panel {
+    position: fixed;
+    inset: 0;
+    background: var(--panel);
+    backdrop-filter: blur(8px);
+    overflow-y: auto;
+    padding-inline: 16px;
+    padding-block: calc(60px + env(safe-area-inset-top, 0px)) 48px;
+  }
+  .panel .inner { max-width: 660px; margin: 0 auto; }
+  .panel h2 { font-size: 15px; font-weight: 400; letter-spacing: 0.4em; margin: 0 0 18px; }
+  .panel p { font-size: 13px; line-height: 1.95; color: var(--ink-dim); margin: 0 0 16px; }
+  .panel .close { position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); right: 16px; }
+  .tablewrap { overflow-x: auto; margin: 0 0 24px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink-faint); font-weight: 400; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; }
+  td.v { font-family: var(--mono); white-space: nowrap; color: var(--ink); font-variant-numeric: tabular-nums; }
+  td.s { color: var(--ink-dim); line-height: 1.7; }
+  .tag { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 2px; white-space: nowrap; }
+  .tag.assume { color: var(--sun); border-color: rgba(242, 215, 166, 0.35); }
+  .species { display: grid; gap: 12px; margin: 0 0 24px; }
+  .sp { border-top: 1px solid var(--line); padding-top: 12px; display: grid; grid-template-columns: 1fr auto; gap: 4px 12px; }
+  .sp h3 { margin: 0; font-size: 14px; font-weight: 600; letter-spacing: 0.1em; }
+  .sp .when { font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); align-self: baseline; }
+  .sp p { grid-column: 1 / -1; margin: 0; font-size: 12.5px; }
+  .sp.locked h3 { color: var(--ink-faint); }
+  .sp.found h3 { color: var(--moss); }
+  #hint {
+    position: fixed;
+    left: 50%;
+    top: calc(64px + env(safe-area-inset-top, 0px));
+    transform: translateX(-50%);
+    font-size: 12px;
+    color: var(--ink);
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid var(--line);
+    padding: 6px 12px;
+    border-radius: 2px;
+    pointer-events: none;
+    white-space: nowrap;
+  }
+  #fallback { position: fixed; inset: 0; display: grid; place-items: center; padding-inline: 16px; color: var(--ink-dim); font-size: 13px; text-align: center; }
+  @media (max-width: 560px) {
+    .hud.bottom { flex-direction: column; align-items: stretch; }
+    .speed { justify-content: flex-end; }
+    #log { font-size: 11.5px; }
+  }
+</style>
+
+<canvas id="room" aria-label="窓から光が差す、100年閉ざされた部屋。植物が少しずつ部屋を覆っていく"></canvas>
+<div id="fallback" hidden></div>
+<div id="hint" hidden></div>
+
+<div class="hud top">
+  <div>
+    <h1>還る部屋</h1>
+    <div class="meta" id="meta"></div>
+  </div>
+  <div class="right">
+    <button class="b" id="openBook" type="button">図鑑</button>
+    <button class="b" id="openNotes" type="button">しくみ</button>
+  </div>
+</div>
+
+<div class="hud bottom">
+  <div class="left">
+    <div id="log" aria-live="polite"></div>
+    <div class="tools">
+      <button class="b" id="tWindow" type="button" aria-pressed="false">窓を開ける</button>
+      <button class="b" id="tWater" type="button" aria-pressed="false">水をこぼす</button>
+      <button class="b" id="tChair" type="button" aria-pressed="false">椅子を動かす</button>
+    </div>
+  </div>
+  <div class="speed" role="group" aria-label="時間の速さ">
+    <button class="b" data-speed="0" type="button" aria-pressed="true" title="現実の1日が部屋の1年">▶</button>
+    <button class="b" data-speed="1" type="button" aria-pressed="false" title="1秒で1日">▶▶</button>
+    <button class="b" data-speed="2" type="button" aria-pressed="false" title="1秒で1週間">▶▶▶</button>
+  </div>
+</div>
+
+<section class="panel" id="book" hidden>
+  <button class="b close" type="button" data-close="book">閉じる</button>
+  <div class="inner">
+    <h2>図鑑</h2>
+    <p>この部屋に現れた生きものの記録です。条件がそろった場所に、自分でやって来ます。</p>
+    <div class="species" id="species"></div>
+  </div>
+</section>
+
+<section class="panel" id="notes" hidden>
+  <button class="b close" type="button" data-close="notes">閉じる</button>
+  <div class="inner">
+    <h2>しくみ</h2>
+    <p>1926年9月25日から閉ざされた部屋です。あなたにできるのは、窓を開けること、水をこぼすこと、椅子を動かすことだけです。何が育つかは、光と水と時間が決めます。部屋はあなただけのもので、閉じている間も時間は進みます（現実の1日が部屋の1年）。</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>項目</th><th>値</th><th>根拠</th></tr></thead>
+        <tbody>
+          <tr><td>場所・窓</td><td class="v">35.68°N 139.77°E</td><td class="s">東京。南向きの窓、幅1.2m、床上0.8〜2.1m <span class="tag assume">設定</span></td></tr>
+          <tr><td>太陽・月</td><td class="v">部屋の暦で計算</td><td class="s">低精度の位置式（太陽は誤差0.1°程度、月は1°程度の見込み）。光の筋の向きと、床のどこに日が当たるかはこの計算どおり</td></tr>
+          <tr><td>植物が受ける光</td><td class="v">半月ごとに計算</td><td class="s">床と壁の5〜10cm四方ごとに、30分おきの太陽の向きから直射が届くかを判定（椅子の影を含む）。空の光は窓を面光源として計算</td></tr>
+          <tr><td>時間</td><td class="v">×365 / ×86400 / ×604800</td><td class="s">現実の1日＝部屋の1年／1秒＝1日／1秒＝1週間</td></tr>
+          <tr><td>天気</td><td class="v">日ごとに抽選</td><td class="s"><span class="tag assume">仮定</span> 月ごとの雨の確率を簡略化して設定。実際の東京の記録ではない</td></tr>
+          <tr><td>成長の速さ・条件</td><td class="v">簡略モデル</td><td class="s"><span class="tag assume">仮定</span> 遷移の順序（藍藻→コケ→シダ）と、各種が好む光と水の傾向は実際の生態にもとづく。速さは遊べるように調整した値で、実測値ではない</td></tr>
+          <tr><td>光の筋</td><td class="v">パストレーシング</td><td class="s">空気中の塵による前方散乱を計算。部屋の湿り気が増えると筋が濃くなる</td></tr>
+          <tr><td>塵の沈降</td><td class="v">ストークスの式</td><td class="s">直径10µmで約3mm/秒。光の中に緑がかった粒が混ざるのは胞子</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>画面は開いてから数秒かけて落ち着きます。早回し中の光の筋が流れて見えるのは、長時間露光のように数日分の光が重なっているためです。</p>
+  </div>
+</section>
+
+<script>
+(() => {
+  "use strict";
+
+  // ================= 定数 =================
+  const LAT = 35.68, LON = 139.77;
+  const EPOCH = Date.parse("1926-09-25T00:00:00+09:00");
+  const DAY = 86400000, YEAR = 365.2425 * DAY, R = Math.PI / 180;
+  const RX = 2.1, RH = 2.7, ZS = -3.2, ZN = 3.6, WT = 0.22;
+  const WIN = { x0: -1.0, x1: 0.2, y0: 0.8, y1: 2.1 };
+  const CAM = [1.2, 1.3, 2.9], TARGET = [-0.2, 0.85, -3.2];
+  const SPEEDS = [365, 86400, 604800];
+  const MAXB = 32, MAXF = 16, MAXM = 24;
+
+  // ================= 乱数 =================
+  function mulberry(a) {
+    return () => { a |= 0; a = (a + 0x6D2B79F5) | 0; let t = Math.imul(a ^ (a >>> 15), 1 | a); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+  const hash2 = (a, b) => { let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x7f4a7c15, 0xc2b2ae35); h ^= h >>> 13; h = Math.imul(h, 0x27d4eb2f); return (h ^ (h >>> 16)) >>> 0; };
+
+  // ================= 天体 =================
+  const jdn = (ms) => ms / DAY + 2440587.5 - 2451545.0;
+  function altAz(ra, dec, n) {
+    const gmst = (18.697374558 + 24.06570982441908 * n) % 24;
+    const H = (gmst * 15 + LON) * R - ra;
+    const phi = LAT * R;
+    const alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
+    const az = Math.atan2(-Math.sin(H) * Math.cos(dec), Math.sin(dec) * Math.cos(phi) - Math.cos(dec) * Math.sin(phi) * Math.cos(H));
+    return { alt, az: (az + 2 * Math.PI) % (2 * Math.PI) };
+  }
+  function sunPos(ms) {
+    const n = jdn(ms);
+    const L = (280.460 + 0.9856474 * n) % 360;
+    const g = (357.528 + 0.9856003 * n) * R;
+    const lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * R;
+    const eps = (23.439 - 0.0000004 * n) * R;
+    const ra = Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam));
+    const dec = Math.asin(Math.sin(eps) * Math.sin(lam));
+    return Object.assign(altAz(ra, dec, n), { lam });
+  }
+  function moonPos(ms, sunLam) {
+    const n = jdn(ms);
+    const L = (218.316 + 13.176396 * n) * R, M = (134.963 + 13.064993 * n) * R, F = (93.272 + 13.229350 * n) * R;
+    const lon = L + 6.289 * R * Math.sin(M), lat = 5.128 * R * Math.sin(F), eps = 23.439 * R;
+    const ra = Math.atan2(Math.sin(lon) * Math.cos(eps) - Math.tan(lat) * Math.sin(eps), Math.cos(lon));
+    const dec = Math.asin(Math.sin(lat) * Math.cos(eps) + Math.cos(lat) * Math.sin(eps) * Math.sin(lon));
+    const elong = Math.acos(Math.cos(lat) * Math.cos(lon - sunLam));
+    return Object.assign(altAz(ra, dec, n), { frac: (1 - Math.cos(elong)) / 2 });
+  }
+  const dirOf = (b) => [-Math.sin(b.az) * Math.cos(b.alt), Math.sin(b.alt), Math.cos(b.az) * Math.cos(b.alt)];
+  const entersWindow = (b) => b.alt > 0.5 * R && dirOf(b)[2] < -0.03;
+  function sunColor(alt) {
+    const h = alt / R;
+    const m = 1 / (Math.sin(alt) + 0.50572 * Math.pow(h + 6.07995, -1.6364));
+    return [0.085, 0.16, 0.33].map((k) => Math.exp(-k * m));
+  }
+
+  // ================= 部屋の状態 =================
+  let S = null; // 保存される状態
+
+  // 天気（部屋ごと・日ごとに決定論的）。月ごとの雨の確率は簡略化した仮定
+  const RAINP = [0.18, 0.2, 0.3, 0.32, 0.33, 0.45, 0.35, 0.3, 0.42, 0.35, 0.25, 0.18];
+  function weather(dayIdx) {
+    if (!S) return { rain: false, amount: 0, cloudy: false, light: 1 };
+    const r = mulberry(hash2(S.seed, dayIdx));
+    const month = new Date(dayIdx * DAY + 9 * 3600000).getUTCMonth();
+    const rain = r() < RAINP[month];
+    const cloudy = rain || r() < 0.3;
+    return { rain, amount: rain ? 0.3 + r() * 0.9 : 0, cloudy, light: rain ? 0.2 : cloudy ? 0.5 : 1 };
+  }
+
+  // ================= 箱（窓枠・椅子）=================
+  function chairBoxes() {
+    const b = [];
+    const box = (a, c, m) => b.push([a, c, m]);
+    const cx = S.chair.x, cz = S.chair.z, l = 0.034;
+    if (!S.chair.fallen) {
+      box([cx - 0.21, 0.43, cz - 0.2], [cx + 0.21, 0.465, cz + 0.2], 2);
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const x = cx + sx * (0.19 - l / 2), z = cz + sz * (0.18 - l / 2);
+        box([x - l / 2, 0, z - l / 2], [x + l / 2, sz < 0 ? 0.93 : 0.43, z + l / 2], 2);
+      }
+      box([cx - 0.19, 0.83, cz - 0.2], [cx + 0.19, 0.91, cz - 0.172], 2);
+      box([cx - 0.19, 0.63, cz - 0.195], [cx + 0.19, 0.665, cz - 0.175], 2);
+      box([cx - 0.19, 0.12, cz - 0.01], [cx + 0.19, 0.145, cz + 0.01], 2);
+    } else {
+      // 崩れた椅子
+      box([cx - 0.24, 0, cz - 0.1], [cx + 0.18, 0.035, cz + 0.3], 2);
+      box([cx - 0.2, 0, cz - 0.62], [cx + 0.18, 0.03, cz - 0.54], 2);
+      box([cx - 0.25, 0, cz - 0.5], [cx - 0.216, 0.034, cz - 0.02], 2);
+      box([cx + 0.22, 0, cz - 0.3], [cx + 0.254, 0.034, cz + 0.13], 2);
+      box([cx - 0.35, 0, cz + 0.32], [cx + 0.1, 0.034, cz + 0.354], 2);
+      box([cx + 0.05, 0.0, cz - 0.15], [cx + 0.084, 0.43, cz - 0.116], 2);
+    }
+    return b;
+  }
+  function sceneBoxes() {
+    const b = [];
+    const box = (a, c, m) => b.push([a, c, m]);
+    const zf0 = ZS - 0.135, zf1 = ZS - 0.085, s = 0.05, mx = (WIN.x0 + WIN.x1) / 2, my = (WIN.y0 + WIN.y1) / 2, h = 0.0175;
+    box([WIN.x0 - 0.07, WIN.y0 - 0.035, ZS - 0.09], [WIN.x1 + 0.07, WIN.y0 + 0.001, ZS + 0.05], 1);
+    if (!S.windowOpen) {
+      box([WIN.x0, WIN.y0, zf0], [WIN.x0 + s, WIN.y1, zf1], 1);
+      box([WIN.x1 - s, WIN.y0, zf0], [WIN.x1, WIN.y1, zf1], 1);
+      box([WIN.x0, WIN.y1 - s, zf0], [WIN.x1, WIN.y1, zf1], 1);
+      box([WIN.x0, WIN.y0, zf0], [WIN.x1, WIN.y0 + 0.065, zf1], 1);
+      box([mx - h, WIN.y0, zf0 + 0.01], [mx + h, WIN.y1, zf1 - 0.01], 1);
+      box([WIN.x0, my - h, zf0 + 0.01], [WIN.x1, my + h, zf1 - 0.01], 1);
+    } else {
+      // 外開きの窓：2枚の障子が壁の外で直角に開いている
+      const z0 = ZS - WT - 0.58, z1 = ZS - WT;
+      box([WIN.x0, WIN.y0 + 0.01, z0], [WIN.x0 + 0.04, WIN.y1 - 0.01, z1], 1);
+      box([WIN.x1 - 0.04, WIN.y0 + 0.01, z0], [WIN.x1, WIN.y1 - 0.01, z1], 1);
+      box([WIN.x0, my - h, z0 + 0.02], [WIN.x0 + 0.045, my + h, z1 - 0.02], 1);
+      box([WIN.x1 - 0.045, my - h, z0 + 0.02], [WIN.x1, my + h, z1 - 0.02], 1);
+    }
+    return b.concat(chairBoxes());
+  }
+  function segHitsBoxes(p, d, tmax, boxes) {
+    for (const [a, c] of boxes) {
+      let t0 = 1e-4, t1 = tmax;
+      let ok = true;
+      for (let k = 0; k < 3; k++) {
+        if (Math.abs(d[k]) < 1e-9) { if (p[k] < a[k] || p[k] > c[k]) { ok = false; break; } continue; }
+        let u = (a[k] - p[k]) / d[k], v = (c[k] - p[k]) / d[k];
+        if (u > v) { const w = u; u = v; v = w; }
+        if (u > t0) t0 = u;
+        if (v < t1) t1 = v;
+        if (t0 > t1) { ok = false; break; }
+      }
+      if (ok) return true;
+    }
+    return false;
+  }
+
+  // ================= 生育の格子 =================
+  // B: 藍藻の膜 M: ギンゴケ Lv: ゼニゴケ W: 水（0〜2） O: 有機物 Rt: 木の腐朽 Wd: 湿った日数
+  function makeSurf(name, nu, nv, cell, pos, nrm) {
+    const n = nu * nv;
+    const s = { name, nu, nv, n, cell, nrm, pos: new Float32Array(n * 3), valid: new Uint8Array(n),
+      B: new Float32Array(n), M: new Float32Array(n), Lv: new Float32Array(n), W: new Float32Array(n),
+      O: new Float32Array(n), Rt: new Float32Array(n), Wd: new Float32Array(n),
+      vf: new Float32Array(n), shade: new Float32Array(n).fill(1), dose: new Map(), tex: null, px: new Uint8Array(n * 4) };
+    for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
+      const i = v * nu + u, p = pos(u, v);
+      s.pos.set(p, i * 3);
+      s.valid[i] = name === "south" && p[0] > WIN.x0 - 0.02 && p[0] < WIN.x1 + 0.02 && p[1] > WIN.y0 - 0.04 && p[1] < WIN.y1 + 0.02 ? 0 : 1;
+    }
+    return s;
+  }
+  const FC = 0.05, WC = 0.1;
+  const surfs = [
+    makeSurf("floor", Math.round(2 * RX / FC), Math.round((ZN - ZS) / FC), FC, (u, v) => [-RX + (u + 0.5) * FC, 0, ZS + (v + 0.5) * FC], [0, 1, 0]),
+    makeSurf("south", Math.round(2 * RX / WC), Math.round(RH / WC), WC, (u, v) => [-RX + (u + 0.5) * WC, (v + 0.5) * WC, ZS], [0, 0, 1]),
+    makeSurf("east", Math.round((ZN - ZS) / WC), Math.round(RH / WC), WC, (u, v) => [-RX, (v + 0.5) * WC, ZS + (u + 0.5) * WC], [1, 0, 0]),
+    makeSurf("west", Math.round((ZN - ZS) / WC), Math.round(RH / WC), WC, (u, v) => [RX, (v + 0.5) * WC, ZS + (u + 0.5) * WC], [-1, 0, 0]),
+  ];
+  const floor = surfs[0];
+  const floorIndex = (x, z) => {
+    const u = Math.floor((x + RX) / FC), v = Math.floor((z - ZS) / FC);
+    if (u < 0 || v < 0 || u >= floor.nu || v >= floor.nv) return -1;
+    return v * floor.nu + u;
+  };
+
+  // 窓を面光源とみなした空の光の受けやすさ（形態係数の近似）
+  for (const s of surfs) {
+    const A = (WIN.x1 - WIN.x0) * (WIN.y1 - WIN.y0);
+    for (let i = 0; i < s.n; i++) {
+      if (!s.valid[i]) continue;
+      const p = [s.pos[i * 3], s.pos[i * 3 + 1] + (s.name === "floor" ? 0.001 : 0), s.pos[i * 3 + 2]];
+      let acc = 0;
+      for (let a = 0; a < 4; a++) for (let b = 0; b < 4; b++) {
+        const q = [WIN.x0 + (a + 0.5) / 4 * (WIN.x1 - WIN.x0), WIN.y0 + (b + 0.5) / 4 * (WIN.y1 - WIN.y0), ZS];
+        const d = [q[0] - p[0], q[1] - p[1], q[2] - p[2]];
+        const d2 = d[0] * d[0] + d[1] * d[1] + d[2] * d[2];
+        const l = Math.sqrt(d2);
+        const cs = (d[0] * s.nrm[0] + d[1] * s.nrm[1] + d[2] * s.nrm[2]) / l, cl = -d[2] / l;
+        if (cs > 0 && cl > 0) acc += cs * cl * A / 16 / (Math.PI * Math.max(d2, 0.05));
+      }
+      s.vf[i] = acc;
+    }
+  }
+
+  // 半月ごとの直射の受光量（30分おきの太陽の向きで判定、椅子の影を含む）
+  const sunBins = [];
+  for (let b = 0; b < 24; b++) {
+    const base = Date.UTC(2026, 0, 1) + (b * 15.22 + 7) * DAY - 9 * 3600000;
+    const dirs = [];
+    for (let h = 0; h < 48; h++) {
+      const sp = sunPos(base + h * 1800000);
+      if (!entersWindow(sp)) continue;
+      const c = sunColor(sp.alt);
+      dirs.push([dirOf(sp), (c[0] + c[1] + c[2]) / 3 * 0.5]);
+    }
+    sunBins.push(dirs);
+  }
+  function computeDose(s, bin) {
+    const boxes = chairBoxes();
+    const out = new Float32Array(s.n);
+    const dirs = sunBins[bin];
+    for (let i = 0; i < s.n; i++) {
+      if (!s.valid[i]) continue;
+      const p = [s.pos[i * 3] + s.nrm[0] * 0.002, s.pos[i * 3 + 1] + s.nrm[1] * 0.002, s.pos[i * 3 + 2] + s.nrm[2] * 0.002];
+      let acc = 0;
+      for (const [d, w] of dirs) {
+        const c = d[0] * s.nrm[0] + d[1] * s.nrm[1] + d[2] * s.nrm[2];
+        if (c <= 0) continue;
+        const t1 = (ZS - p[2]) / d[2], t2 = (ZS - WT - p[2]) / d[2];
+        const x1 = p[0] + d[0] * t1, y1 = p[1] + d[1] * t1, x2 = p[0] + d[0] * t2, y2 = p[1] + d[1] * t2;
+        if (x1 < WIN.x0 || x1 > WIN.x1 || y1 < WIN.y0 || y1 > WIN.y1) continue;
+        if (x2 < WIN.x0 || x2 > WIN.x1 || y2 < WIN.y0 || y2 > WIN.y1) continue;
+        if (segHitsBoxes(p, d, t1, boxes)) continue;
+        acc += w * c;
+      }
+      out[i] = Math.min(1.5, acc / 4);
+    }
+    return out;
+  }
+  function doseFor(s, bin) {
+    let d = s.dose.get(bin);
+    if (!d) { d = computeDose(s, bin); s.dose.set(bin, d); }
+    return d;
+  }
+  const clearDose = () => { for (const s of surfs) s.dose.clear(); };
+
+  // ================= 図鑑 =================
+  const SPECIES = [
+    { id: "B", name: "藍藻の膜", sub: "シアノバクテリア", hint: "水と光。塵の中で眠っているものがいる。", text: "光合成をする細菌。乾くと休眠し、水が戻ると再び動き出す。むき出しの面に最初に現れ、後から来るものの足場になる。" },
+    { id: "M", name: "ギンゴケ", sub: "蘚類", hint: "藍藻の膜の上で、明るい場所。", text: "都市のアスファルトの隙間にもいる、乾燥に強いコケ。胞子が空気に乗って来る。水を抱えて、周りを湿らせる。" },
+    { id: "Lv", name: "ゼニゴケ", sub: "苔類", hint: "長く水が引かない場所。", text: "平たい葉状体。表面の杯状の器に無性芽を作り、雨粒がそれをはじき飛ばして広がる。" },
+    { id: "F", name: "シダ", sub: "シダ植物", hint: "コケのじゅうたん、湿り気、半日陰。", text: "胞子が芽生えると、まず小さなハート形の前葉体になる。その上で受精するには水の膜が要る。育つと部屋に日陰を作る。" },
+    { id: "K", name: "キノコ", sub: "菌類", hint: "濡れたままの木。", text: "植物ではない。木を分解して土に還す。子実体（キノコ）が見えるのは、菌糸の一生のごく一部。" },
+    { id: "X", name: "崩れた椅子", sub: "出来事", hint: "木は永遠ではない。", text: "菌が脚を分解し、椅子は自分の重さを支えられなくなった。" },
+  ];
+
+  // ================= 状態の初期化 =================
+  function newState() {
+    const seed = (Math.random() * 2 ** 32) >>> 0;
+    const r = mulberry(seed);
+    const now = Date.now();
+    return {
+      v: 1, seed, real: now, tau: now,
+      simDay: Math.floor(now / DAY),
+      windowOpen: false,
+      chair: { x: -0.35 + r() * 0.6, z: -1.9 + r() * 0.7, fallen: false, rot: 0 },
+      ferns: [], mush: [],
+      pools: { M: 0.04, Lv: 0.0, F: 0.0, K: 0.02 },
+      found: {}, log: [],
+      stat: { spills: 0 },
+    };
+  }
+  function seedSurfaces() {
+    // 部屋ごとの初期の汚れ：塵の中に眠る藍藻の点
+    const r = mulberry(S.seed ^ 0xabcdef);
+    for (const s of surfs) { s.B.fill(0); s.M.fill(0); s.Lv.fill(0); s.W.fill(0); s.O.fill(0); s.Rt.fill(0); s.Wd.fill(0); }
+    for (let k = 0; k < 40; k++) {
+      const i = Math.floor(r() * floor.n);
+      floor.B[i] = 0.02 + r() * 0.04;
+    }
+  }
+
+  // ================= 1日ぶんの成長 =================
+  let hum = 0.1, sporeLevel = 0;
+  const today = () => weather(S.simDay);
+  function addLog(dayMs, text) {
+    S.log.push([dayMs, text]);
+    if (S.log.length > 60) S.log.shift();
+    renderLog();
+  }
+  function discover(id, text) {
+    if (S.found[id]) return;
+    S.found[id] = S.simDay * DAY;
+    addLog(S.simDay * DAY, text);
+    renderBook();
+  }
+
+  function stepDay() {
+    const dayMs = S.simDay * DAY;
+    const w = weather(S.simDay);
+    const date = new Date(dayMs + 9 * 3600000);
+    const doy = Math.floor((date - Date.UTC(date.getUTCFullYear(), 0, 1)) / DAY);
+    const bin = Math.min(23, Math.floor(doy / 15.22));
+    const r = mulberry(hash2(S.seed ^ 0x5151, S.simDay));
+    const open = S.windowOpen;
+
+    // 外からの胞子（窓が開いていれば多く、閉じていても隙間から少し）
+    const inflow = open ? 1 : 0.05;
+    if (r() < 0.3 * inflow) S.pools.M += 0.03;
+    if (r() < 0.08 * inflow) S.pools.Lv += 0.04;
+    if (r() < 0.05 * inflow) S.pools.F += 0.05;
+    if (r() < 0.2 * inflow) S.pools.K += 0.03;
+
+    // 雨が吹き込む
+    if (open && w.rain) {
+      for (let i = 0; i < floor.n; i++) {
+        const x = floor.pos[i * 3], z = floor.pos[i * 3 + 2];
+        const dz = z - ZS;
+        if (dz < 1.0 && x > WIN.x0 - 0.35 && x < WIN.x1 + 0.35) floor.W[i] += w.amount * 0.7 * (1 - dz / 1.0) * (0.6 + 0.4 * r());
+      }
+      const s = surfs[1];
+      for (let i = 0; i < s.n; i++) {
+        const x = s.pos[i * 3], y = s.pos[i * 3 + 1];
+        if (s.valid[i] && y < WIN.y0 && x > WIN.x0 - 0.3 && x < WIN.x1 + 0.3) s.W[i] += w.amount * 0.4;
+      }
+      if (!S._rainLogged || S.simDay - S._rainLogged > 60) { addLog(dayMs, "開いた窓から雨が吹き込んだ。"); S._rainLogged = S.simDay; }
+    }
+
+    // シダの日陰
+    floor.shade.fill(1);
+    for (const f of S.ferns) {
+      if (f.stage < 1) continue;
+      const rad = 0.15 + f.size * 0.45;
+      const u0 = Math.floor((f.x - rad + RX) / FC), u1 = Math.floor((f.x + rad + RX) / FC);
+      const v0 = Math.floor((f.z - rad - ZS) / FC), v1 = Math.floor((f.z + rad - ZS) / FC);
+      for (let v = Math.max(0, v0); v <= Math.min(floor.nv - 1, v1); v++) for (let u = Math.max(0, u0); u <= Math.min(floor.nu - 1, u1); u++) {
+        const i = v * floor.nu + u;
+        const dx = floor.pos[i * 3] - f.x, dz = floor.pos[i * 3 + 2] - f.z;
+        if (dx * dx + dz * dz < rad * rad) floor.shade[i] *= 1 - 0.65 * f.size;
+      }
+    }
+
+    let sumW = 0, sumM = 0, sumLv = 0, sumB = 0, cnt = 0;
+    const P = S.pools;
+    for (const s of surfs) {
+      const dose = doseFor(s, bin);
+      const isFloor = s === floor;
+      const Mprev = s.M.slice(), Lprev = s.Lv.slice();
+      const nu = s.nu;
+      for (let i = 0; i < s.n; i++) {
+        if (!s.valid[i]) continue;
+        const L = (dose[i] * w.light + s.vf[i] * 3.0 * (0.4 + 0.6 * w.light)) * s.shade[i];
+        let W = s.W[i], B = s.B[i], M = s.M[i], Lv = s.Lv[i];
+        // 水：蒸発と、壁は部屋の湿り気との平衡
+        if (isFloor) {
+          W -= (0.025 + 0.09 * L) * (1 - 0.55 * M - 0.3 * Lv) * (open ? 1.25 : 1) * (1.1 - hum * 0.5);
+        } else {
+          const y = s.pos[i * 3 + 1];
+          const target = hum * 0.7 * Math.pow(Math.max(0, 1 - y / 1.6), 2);
+          W += (target - W) * 0.05 - 0.01 * L;
+        }
+        W = Math.max(0, Math.min(2, W));
+        // 近くへ水がにじむ
+        const u = i % nu, v = (i / nu) | 0;
+        // 藍藻の膜
+        if (W > 0.2 && L > 0.008) B += 0.22 * B * (1 - B - 0.25 * M) + 0.008 * W * (isFloor ? 1 : 0.4);
+        else if (B > 0.08) B -= 0.0008;
+        // ギンゴケ：足場（藍藻か有機物）と光が要る。乾燥には強い
+        const nM = ((u > 0 ? Mprev[i - 1] : 0) + (u < nu - 1 ? Mprev[i + 1] : 0) + (v > 0 ? Mprev[i - nu] : 0) + (v < s.nv - 1 ? Mprev[i + nu] : 0)) / 4;
+        if ((B > 0.25 || s.O[i] > 0.04) && L > 0.04 && W > 0.06) M += 0.035 * M * (1 - M - 0.4 * Lv) + P.M * 0.012 * Math.min(1, W * 2) + nM * 0.012;
+        if (L < 0.02) M -= 0.003;
+        // ゼニゴケ：長く湿った場所
+        const nL = ((u > 0 ? Lprev[i - 1] : 0) + (u < nu - 1 ? Lprev[i + 1] : 0) + (v > 0 ? Lprev[i - nu] : 0) + (v < s.nv - 1 ? Lprev[i + nu] : 0)) / 4;
+        if (W > 0.65 && L > 0.03 && (B > 0.2 || s.O[i] > 0.03)) Lv += 0.05 * Lv * (1 - Lv - 0.5 * M) + P.Lv * 0.02 + nL * 0.01;
+        if (W < 0.25) Lv -= 0.012;
+        s.B[i] = Math.max(0, Math.min(1, B));
+        s.M[i] = Math.max(0, Math.min(1, M));
+        s.Lv[i] = Math.max(0, Math.min(1, Lv));
+        s.W[i] = W;
+        s.O[i] = Math.min(1, s.O[i] + 0.0012 * (B + M + Lv));
+        if (isFloor) {
+          s.Wd[i] = W > 0.55 ? Math.min(255, s.Wd[i] + 1) : Math.max(0, s.Wd[i] - 2);
+          if (W > 0.55 && P.K > 0.02) s.Rt[i] = Math.min(1, s.Rt[i] + 0.002);
+          sumW += W; sumM += M; sumLv += Lv; sumB += B; cnt++;
+        }
+      }
+      // 水のにじみ（床のみ）
+      if (isFloor) {
+        const W0 = s.W.slice();
+        for (let v = 1; v < s.nv - 1; v++) for (let u = 1; u < nu - 1; u++) {
+          const i = v * nu + u;
+          s.W[i] = W0[i] + 0.06 * ((W0[i - 1] + W0[i + 1] + W0[i - nu] + W0[i + nu]) / 4 - W0[i]);
+        }
+      }
+    }
+    const meanW = sumW / cnt, meanM = sumM / cnt, meanLv = sumLv / cnt;
+    hum = Math.min(1, meanW * 2.2 + meanM * 0.35 + meanLv * 0.5 + S.ferns.length * 0.015) * (open ? 0.75 : 1);
+
+    // ゼニゴケの無性芽：雨や水はねで飛ぶ（窓が開いた雨の日）
+    if (open && w.rain && meanLv > 0.0005) {
+      for (let k = 0; k < 40; k++) {
+        const i = Math.floor(r() * floor.n);
+        if (floor.Lv[i] < 0.5) continue;
+        const a = r() * Math.PI * 2, d = 0.2 + r() * 0.6;
+        const j = floorIndex(floor.pos[i * 3] + Math.cos(a) * d, floor.pos[i * 3 + 2] + Math.sin(a) * d);
+        if (j >= 0) floor.Lv[j] = Math.min(1, floor.Lv[j] + 0.08);
+      }
+    }
+
+    // 胞子の生産と減衰
+    P.M = Math.min(1, P.M * 0.97 + meanM * 0.02);
+    P.Lv = Math.min(1, P.Lv * 0.96 + meanLv * 0.02);
+    P.F = Math.min(1, P.F * 0.97 + S.ferns.filter((f) => f.size > 0.6).length * 0.01);
+    P.K = Math.min(1, P.K * 0.97 + S.mush.length * 0.01);
+    sporeLevel = Math.min(1, P.M * 1.5 + P.F * 2 + P.K);
+
+    // シダ：前葉体 → 胞子体
+    if (S.ferns.length < MAXF && P.F > 0.01) {
+      for (let k = 0; k < 30; k++) {
+        const i = Math.floor(r() * floor.n);
+        const L = doseFor(floor, bin)[i] * w.light + floor.vf[i] * 3.0;
+        if (floor.M[i] > 0.45 && floor.O[i] > 0.12 && floor.W[i] > 0.3 && L > 0.02 && L < 0.6 && r() < P.F * 0.25) {
+          const x = floor.pos[i * 3], z = floor.pos[i * 3 + 2];
+          if (S.ferns.some((f) => Math.hypot(f.x - x, f.z - z) < 0.35)) continue;
+          if (!S.chair.fallen && Math.abs(x - S.chair.x) < 0.25 && Math.abs(z - S.chair.z) < 0.25) continue;
+          S.ferns.push({ x, z, stage: 0, age: 0, size: 0, rot: r() * 6.283, dry: 0 });
+          break;
+        }
+      }
+    }
+    for (const f of S.ferns) {
+      const i = floorIndex(f.x, f.z);
+      const W = i >= 0 ? floor.W[i] : 0;
+      f.age++;
+      if (f.stage === 0) {
+        // 受精には水の膜が要る
+        if (W > 0.5) f.wet = (f.wet || 0) + 1;
+        if (W < 0.15) f.dry++;
+        if (f.wet > 45) { f.stage = 1; discover("F", "床のコケの中から、シダの若い葉が立ち上がった。"); }
+      } else {
+        const g = W > 0.2 ? 1 / 500 : W > 0.08 ? 1 / 1500 : -1 / 800;
+        f.size = Math.max(0.05, Math.min(1, f.size + g));
+        if (W < 0.05) f.dry++; else f.dry = Math.max(0, f.dry - 1);
+      }
+    }
+    S.ferns = S.ferns.filter((f) => f.dry < (f.stage === 0 ? 40 : 400));
+
+    // キノコ：濡れた木から
+    S.mush = S.mush.filter((m) => S.simDay - m.born < m.life);
+    if (P.K > 0.02 && S.mush.length < MAXM) {
+      for (let k = 0; k < 20; k++) {
+        const i = Math.floor(r() * floor.n);
+        if (floor.Wd[i] > 14 && floor.Rt[i] > 0.02 && r() < 0.2 + P.K) {
+          const x = floor.pos[i * 3] + (r() - 0.5) * 0.04, z = floor.pos[i * 3 + 2] + (r() - 0.5) * 0.04;
+          const n = 2 + Math.floor(r() * 4);
+          for (let c = 0; c < n && S.mush.length < MAXM; c++) {
+            S.mush.push({ x: x + (r() - 0.5) * 0.08, z: z + (r() - 0.5) * 0.08, y: 0, r: 0.012 + r() * 0.02, born: S.simDay, life: 5 + Math.floor(r() * 8) });
+          }
+          discover("K", "濡れた床板から、小さなキノコが顔を出した。");
+          break;
+        }
+      }
+    }
+    // 椅子の脚の腐朽
+    if (!S.chair.fallen) {
+      let wet = 0;
+      for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+        const i = floorIndex(S.chair.x + sx * 0.17, S.chair.z + sz * 0.16);
+        if (i >= 0) wet += floor.W[i];
+      }
+      wet /= 4;
+      if (wet > 0.45 && P.K > 0.02) {
+        S.chair.rot += 0.0035;
+        if (r() < 0.04 && S.mush.length < MAXM) S.mush.push({ x: S.chair.x - 0.17 + r() * 0.34, z: S.chair.z + 0.16, y: 0.1 + r() * 0.25, r: 0.01 + r() * 0.012, born: S.simDay, life: 6 + Math.floor(r() * 6), onChair: true });
+      }
+      if (S.chair.rot >= 1) {
+        S.chair.fallen = true;
+        clearDose();
+        boxesDirty = true;
+        btnChair.disabled = true;
+        if (mode === "chair") setMode("chair");
+        discover("X", "椅子が崩れた。");
+      }
+    }
+
+    // 発見
+    if (sumB / cnt > 0.004 || floor.B.some((b) => b > 0.35)) discover("B", "濡れた床に、黒緑の膜が広がりはじめた。藍藻が目を覚ました。");
+    if (floor.M.some((m) => m > 0.3) || surfs.some((s) => s.M.some((m) => m > 0.3))) discover("M", "藍藻の膜の上に、銀色がかった緑のコケが生えた。");
+    if (floor.Lv.some((m) => m > 0.3)) discover("Lv", "水の引かない場所に、平たいゼニゴケが広がった。");
+
+    S.simDay++;
+    texDirty = true;
+  }
+
+  // ================= 保存と読み込み =================
+  const CH = ["B", "M", "Lv", "W", "O", "Rt", "Wd"];
+  const SCALE = { B: 255, M: 255, Lv: 255, W: 127, O: 255, Rt: 255, Wd: 1 };
+  function packGrid() {
+    const total = surfs.reduce((a, s) => a + s.n, 0) * CH.length;
+    const out = new Uint8Array(total);
+    let o = 0;
+    for (const s of surfs) for (const c of CH) { const a = s[c], k = SCALE[c]; for (let i = 0; i < s.n; i++) out[o++] = Math.max(0, Math.min(255, Math.round(a[i] * k))); }
+    return out;
+  }
+  function unpackGrid(buf) {
+    let o = 0;
+    for (const s of surfs) for (const c of CH) { const a = s[c], k = SCALE[c]; for (let i = 0; i < s.n; i++) a[i] = (buf[o++] || 0) / k; }
+  }
+  const b64 = (u8) => { let s = ""; for (let i = 0; i < u8.length; i += 0x8000) s += String.fromCharCode.apply(null, u8.subarray(i, i + 0x8000)); return btoa(s); };
+  const unb64 = (s) => { const b = atob(s), u = new Uint8Array(b.length); for (let i = 0; i < b.length; i++) u[i] = b.charCodeAt(i); return u; };
+  async function gz(u8, mode) {
+    if (typeof CompressionStream === "undefined") return null;
+    const cs = mode === "c" ? new CompressionStream("gzip") : new DecompressionStream("gzip");
+    const stream = new Blob([u8]).stream().pipeThrough(cs);
+    return new Uint8Array(await new Response(stream).arrayBuffer());
+  }
+  async function serialize() {
+    const raw = packGrid();
+    let grid, z = false;
+    try { const c = await gz(raw, "c"); if (c) { grid = b64(c); z = true; } } catch (e) { /* 圧縮できない環境 */ }
+    if (!grid) grid = b64(raw);
+    const { _rainLogged, ...rest } = S;
+    return Object.assign({}, rest, { grid, z, savedReal: Date.now() });
+  }
+  async function deserialize(o) {
+    S = Object.assign(newState(), o);
+    delete S.grid; delete S.z;
+    try {
+      let u = unb64(o.grid);
+      if (o.z) u = await gz(u, "d");
+      unpackGrid(u);
+    } catch (e) { seedSurfaces(); }
+  }
+
+  const localStore = {
+    load: async () => { try { const s = localStorage.getItem("kaeru-room"); return s ? JSON.parse(s) : null; } catch (e) { return null; } },
+    save: async (o) => { try { localStorage.setItem("kaeru-room", JSON.stringify(o)); } catch (e) { /* 保存できない環境 */ } },
+  };
+  let store = localStore, storeKind = "local";
+  async function initStore() {
+    if (!(window.claude && typeof window.claude.use === "function")) return;
+    try {
+      const [db, user] = await Promise.all([window.claude.use("db"), window.claude.use("user")]);
+      if (!db || !user) return;
+      const uid = await user.id();
+      if (!uid) return;
+      const ref = db.doc(`data/users/${uid}/room`);
+      store = {
+        load: async () => { const s = await ref.get(); return s.exists ? s.data() : null; },
+        save: (o) => ref.set(o),
+      };
+      storeKind = "db";
+    } catch (e) { /* ブラウザ内の保存に切り替え */ }
+  }
+  let saving = false, lastSave = 0;
+  async function save() {
+    if (saving || !S) return;
+    saving = true;
+    try {
+      const o = await serialize();
+      await store.save(o);
+      if (storeKind === "db") localStore.save(o);
+      lastSave = Date.now();
+    } catch (e) {
+      try { await localStore.save(await serialize()); } catch (e2) { /* 保存に失敗 */ }
+    }
+    saving = false;
+  }
+
+  // ================= GLSL =================
+  const COMMON = `#version 300 es
+    precision highp float;
+    precision highp int;
+    const float RX = ${RX.toFixed(3)}, RH = ${RH.toFixed(3)}, ZS = ${ZS.toFixed(3)}, ZN = ${ZN.toFixed(3)}, WT = ${WT.toFixed(3)};
+    const float WX0 = ${WIN.x0.toFixed(3)}, WX1 = ${WIN.x1.toFixed(3)}, WY0 = ${WIN.y0.toFixed(3)}, WY1 = ${WIN.y1.toFixed(3)};
+    const int MAXB = ${MAXB}, MAXF = ${MAXF}, MAXM = ${MAXM};
+    const float PI = 3.14159265;
+    const float SUNR = 0.00465;
+    uniform vec3 uL, uE, uSky;
+    uniform vec3 uBMin[MAXB], uBMax[MAXB];
+    uniform int uBMat[MAXB];
+    uniform int uNB, uNF, uNM;
+    uniform vec4 uFern[MAXF];
+    uniform float uFernRot[MAXF];
+    uniform vec4 uMush[MAXM];
+
+    vec3 safeInv(vec3 d) { return 1.0 / mix(d, vec3(1e-7), lessThan(abs(d), vec3(1e-7))); }
+    float boxT(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, out vec3 n) {
+      vec3 t0 = (bmin - ro) * inv, t1 = (bmax - ro) * inv;
+      vec3 tn3 = min(t0, t1), tf3 = max(t0, t1);
+      float tn = max(max(tn3.x, tn3.y), tn3.z), tf = min(min(tf3.x, tf3.y), tf3.z);
+      if (tf < tn || tn < 1e-4) return 1e9;
+      n = tn == tn3.x ? vec3(-sign(inv.x), 0, 0) : (tn == tn3.y ? vec3(0, -sign(inv.y), 0) : vec3(0, 0, -sign(inv.z)));
+      return tn;
+    }
+    bool aabb(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, float tmax) {
+      vec3 t0 = (bmin - ro) * inv, t1 = (bmax - ro) * inv;
+      vec3 tn3 = min(t0, t1), tf3 = max(t0, t1);
+      float tn = max(max(tn3.x, tn3.y), tn3.z), tf = min(min(tf3.x, tf3.y), tf3.z);
+      return tf >= max(tn, 0.0) && tn < tmax;
+    }
+    float shellT(vec3 ro, vec3 rd, vec3 inv, out vec3 n, out bool esc) {
+      esc = false;
+      float txT = ((rd.x > 0.0 ? WX1 : WX0) - ro.x) * inv.x;
+      float tyT = ((rd.y > 0.0 ? WY1 : WY0) - ro.y) * inv.y;
+      float tx = ((rd.x > 0.0 ? RX : -RX) - ro.x) * inv.x;
+      float ty = ((rd.y > 0.0 ? RH : 0.0) - ro.y) * inv.y;
+      float tz = ((rd.z > 0.0 ? ZN : ZS) - ro.z) * inv.z;
+      if (ro.z >= ZS) {
+        float t = min(tx, min(ty, tz));
+        if (t == tz && rd.z < 0.0) {
+          vec3 p = ro + rd * t;
+          if (!(p.x > WX0 && p.x < WX1 && p.y > WY0 && p.y < WY1)) { n = vec3(0, 0, 1); return t; }
+        } else {
+          n = t == tx ? vec3(-sign(rd.x), 0, 0) : (t == ty ? vec3(0, -sign(rd.y), 0) : vec3(0, 0, -1));
+          return t;
+        }
+      }
+      float ts = min(txT, tyT);
+      vec3 ns = ts == txT ? vec3(-sign(rd.x), 0, 0) : vec3(0, -sign(rd.y), 0);
+      if (rd.z > 0.0) {
+        float tzF = (ZS - ro.z) * inv.z;
+        if (ts < tzF) { n = ns; return ts; }
+        float t = min(tx, min(ty, tz));
+        n = t == tx ? vec3(-sign(rd.x), 0, 0) : (t == ty ? vec3(0, -sign(rd.y), 0) : vec3(0, 0, -1));
+        return t;
+      }
+      float tzB = (ZS - WT - ro.z) * inv.z;
+      if (ts < tzB) { n = ns; return ts; }
+      esc = true;
+      return tzB;
+    }
+    // シダの葉：平らな羽状の面
+    float frond(vec3 ro, vec3 rd, vec3 o, vec3 a, vec3 b, float len, float u0, float u1, float L, out vec3 n) {
+      vec3 nn = normalize(cross(a, b));
+      float dn = dot(rd, nn);
+      if (abs(dn) < 1e-5) return 1e9;
+      float t = dot(o - ro, nn) / dn;
+      if (t < 1e-4) return 1e9;
+      vec3 q = ro + rd * t - o;
+      float u = dot(q, a) / len;
+      if (u < 0.0 || u > 1.0) return 1e9;
+      float v = abs(dot(q, b));
+      float ug = mix(u0, u1, u);
+      float w = L * 0.16 * pow(max(sin(PI * ug), 0.0), 0.6) * (1.0 - 0.25 * ug);
+      if (v > w) return 1e9;
+      if (v > 0.003) {
+        float k = fract(ug * 15.0 + v / max(w, 1e-3) * 0.55);
+        if (k > 0.64) return 1e9;
+      }
+      n = dn < 0.0 ? nn : -nn;
+      return t;
+    }
+    struct Hit { float t; vec3 n; int m; bool esc; };
+    Hit trace(vec3 ro, vec3 rd) {
+      vec3 inv = safeInv(rd);
+      Hit h;
+      h.t = shellT(ro, rd, inv, h.n, h.esc);
+      h.m = 0;
+      for (int i = 0; i < MAXB; i++) {
+        if (i >= uNB) break;
+        vec3 n;
+        float t = boxT(ro, inv, uBMin[i], uBMax[i], n);
+        if (t < h.t) { h.t = t; h.n = n; h.m = uBMat[i]; h.esc = false; }
+      }
+      for (int i = 0; i < MAXF; i++) {
+        if (i >= uNF) break;
+        vec4 f = uFern[i];
+        float L = f.w;
+        if (!aabb(ro, inv, f.xyz - vec3(L * 0.8, 0.0, L * 0.8), f.xyz + vec3(L * 0.8, L * 0.85, L * 0.8), h.t)) continue;
+        for (int k = 0; k < 6; k++) {
+          float th = uFernRot[i] + float(k) * 1.0472 + 0.3 * sin(float(k) * 3.1 + uFernRot[i]);
+          vec3 hz = vec3(cos(th), 0.0, sin(th)), b = vec3(-sin(th), 0.0, cos(th));
+          float e = 1.05 - 0.12 * float(k % 3);
+          vec3 a1 = normalize(hz * cos(e) + vec3(0, sin(e), 0));
+          vec3 a2 = normalize(hz * cos(0.15) + vec3(0, sin(0.15), 0));
+          float l1 = L * 0.5, l2 = L * 0.5;
+          vec3 n;
+          float t = frond(ro, rd, f.xyz, a1, b, l1, 0.0, 0.5, L, n);
+          if (t < h.t) { h.t = t; h.n = n; h.m = 3; h.esc = false; }
+          t = frond(ro, rd, f.xyz + a1 * l1, a2, b, l2, 0.5, 1.0, L, n);
+          if (t < h.t) { h.t = t; h.n = n; h.m = 3; h.esc = false; }
+        }
+      }
+      for (int i = 0; i < MAXM; i++) {
+        if (i >= uNM) break;
+        vec4 s = uMush[i];
+        vec3 oc = ro - s.xyz;
+        float b = dot(oc, rd), c = dot(oc, oc) - s.w * s.w;
+        float d = b * b - c;
+        if (d < 0.0) continue;
+        d = sqrt(d);
+        float t = -b - d;
+        if (t < 1e-4) t = -b + d;
+        if (t < 1e-4 || t >= h.t) continue;
+        vec3 p = ro + rd * t;
+        if (p.y < s.y - s.w * 0.1) continue;
+        h.t = t; h.n = normalize(p - s.xyz); h.m = 4; h.esc = false;
+        if (dot(h.n, rd) > 0.0) h.n = -h.n;
+      }
+      return h;
+    }
+    bool escapes(vec3 ro, vec3 rd) { return trace(ro, rd).esc; }
+    float hg(float c, float g) {
+      float g2 = g * g;
+      return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * c, 1.5));
+    }
+  `;
+
+  const VS_QUAD = `#version 300 es
+    in vec2 aPos; void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+  const FS_TRACE = COMMON + `
+    uniform vec2 uRes;
+    uniform float uTime, uW, uTanF, uHum, uCover;
+    uniform uint uFrame;
+    uniform vec3 uCam, uCR, uCU, uCF;
+    uniform sampler2D uPrev, uFloor, uGF, uGS, uGE, uGW;
+    out vec4 o;
+
+    uint seed;
+    float rnd() {
+      seed = seed * 747796405u + 2891336453u;
+      uint w = ((seed >> ((seed >> 28u) + 4u)) ^ seed) * 277803737u;
+      w = (w >> 22u) ^ w;
+      return float(w) / 4294967296.0;
+    }
+    float hash3(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+    float noise(vec3 x) {
+      vec3 i = floor(x), f = fract(x);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(mix(hash3(i), hash3(i + vec3(1,0,0)), f.x), mix(hash3(i + vec3(0,1,0)), hash3(i + vec3(1,1,0)), f.x), f.y),
+                 mix(mix(hash3(i + vec3(0,0,1)), hash3(i + vec3(1,0,1)), f.x), mix(hash3(i + vec3(0,1,1)), hash3(i + vec3(1,1,1)), f.x), f.y), f.z);
+    }
+    float dens(vec3 p) {
+      vec3 q = p * 1.5 + vec3(uTime * 0.010, -uTime * 0.005, uTime * 0.014);
+      float n = noise(q) * 0.55 + noise(q * 2.7 + 7.3) * 0.3 + noise(q * 7.1 + 1.7) * 0.15;
+      return (0.35 + 1.9 * n * n * n + 0.3 * smoothstep(1.4, 0.0, p.y)) * (1.0 + uHum * 1.6);
+    }
+    vec3 skyL(vec3 d) {
+      vec3 zen = uSky * vec3(0.72, 0.84, 1.12), hor = uSky * 1.2;
+      vec3 c = d.y > 0.0 ? mix(hor, zen, smoothstep(0.0, 0.7, d.y)) : uSky * vec3(0.30, 0.34, 0.24);
+      c += uE * 0.035 * pow(max(dot(d, uL), 0.0), 48.0);
+      return c;
+    }
+    vec3 sunDir() {
+      vec3 a = abs(uL.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0);
+      vec3 b1 = normalize(cross(uL, a)), b2 = cross(uL, b1);
+      float r = SUNR * sqrt(rnd()), ph = 2.0 * PI * rnd();
+      return normalize(uL + (b1 * cos(ph) + b2 * sin(ph)) * r);
+    }
+    vec3 skyNEE(vec3 p, vec3 n, bool isVolume) {
+      vec3 q = vec3(mix(WX0, WX1, rnd()), mix(WY0, WY1, rnd()), ZS - WT);
+      vec3 d = q - p;
+      float d2 = max(dot(d, d), 0.04);
+      d = normalize(d);
+      float cosL = -d.z;
+      float cosS = isVolume ? 1.0 / (4.0 * PI) : max(dot(n, d), 0.0);
+      if (cosL <= 0.0 || cosS <= 0.0) return vec3(0);
+      if (!escapes(p, d)) return vec3(0);
+      return skyL(d) * cosS * cosL * (WX1 - WX0) * (WY1 - WY0) / d2;
+    }
+    vec3 sunNEE(vec3 p, vec3 n, bool leaf) {
+      if (uE.x + uE.y + uE.z <= 0.0) return vec3(0);
+      vec3 d = sunDir();
+      float c = dot(n, d);
+      if (leaf) c = c > 0.0 ? c : -c * 0.45; // 葉を透かす光
+      if (c <= 0.0 || !escapes(p + d * 0.002, d)) return vec3(0);
+      return uE * c;
+    }
+    vec4 growth(vec3 p, vec3 n, out int surf) {
+      surf = -1;
+      if (n.y > 0.5 && p.y < 0.01) { surf = 0; return texture(uGF, vec2((p.x + RX) / (2.0 * RX), (p.z - ZS) / (ZN - ZS))); }
+      if (n.z > 0.5 && p.z > ZS - 0.001 && p.z < ZS + 0.001) { surf = 1; return texture(uGS, vec2((p.x + RX) / (2.0 * RX), p.y / RH)); }
+      if (n.x > 0.5 && p.x < -RX + 0.001) { surf = 2; return texture(uGE, vec2((p.z - ZS) / (ZN - ZS), p.y / RH)); }
+      if (n.x < -0.5 && p.x > RX - 0.001) { surf = 3; return texture(uGW, vec2((p.z - ZS) / (ZN - ZS), p.y / RH)); }
+      return vec4(0);
+    }
+    float cov(float c, float nz) { return smoothstep(nz - 0.12, nz + 0.12, c * 1.25); }
+    vec3 albedo(vec3 p, vec3 n, int m, out float wet) {
+      wet = 0.0;
+      if (m == 1) return vec3(0.50, 0.48, 0.43) * (0.9 + 0.2 * noise(p * 40.0));
+      if (m == 2) {
+        vec3 w = vec3(0.16, 0.10, 0.065) * (0.8 + 0.4 * noise(p * vec3(60.0, 8.0, 60.0)));
+        return n.y > 0.5 ? mix(w, vec3(0.52, 0.50, 0.46), uCover * 0.8) : w;
+      }
+      if (m == 3) return vec3(0.07, 0.17, 0.045) * (0.8 + 0.4 * noise(p * 30.0));
+      if (m == 4) return vec3(0.62, 0.53, 0.40) * (0.85 + 0.3 * noise(p * 90.0));
+      vec3 a;
+      if (n.y > 0.5 && p.y < 0.01) a = pow(texture(uFloor, vec2((p.x + RX) / (2.0 * RX), (p.z - ZS) / (ZN - ZS))).rgb, vec3(2.2));
+      else if (n.y < -0.5) a = vec3(0.40, 0.39, 0.37) * (0.92 + 0.12 * noise(p * 3.0));
+      else {
+        bool recess = p.z < ZS - 0.001;
+        float s = 0.86 + 0.18 * noise(p * 2.3) + 0.06 * noise(p * 23.0) - 0.14 * smoothstep(0.55, 0.8, noise(p * vec3(0.9, 0.35, 0.9) + 3.0));
+        a = (!recess && p.y < 0.09) ? vec3(0.10, 0.07, 0.05) : vec3(0.44, 0.41, 0.36) * s;
+      }
+      int sf;
+      vec4 g = growth(p, n, sf);
+      if (sf >= 0) {
+        float n1 = noise(p * 38.0), n2 = noise(p * 71.0 + 3.0), n3 = noise(p * 22.0 + 9.0);
+        a = mix(a, vec3(0.03, 0.04, 0.028) * (0.8 + 0.4 * n2), cov(g.r, n1) * 0.92);
+        vec3 moss = mix(vec3(0.16, 0.24, 0.09), vec3(0.40, 0.45, 0.33), noise(p * 140.0));
+        a = mix(a, moss, cov(g.g, n2));
+        vec3 lv = vec3(0.05, 0.15, 0.04) * (0.75 + 0.5 * noise(p * vec3(28.0, 1.0, 28.0)));
+        a = mix(a, lv, cov(g.b, n3));
+        wet = g.a * 2.0;
+        a *= mix(1.0, 0.5, clamp(wet * 1.6, 0.0, 1.0));
+      }
+      return a;
+    }
+
+    vec3 radiance(vec3 ro, vec3 rd) {
+      vec3 L = vec3(0), thr = vec3(1);
+      const float SIGS = 0.32;
+      bool specChain = true;
+      for (int b = 0; b < 4; b++) {
+        Hit h = trace(ro, rd);
+        if (specChain) {
+          float seg = min(h.t, 12.0);
+          float ph = hg(dot(rd, uL), 0.66) * 0.88 + 0.12 / (4.0 * PI);
+          vec3 acc = vec3(0);
+          for (int k = 0; k < 2; k++) {
+            float t = (float(k) + rnd()) * 0.5 * seg;
+            vec3 q = ro + rd * t;
+            float sd = dens(q) * SIGS;
+            vec3 s = vec3(0);
+            if (uE.x + uE.y + uE.z > 0.0) { vec3 d = sunDir(); if (escapes(q, d)) s += uE * ph; }
+            s += skyNEE(q, vec3(0), true);
+            acc += s * sd;
+          }
+          L += thr * acc * seg * 0.5;
+        }
+        if (h.esc) {
+          if (specChain) {
+            L += thr * skyL(rd);
+            if (dot(rd, uL) > cos(SUNR)) L += thr * uE * 900.0;
+          }
+          break;
+        }
+        vec3 p = ro + rd * h.t;
+        vec3 n = h.n;
+        float wet;
+        vec3 a = albedo(p, n, h.m, wet);
+        vec3 po = p + n * 1e-3;
+        // 水たまり：鏡のような反射
+        if (wet > 1.1 && n.y > 0.5) {
+          float f = 0.03 + 0.97 * pow(1.0 - max(dot(-rd, n), 0.0), 5.0);
+          f = mix(f, 1.0, 0.25);
+          if (rnd() < f) { rd = reflect(rd, n); ro = po; continue; }
+        }
+        specChain = false;
+        L += thr * a / PI * (sunNEE(po, n, h.m == 3) + skyNEE(po, n, false));
+        thr *= a;
+        float r1 = rnd(), r2 = rnd();
+        float phi = 2.0 * PI * r1, sr = sqrt(r2);
+        vec3 t1 = normalize(abs(n.x) > 0.5 ? cross(n, vec3(0, 1, 0)) : cross(n, vec3(1, 0, 0)));
+        vec3 t2 = cross(n, t1);
+        rd = normalize(t1 * cos(phi) * sr + t2 * sin(phi) * sr + n * sqrt(1.0 - r2));
+        ro = po;
+        if (b >= 2) break;
+      }
+      return L;
+    }
+
+    void main() {
+      seed = uint(gl_FragCoord.x) * 1973u + uint(gl_FragCoord.y) * 9277u + uFrame * 26699u;
+      seed |= 1u;
+      rnd();
+      vec2 jit = vec2(rnd(), rnd()) - 0.5;
+      vec2 uv = ((gl_FragCoord.xy + jit) * 2.0 - uRes) / uRes.y;
+      vec3 dir = normalize(uCR * uv.x * uTanF + uCU * uv.y * uTanF + uCF);
+      const float FOCUS = 3.6, APER = 0.006;
+      vec3 fp = uCam + dir * (FOCUS / dot(dir, uCF));
+      float lr = APER * sqrt(rnd()), la = 2.0 * PI * rnd();
+      vec3 ro = uCam + (uCR * cos(la) + uCU * sin(la)) * lr;
+      vec3 c = radiance(ro, normalize(fp - ro));
+      if (any(isnan(c)) || any(isinf(c))) c = vec3(0);
+      c = min(c, vec3(60.0));
+      vec3 prev = texelFetch(uPrev, ivec2(gl_FragCoord.xy), 0).rgb;
+      o = vec4(mix(prev, c, uW), 1.0);
+    }
+  `;
+
+  const FS_SHOW = `#version 300 es
+    precision highp float;
+    uniform sampler2D uAcc;
+    uniform vec2 uRes;
+    uniform float uGrain, uFrameF;
+    out vec4 o;
+    float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+    vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+    void main() {
+      vec2 uv = gl_FragCoord.xy / uRes;
+      vec3 c = texture(uAcc, uv).rgb;
+      vec3 b = vec3(0);
+      vec2 asp = vec2(uRes.y / uRes.x, 1.0);
+      for (int r = 0; r < 3; r++) {
+        float rad = r == 0 ? 0.005 : (r == 1 ? 0.016 : 0.045);
+        float wt = r == 0 ? 0.5 : (r == 1 ? 0.3 : 0.2);
+        for (int k = 0; k < 12; k++) {
+          float a = float(k) * 0.5236 + float(r) * 0.9;
+          vec3 s = texture(uAcc, uv + vec2(cos(a), sin(a)) * rad * asp).rgb;
+          b += max(s - 0.9, 0.0) * wt / 12.0;
+        }
+      }
+      c += b * vec3(0.55, 0.42, 0.34);
+      c = aces(c * 0.9);
+      float lum = dot(c, vec3(0.3, 0.59, 0.11));
+      c = mix(c * vec3(0.94, 0.98, 1.05), c * vec3(1.04, 1.0, 0.92), smoothstep(0.15, 0.75, lum));
+      c = pow(c, vec3(1.0 / 2.2));
+      vec2 q = (gl_FragCoord.xy * 2.0 - uRes) / uRes.y;
+      c *= mix(0.62, 1.0, smoothstep(1.6, 0.3, length(q * vec2(0.82, 1.0))));
+      float g = hash(vec3(gl_FragCoord.xy * 1.37, mod(uFrameF, 97.0) + 0.5)) - 0.5;
+      c += g * uGrain * (0.55 + 0.45 * (1.0 - lum));
+      c = c * 0.975 + vec3(0.010, 0.009, 0.007);
+      o = vec4(c, 1.0);
+    }
+  `;
+
+  const VS_MOTE = COMMON + `
+    in vec4 aP;
+    in float aPh;
+    uniform vec3 uCam, uCR, uCU, uCF;
+    uniform float uTanF, uAspect, uTime, uH, uSpore;
+    out vec3 vC;
+    out float vB;
+    void main() {
+      vec3 v = aP.xyz - uCam;
+      float z = dot(v, uCF);
+      bool lit = z > 0.15 && (uE.x + uE.y + uE.z) > 0.0 && escapes(aP.xyz, uL);
+      if (!lit) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vC = vec3(0); vB = 0.0; return; }
+      gl_Position = vec4(dot(v, uCR) / (z * uTanF * uAspect), dot(v, uCU) / (z * uTanF), 0.0, 1.0);
+      float core = (0.6 + sqrt(aP.w) * 0.22) * uH / 900.0;
+      float coc = abs(z - 3.6) / z * uH * 0.02;
+      float size = max(core, coc);
+      gl_PointSize = size * 2.0 + 1.0;
+      float phase = hg(dot(normalize(v), uL), 0.72);
+      float glint = 0.2 + 0.8 * pow(0.5 + 0.5 * sin(uTime * (0.7 + fract(aPh * 7.1) * 2.4) + aPh), 6.0);
+      vec3 tint = fract(aPh * 3.31) < uSpore * 0.5 ? vec3(0.75, 1.0, 0.55) : vec3(1.0);
+      vC = uE * tint * phase * glint * 0.09 * (core * core) / (size * size);
+      vB = clamp((coc - core) / (core * 2.0), 0.0, 1.0);
+    }
+  `;
+  const FS_MOTE = `#version 300 es
+    precision mediump float;
+    in vec3 vC;
+    in float vB;
+    out vec4 o;
+    void main() {
+      float d = length(gl_PointCoord - 0.5) * 2.0;
+      float a = mix(exp(-d * d * 5.0), smoothstep(1.0, 0.8, d) * (0.7 + 0.3 * smoothstep(0.5, 0.95, d)), vB);
+      o = vec4(1.0 - exp(-vC * a), 1.0);
+    }
+  `;
+
+  // ================= WebGL2 =================
+  const cv = document.getElementById("room");
+  const fallback = (msg) => { const f = document.getElementById("fallback"); f.textContent = msg; f.hidden = false; };
+  const gl = cv.getContext("webgl2", { antialias: false, alpha: false });
+  if (!gl || !gl.getExtension("EXT_color_buffer_float")) { fallback("この端末では描画に必要な機能（WebGL2の浮動小数点バッファ）が使えないため表示できません。"); return; }
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  function program(vs, fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const u = {};
+    const count = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < count; i++) {
+      const info = gl.getActiveUniform(p, i);
+      u[info.name.replace(/\[0\]$/, "")] = gl.getUniformLocation(p, info.name);
+    }
+    return { p, u };
+  }
+  let traceP, showP, moteP;
+  try {
+    traceP = program(VS_QUAD, FS_TRACE);
+    showP = program(VS_QUAD, FS_SHOW);
+    moteP = program(VS_MOTE, FS_MOTE);
+  } catch (err) {
+    console.error(err);
+    fallback("描画の準備に失敗しました。別のブラウザで開くと表示できる場合があります。");
+    return;
+  }
+  const quadVAO = gl.createVertexArray();
+  gl.bindVertexArray(quadVAO);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  for (const P of [traceP, showP]) {
+    const loc = gl.getAttribLocation(P.p, "aPos");
+    if (loc >= 0) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0); }
+  }
+  gl.bindVertexArray(null);
+
+  // カメラ
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const fwd = norm(sub(TARGET, CAM)), right = norm(cross(fwd, [0, 1, 0])), up = cross(right, fwd);
+  let tanF = Math.tan(25 * R);
+
+  // 床（木と塵）のテクスチャ
+  const PPM = 240, TW = Math.round(2 * RX * PPM), TH = Math.round((ZN - ZS) * PPM);
+  const mk = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+  function lcg(seed) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+  const floorC = mk(TW, TH);
+  {
+    const c = floorC.getContext("2d");
+    const r = lcg(7);
+    const board = 0.13 * PPM;
+    c.fillStyle = "#3a2a1e";
+    c.fillRect(0, 0, TW, TH);
+    for (let x = -board * r(); x < TW; x += board) {
+      c.fillStyle = `hsl(${22 + r() * 8}, ${30 + r() * 12}%, ${17 + r() * 9}%)`;
+      c.fillRect(x, 0, board - 1, TH);
+      c.strokeStyle = "rgba(0,0,0,0.16)";
+      c.lineWidth = 1;
+      for (let k = 0; k < 10; k++) {
+        const gx = x + r() * board, amp = r() * 3, fq = 0.004 + r() * 0.01;
+        c.beginPath(); c.moveTo(gx, 0);
+        for (let y = 0; y <= TH; y += 16) c.lineTo(gx + Math.sin(y * fq + k) * amp, y);
+        c.stroke();
+      }
+      let y = -r() * 1.8 * PPM;
+      while (y < TH) { y += (1.2 + r() * 1.4) * PPM; c.fillStyle = "rgba(0,0,0,0.45)"; c.fillRect(x, y, board - 1, 1.5); }
+      c.fillStyle = "rgba(0,0,0,0.55)";
+      c.fillRect(x + board - 1.5, 0, 1.5, TH);
+    }
+    // 100年分の塵
+    const d = mk(TW, TH), dc = d.getContext("2d");
+    dc.fillStyle = "#bdb6aa"; dc.fillRect(0, 0, TW, TH);
+    const img = dc.getImageData(0, 0, TW, TH), px = img.data, r2 = lcg(11);
+    for (let i = 0; i < px.length; i += 4) { const n = (r2() - 0.5) * 44; px[i] += n; px[i + 1] += n; px[i + 2] += n * 0.9; }
+    dc.putImageData(img, 0, 0);
+    c.globalAlpha = 0.53;
+    c.drawImage(d, 0, 0);
+    c.globalAlpha = 1;
+  }
+  const texParams = (min) => {
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, min);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  };
+  const floorTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, floorTex);
+  texParams(gl.LINEAR_MIPMAP_LINEAR);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, floorC);
+  gl.generateMipmap(gl.TEXTURE_2D);
+  for (const s of surfs) {
+    s.tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, s.tex);
+    texParams(gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, s.nu, s.nv, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+  }
+  let texDirty = true, boxesDirty = true;
+  function uploadGrowth() {
+    for (const s of surfs) {
+      const px = s.px;
+      for (let i = 0; i < s.n; i++) {
+        px[i * 4] = s.B[i] * 255; px[i * 4 + 1] = s.M[i] * 255; px[i * 4 + 2] = s.Lv[i] * 255; px[i * 4 + 3] = Math.min(2, s.W[i]) * 127.5;
+      }
+      gl.bindTexture(gl.TEXTURE_2D, s.tex);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, s.nu, s.nv, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    }
+  }
+
+  // 箱・シダ・キノコのユニフォーム
+  const bMin = new Float32Array(MAXB * 3), bMax = new Float32Array(MAXB * 3), bMat = new Int32Array(MAXB);
+  const fernU = new Float32Array(MAXF * 4), fernRot = new Float32Array(MAXF), mushU = new Float32Array(MAXM * 4);
+  let nB = 0, nF = 0, nM = 0, sceneKey = "";
+  function updateScene() {
+    const boxes = sceneBoxes();
+    nB = Math.min(MAXB, boxes.length);
+    for (let i = 0; i < nB; i++) { bMin.set(boxes[i][0], i * 3); bMax.set(boxes[i][1], i * 3); bMat[i] = boxes[i][2]; }
+    const fs = S.ferns.filter((f) => f.stage >= 1);
+    nF = Math.min(MAXF, fs.length);
+    for (let i = 0; i < nF; i++) { fernU.set([fs[i].x, 0, fs[i].z, 0.12 + fs[i].size * 0.62], i * 4); fernRot[i] = fs[i].rot; }
+    nM = Math.min(MAXM, S.mush.length);
+    for (let i = 0; i < nM; i++) { const m = S.mush[i]; mushU.set([m.x, m.y + m.r * 0.35, m.z, m.r], i * 4); }
+    const key = JSON.stringify([nB, S.windowOpen, S.chair, fs.map((f) => [f.x, Math.round(f.size * 50)]), S.mush.map((m) => m.born)]);
+    if (key !== sceneKey) { sceneKey = key; samples = Math.min(samples, 24); }
+  }
+  function setScene(u) {
+    gl.uniform3fv(u.uBMin, bMin); gl.uniform3fv(u.uBMax, bMax); gl.uniform1iv(u.uBMat, bMat);
+    gl.uniform1i(u.uNB, nB); gl.uniform1i(u.uNF, nF); gl.uniform1i(u.uNM, nM);
+    gl.uniform4fv(u.uFern, fernU); gl.uniform1fv(u.uFernRot, fernRot); gl.uniform4fv(u.uMush, mushU);
+  }
+
+  // ================= 塵と胞子の粒 =================
+  const AIR_MU = 1.81e-5, RHO = 1000, G = 9.81, NM = 900;
+  const mData = new Float32Array(NM * 4), mPh = new Float32Array(NM), mVs = new Float32Array(NM), mLife = new Float32Array(NM);
+  const mr = lcg(23);
+  let light = null;
+  function inBeam(x, y, z, L) {
+    if (L[2] > -0.01) return false;
+    const t = (ZS - WT - z) / L[2];
+    const qx = x + L[0] * t, qy = y + L[1] * t;
+    return qx > WIN.x0 + 0.05 && qx < WIN.x1 - 0.05 && qy > WIN.y0 + 0.06 && qy < WIN.y1 - 0.05;
+  }
+  function spawn(i, fresh) {
+    let x, y, z;
+    for (let k = 0; k < 24; k++) {
+      x = (mr() * 2 - 1) * RX * 0.95; y = mr() * RH * 0.95; z = ZS + 0.05 + mr() * (CAM[2] - ZS - 0.3);
+      if (!light || !light.lit || inBeam(x, y, z, light.L)) break;
+    }
+    const d = Math.exp(mr() * Math.log(40));
+    mData.set([x, y, z, d], i * 4);
+    mVs[i] = (RHO - 1.2) * G * (d * 1e-6) ** 2 / (18 * AIR_MU);
+    mPh[i] = mr() * 100;
+    mLife[i] = 30 + mr() * 90 - (fresh ? mr() * 60 : 0);
+  }
+  for (let i = 0; i < NM; i++) spawn(i, true);
+  function stepMotes(dt, t) {
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const a = S && S.windowOpen ? 0.045 : 0.02;
+    for (let i = 0; i < NM; i++) {
+      const o = i * 4, x = mData[o], y = mData[o + 1], z = mData[o + 2];
+      mData[o] += (a * Math.sin(1.1 * y + 0.19 * t) + 0.6 * a * Math.sin(0.8 * z - 0.13 * t)) * dt;
+      mData[o + 1] += (0.5 * a * Math.sin(1.3 * x + 0.9 * z + 0.07 * t) - mVs[i]) * dt;
+      mData[o + 2] += (a * Math.cos(1.2 * x - 0.15 * t) + 0.6 * a * Math.sin(0.9 * y + 0.11 * t)) * dt;
+      mLife[i] -= dt;
+      if (mLife[i] < 0 || mData[o + 1] < 0 || Math.abs(mData[o]) > RX || mData[o + 2] < ZS || mData[o + 2] > ZN) spawn(i, false);
+    }
+  }
+  const moteVAO = gl.createVertexArray();
+  gl.bindVertexArray(moteVAO);
+  const mBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, mBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, mData, gl.DYNAMIC_DRAW);
+  const aP = gl.getAttribLocation(moteP.p, "aP");
+  gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP, 4, gl.FLOAT, false, 0, 0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, mPh, gl.STATIC_DRAW);
+  const aPh = gl.getAttribLocation(moteP.p, "aPh");
+  gl.enableVertexAttribArray(aPh); gl.vertexAttribPointer(aPh, 1, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+
+  // ================= 光 =================
+  function lighting(ms) {
+    const sun = sunPos(ms), moon = moonPos(ms, sun.lam);
+    const w = weather(Math.floor(ms / DAY));
+    const dayness = Math.min(1, Math.max(0, (sun.alt / R + 6) / 16));
+    let body = null, E = [0, 0, 0], kind = "none";
+    if (sun.alt > -1 * R) { body = sun; kind = "sun"; E = sunColor(Math.max(sun.alt, 0.2 * R)).map((v) => v * 14 * (w.light < 1 ? w.light * 0.3 : 1)); }
+    else if (moon.alt > 0) { body = moon; kind = "moon"; const f = 0.2 + 0.8 * moon.frac; E = [0.62, 0.74, 1.0].map((v) => v * 5.5 * f * (w.cloudy ? 0.15 : 1)); }
+    const L = body ? dirOf(body) : [0, 0.5, -0.8];
+    const lit = !!body && entersWindow(body) && E[0] > 0.5;
+    const grey = w.cloudy ? 1 : 0;
+    const day = [0.95, 1.0, 1.1].map((v, i) => v * 1.5 * (grey ? 0.55 : 1) * (grey ? [1.05, 1.03, 1.0][i] : 1));
+    const night = [0.018, 0.026, 0.05];
+    const sky = day.map((d, i) => night[i] + (d - night[i]) * dayness);
+    if (kind === "moon") for (let i = 0; i < 3; i++) sky[i] += 0.05 * moon.frac;
+    return { sun, moon, kind, L, E: body && L[1] > 0 ? E : [0, 0, 0], sky, lit, weather: w, grain: 0.03 + 0.025 * (1 - dayness) };
+  }
+
+  // ================= 蓄積バッファ =================
+  let W = 0, H = 0, scale = 1, acc = [], fbo = [], ping = 0, samples = 0;
+  function makeTarget() {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, W, H, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    texParams(gl.LINEAR);
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    gl.clearColor(0, 0, 0, 1); gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return [t, f];
+  }
+  function resize() {
+    const cssW = innerWidth, cssH = innerHeight;
+    let s = scale * Math.min(window.devicePixelRatio || 1, 1.25);
+    const maxPx = 1.2e6 * scale * scale;
+    if (cssW * cssH * s * s > maxPx) s = Math.sqrt(maxPx / (cssW * cssH));
+    W = Math.max(2, Math.round(cssW * s)); H = Math.max(2, Math.round(cssH * s));
+    cv.width = W; cv.height = H;
+    for (const t of acc) gl.deleteTexture(t);
+    for (const f of fbo) gl.deleteFramebuffer(f);
+    acc = []; fbo = [];
+    for (let i = 0; i < 2; i++) { const [t, f] = makeTarget(); acc.push(t); fbo.push(f); }
+    samples = 0;
+    const aspect = W / H;
+    tanF = Math.min(aspect >= 1 ? Math.tan(25 * R) : Math.tan(34 * R) / aspect, Math.tan(42 * R));
+  }
+  let rt;
+  addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(resize, 150); });
+  resize();
+
+  // ================= UI =================
+  const metaEl = document.getElementById("meta"), logEl = document.getElementById("log"), hintEl = document.getElementById("hint");
+  const pad = (n) => String(n).padStart(2, "0");
+  const jst = (ms) => new Date(ms + 9 * 3600000);
+  const fmtDate = (ms) => { const d = jst(ms); return `${d.getUTCFullYear()}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())}`; };
+  const fmtTime = (ms) => { const d = jst(ms); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
+  const fmtSpan = (days) => { const y = Math.floor(days / 365.2425), m = Math.floor((days - y * 365.2425) / 30.44); return y > 0 ? `${y}年${m}か月` : m > 0 ? `${m}か月` : `${Math.max(1, Math.round(days))}日`; };
+  function updateMeta() {
+    if (!S) return;
+    const w = light.weather;
+    const wx = w.rain ? "雨" : w.cloudy ? "くもり" : "晴れ";
+    const years = Math.floor((S.tau - EPOCH) / YEAR);
+    let lightLine = light.lit ? (light.kind === "sun" ? `日差し ${(light.sun.alt / R).toFixed(0)}°` : "月明かり") : (light.kind === "sun" && light.sun.alt > 0 ? "窓に直射なし" : "夜");
+    metaEl.innerHTML = `部屋の暦 ${fmtDate(S.tau)} ${fmtTime(S.tau)} ${wx}<br>閉ざされて ${years}年 ${lightLine}<br>湿り気 ${Math.round(hum * 100)}%${S.windowOpen ? " 窓は開いている" : ""}`;
+  }
+  function renderLog() {
+    if (!S) return;
+    logEl.innerHTML = "";
+    for (const [d, t] of S.log.slice(-3)) {
+      const div = document.createElement("div");
+      const sp = document.createElement("span");
+      sp.className = "d"; sp.textContent = fmtDate(d);
+      div.append(sp, document.createTextNode(t));
+      logEl.append(div);
+    }
+  }
+  function renderBook() {
+    const el = document.getElementById("species");
+    el.innerHTML = "";
+    for (const sp of SPECIES) {
+      const found = S && S.found[sp.id];
+      const d = document.createElement("div");
+      d.className = "sp " + (found ? "found" : "locked");
+      const h = document.createElement("h3");
+      h.textContent = found ? `${sp.name}　${sp.sub}` : "？？？";
+      const when = document.createElement("span");
+      when.className = "when";
+      when.textContent = found ? fmtDate(found) : "";
+      const p = document.createElement("p");
+      p.textContent = found ? sp.text : `手がかり：${sp.hint}`;
+      d.append(h, when, p);
+      el.append(d);
+    }
+  }
+
+  let mode = null, dragChair = false, speed = 0;
+  const btnWindow = document.getElementById("tWindow"), btnWater = document.getElementById("tWater"), btnChair = document.getElementById("tChair");
+  function setMode(m) {
+    mode = mode === m ? null : m;
+    btnWater.setAttribute("aria-pressed", String(mode === "water"));
+    btnChair.setAttribute("aria-pressed", String(mode === "chair"));
+    cv.className = mode === "water" ? "aim" : mode === "chair" ? "grab" : "";
+    hintEl.hidden = !mode;
+    hintEl.textContent = mode === "water" ? "床のどこかをクリックすると、そこに水をこぼします" : mode === "chair" ? "椅子をつかんで、床の上を動かします" : "";
+  }
+  btnWater.addEventListener("click", () => setMode("water"));
+  btnChair.addEventListener("click", () => { if (S && S.chair.fallen) return; setMode("chair"); });
+  btnWindow.addEventListener("click", () => {
+    if (!S) return;
+    S.windowOpen = !S.windowOpen;
+    btnWindow.textContent = S.windowOpen ? "窓を閉める" : "窓を開ける";
+    btnWindow.setAttribute("aria-pressed", String(S.windowOpen));
+    addLog(S.tau, S.windowOpen ? "窓を開けた。外の空気が入ってくる。" : "窓を閉めた。");
+    boxesDirty = true;
+    save();
+  });
+  for (const b of document.querySelectorAll("[data-speed]")) {
+    b.addEventListener("click", () => {
+      speed = +b.dataset.speed;
+      for (const o of document.querySelectorAll("[data-speed]")) o.setAttribute("aria-pressed", String(o === b));
+    });
+  }
+  const openPanel = (id) => { document.getElementById(id).hidden = false; };
+  document.getElementById("openBook").addEventListener("click", () => { renderBook(); openPanel("book"); });
+  document.getElementById("openNotes").addEventListener("click", () => openPanel("notes"));
+  for (const b of document.querySelectorAll("[data-close]")) b.addEventListener("click", () => { document.getElementById(b.dataset.close).hidden = true; });
+  addEventListener("keydown", (e) => { if (e.key === "Escape") { for (const p of document.querySelectorAll(".panel")) p.hidden = true; if (mode) setMode(mode); } });
+
+  function viewRay(e) {
+    const rect = cv.getBoundingClientRect();
+    const ux = (2 * (e.clientX - rect.left) - rect.width) / rect.height, uy = (rect.height - 2 * (e.clientY - rect.top)) / rect.height;
+    return [0, 1, 2].map((k) => right[k] * ux * tanF + up[k] * uy * tanF + fwd[k]);
+  }
+  function floorPoint(e) {
+    const rd = viewRay(e);
+    if (rd[1] >= -1e-4) return null;
+    const t = -CAM[1] / rd[1];
+    const x = CAM[0] + rd[0] * t, z = CAM[2] + rd[2] * t;
+    if (Math.abs(x) > RX - 0.02 || z < ZS + 0.02 || z > ZN) return null;
+    return [x, z];
+  }
+  function hitsChair(e) {
+    const rd = viewRay(e);
+    const [a, c] = [[S.chair.x - 0.25, 0, S.chair.z - 0.25], [S.chair.x + 0.25, 0.95, S.chair.z + 0.25]];
+    return segHitsBoxes(CAM, rd, 50, [[a, c]]);
+  }
+  function spill(x, z) {
+    const rad = 0.24;
+    for (let i = 0; i < floor.n; i++) {
+      const dx = floor.pos[i * 3] - x, dz = floor.pos[i * 3 + 2] - z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 < rad * rad) floor.W[i] = Math.min(2, floor.W[i] + 1.5 * (1 - Math.sqrt(d2) / rad) + 0.2);
+    }
+    S.stat.spills++;
+    texDirty = true;
+    samples = Math.min(samples, 24);
+    if (S.stat.spills === 1) addLog(S.tau, "床に水をこぼした。塵が水を吸って黒ずむ。");
+  }
+  cv.addEventListener("pointerdown", (e) => {
+    if (!S) return;
+    if (mode === "water") { const p = floorPoint(e); if (p) spill(p[0], p[1]); }
+    else if (mode === "chair" && !S.chair.fallen && hitsChair(e)) { dragChair = true; cv.setPointerCapture(e.pointerId); }
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!dragChair) return;
+    const p = floorPoint(e);
+    if (!p) return;
+    S.chair.x = Math.max(-RX + 0.3, Math.min(RX - 0.3, p[0]));
+    S.chair.z = Math.max(ZS + 0.35, Math.min(1.2, p[1]));
+    boxesDirty = true;
+  });
+  const endDrag = () => { if (dragChair) { dragChair = false; clearDose(); addLog(S.tau, "椅子を動かした。影の落ちる場所が変わる。"); save(); } };
+  cv.addEventListener("pointerup", endDrag);
+  cv.addEventListener("pointercancel", endDrag);
+
+  // ================= ループ =================
+  let frameNo = 0, last = performance.now(), slow = 0, catchUp = 0, lastMeta = 0;
+  function setCam(u) {
+    gl.uniform3fv(u.uCam, CAM); gl.uniform3fv(u.uCR, right); gl.uniform3fv(u.uCU, up); gl.uniform3fv(u.uCF, fwd);
+    gl.uniform3fv(u.uL, light.L); gl.uniform3fv(u.uE, light.E); gl.uniform3fv(u.uSky, light.sky);
+    gl.uniform1f(u.uTanF, tanF);
+  }
+  function frame(tp) {
+    const dtMs = Math.min(200, tp - last);
+    last = tp;
+    const dt = dtMs / 1000;
+    if (frameNo > 30 && scale > 0.5) {
+      slow = dtMs > 70 ? slow + 1 : Math.max(0, slow - 1);
+      if (slow > 20) { scale *= 0.75; slow = 0; resize(); }
+    }
+    if (S) {
+      // 部屋の時間を進める
+      S.tau += dtMs * SPEEDS[speed];
+      S.real = Date.now();
+      const target = Math.floor(S.tau / DAY);
+      let steps = 0;
+      const budget = catchUp > 0 ? 25 : 3;
+      while (S.simDay < target && steps < budget) { stepDay(); steps++; }
+      if (catchUp > 0 && S.simDay >= target) { catchUp = 0; hintEl.hidden = !mode; }
+      if (steps) boxesDirty = true;
+      if (Date.now() - lastSave > 20000) save();
+    }
+    const t = (Date.now() / 1000) % 100000;
+    light = lighting(S ? S.tau : Date.now());
+    if (S && (boxesDirty)) { updateScene(); boxesDirty = false; }
+    if (texDirty) { uploadGrowth(); texDirty = false; }
+    stepMotes(dt, t);
+    if (tp - lastMeta > 500) { updateMeta(); lastMeta = tp; }
+
+    const src = ping, dst = 1 - ping;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[dst]);
+    gl.viewport(0, 0, W, H);
+    gl.disable(gl.BLEND);
+    gl.useProgram(traceP.p);
+    const u = traceP.u;
+    setCam(u);
+    setScene(u);
+    gl.uniform2f(u.uRes, W, H);
+    gl.uniform1f(u.uTime, t);
+    gl.uniform1ui(u.uFrame, frameNo);
+    gl.uniform1f(u.uHum, hum);
+    gl.uniform1f(u.uCover, 0.99);
+    const maxN = speed === 0 ? 200 : 90;
+    gl.uniform1f(u.uW, 1 / Math.min(samples + 1, maxN));
+    const bind = (unit, tex, name) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(u[name], unit); };
+    bind(0, acc[src], "uPrev"); bind(1, floorTex, "uFloor");
+    bind(2, surfs[0].tex, "uGF"); bind(3, surfs[1].tex, "uGS"); bind(4, surfs[2].tex, "uGE"); bind(5, surfs[3].tex, "uGW");
+    gl.bindVertexArray(quadVAO);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    samples++;
+    ping = dst;
+
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H);
+    gl.useProgram(showP.p);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, acc[dst]);
+    gl.uniform1i(showP.u.uAcc, 0);
+    gl.uniform2f(showP.u.uRes, W, H);
+    gl.uniform1f(showP.u.uGrain, light.grain);
+    gl.uniform1f(showP.u.uFrameF, frameNo % 997);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    if (light.lit && speed === 0) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.useProgram(moteP.p);
+      setCam(moteP.u);
+      setScene(moteP.u);
+      gl.uniform1f(moteP.u.uAspect, W / H);
+      gl.uniform1f(moteP.u.uTime, t);
+      gl.uniform1f(moteP.u.uH, H);
+      gl.uniform1f(moteP.u.uSpore, sporeLevel);
+      gl.bindVertexArray(moteVAO);
+      gl.bindBuffer(gl.ARRAY_BUFFER, mBuf);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, mData);
+      gl.drawArrays(gl.POINTS, 0, NM);
+    }
+    gl.bindVertexArray(null);
+    frameNo++;
+    requestAnimationFrame(frame);
+  }
+
+  // ================= 起動 =================
+  S = null;
+  light = lighting(Date.now());
+  requestAnimationFrame(frame);
+  (async () => {
+    await initStore();
+    let saved = null;
+    try { saved = await store.load(); } catch (e) { saved = null; }
+    if (!saved && storeKind === "db") saved = await localStore.load();
+    if (saved && saved.v === 1 && saved.grid) {
+      await deserialize(saved);
+      // 閉じていた間の時間：現実の1日＝部屋の1年
+      const away = Math.max(0, Date.now() - (saved.savedReal || saved.real));
+      const advance = Math.min(away * SPEEDS[0], 200 * YEAR);
+      S.tau += advance;
+      const days = advance / DAY;
+      if (days >= 1) {
+        catchUp = days;
+        hintEl.hidden = false;
+        hintEl.textContent = `あなたがいない間に、部屋では${fmtSpan(days)}が過ぎた`;
+        setTimeout(() => { if (!mode) hintEl.hidden = true; }, 6000);
+      }
+    } else {
+      S = newState();
+      seedSurfaces();
+      addLog(S.tau, "1926年から閉ざされた部屋。窓の外では、季節がめぐっている。");
+      save();
+    }
+    btnWindow.textContent = S.windowOpen ? "窓を閉める" : "窓を開ける";
+    btnWindow.setAttribute("aria-pressed", String(S.windowOpen));
+    btnChair.disabled = S.chair.fallen;
+    boxesDirty = true; texDirty = true;
+    renderLog(); renderBook();
+  })();
+  if (location.hash === "#debug") {
+    window.__kaeru = { run: (n) => { for (let i = 0; i < n; i++) stepDay(); S.tau = Math.max(S.tau, S.simDay * DAY + 0.5 * 3600000); texDirty = true; boxesDirty = true; }, state: () => S };
+  }
+  addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") save(); });
+  addEventListener("pagehide", () => { if (S) { try { serialize().then((o) => localStore.save(o)); } catch (e) { /* 保存できない */ } } });
+})();
+</script>
