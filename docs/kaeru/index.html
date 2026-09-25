@@ -786,7 +786,7 @@
     { name: "形だけ", vol: false, bounce: false, plants: false, flat: true, mode: 2 },
     { name: "固定色", vol: false, bounce: false, plants: false, flat: true, mode: 1 },
   ];
-  let builtAt = 0, motesOff = false;
+  let builtAt = 0, motesOff = false, fastForward = false, plantSnap = null, plantSnapAt = 0;
   let vIdx = (() => { try { const v = +sessionStorage.getItem("kaeru-variant-2"); return v > 0 && v < VARIANTS.length ? v : 0; } catch (e) { return 0; } })();
   function sceneGLSL(sc) {
     const bx = sc.boxes.length ? sc.boxes : [[[1e5, 1e5, 1e5], [1e5, 1e5, 1e5], 0]];
@@ -1074,7 +1074,6 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
             float sd = dens(q) * SIGS;
             vec3 s = vec3(0);
             if (uE.x + uE.y + uE.z > 0.0) { vec3 d = sunDir(); if (escapes(q, d)) s += uE * ph; }
-            s += skyNEE(q, vec3(0), true) * 0.3;
             acc += s * sd;
           }
           L += thr * acc * seg / float(max(VOLS, 1));
@@ -1175,7 +1174,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       vec2 q = (gl_FragCoord.xy * 2.0 - uRes) / uRes.y;
       c *= mix(0.62, 1.0, smoothstep(1.6, 0.3, length(q * vec2(0.82, 1.0))));
       float g = hash(vec3(gl_FragCoord.xy * 1.37, mod(uFrameF, 97.0) + 0.5)) - 0.5;
-      c += g * uGrain * (0.55 + 0.45 * (1.0 - lum));
+      c += g * uGrain * 4.0 * lum * (1.0 - lum);
       c = c * 0.975 + vec3(0.010, 0.009, 0.007);
       o = vec4(c, 1.0);
     }
@@ -1229,15 +1228,29 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
     return s;
   }
-  function program(vs, fs) {
+  // 組み立てを裏で進められる環境（KHR_parallel_shader_compile）では、終わるまで前の描き方で描き続ける
+  const pcExt = gl.getExtension("KHR_parallel_shader_compile");
+  function startProgram(vs, fs) {
     const p = gl.createProgram();
-    gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
-    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+    const a = gl.createShader(gl.VERTEX_SHADER), b = gl.createShader(gl.FRAGMENT_SHADER);
+    gl.shaderSource(a, vs); gl.compileShader(a);
+    gl.shaderSource(b, fs); gl.compileShader(b);
+    gl.attachShader(p, a); gl.attachShader(p, b);
     gl.bindAttribLocation(p, 0, "aPos");
     gl.bindAttribLocation(p, 0, "aP");
     gl.bindAttribLocation(p, 1, "aPh");
     gl.linkProgram(p);
-    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    return { p, a, b };
+  }
+  const programReady = (job) => !pcExt || gl.getProgramParameter(job.p, pcExt.COMPLETION_STATUS_KHR);
+  function program(vs, fs) { return finishProgram(startProgram(vs, fs)); }
+  function finishProgram(job) {
+    const p = job.p;
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) {
+      const msg = gl.getShaderInfoLog(job.b) || gl.getShaderInfoLog(job.a) || gl.getProgramInfoLog(p);
+      gl.deleteProgram(p);
+      throw new Error(msg);
+    }
     const u = {};
     const count = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
     for (let i = 0; i < count; i++) {
@@ -1248,8 +1261,16 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
   }
   function currentScene() {
     const boxes = S ? sceneBoxes() : [[[WIN.x0 - 0.07, WIN.y0 - 0.035, ZS - 0.09], [WIN.x1 + 0.07, WIN.y0 + 0.001, ZS + 0.05], 1]];
-    const ferns = S ? S.ferns.filter((f) => f.stage >= 1).slice(0, MAXF).map((f) => [f.x, f.z, 0.12 + Math.round(f.size * 20) / 20 * 0.62, f.rot]) : [];
-    const mush = S ? S.mush.slice(0, MAXM).map((m) => [m.x, m.y + m.r * 0.35, m.z, m.r]) : [];
+    const now = performance.now();
+    if (S && (!plantSnap || !fastForward || now - plantSnapAt > 8000)) {
+      plantSnap = {
+        ferns: S.ferns.filter((f) => f.stage >= 1).slice(0, MAXF).map((f) => [f.x, f.z, 0.12 + Math.max(0.2, Math.round(f.size * 5) / 5) * 0.62, f.rot]),
+        mush: S.mush.slice(0, MAXM).map((m) => [m.x, m.y + m.r * 0.35, m.z, m.r]),
+      };
+      plantSnapAt = now;
+    }
+    const ferns = S ? plantSnap.ferns : [];
+    const mush = S ? plantSnap.mush : [];
     const r4 = (v) => Math.round(v * 1e4) / 1e4;
     return { boxes: boxes.slice(0, MAXB).map(([a, b, m]) => [a.map(r4), b.map(r4), m]), ferns: ferns.map((f) => f.map(r4)), mush: mush.map((m) => m.map(r4)) };
   }
@@ -1377,24 +1398,31 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     const key = JSON.stringify(currentScene());
     if (key !== sceneKey) { sceneKey = key; rebuildPending = true; }
   }
+  let pendingJob = null;
   function rebuildPrograms() {
     const sc = JSON.parse(sceneKey);
-    builtAt = frameNo;
-    try {
-      const t = program(VS_QUAD, makeCommon(sc) + FS_TRACE_BODY);
-      let m = null;
-      try { m = program(makeCommon(sc) + VS_MOTE_BODY, FS_MOTE); } catch (e) { motesOff = true; }
-      gl.deleteProgram(traceP.p);
-      if (m) { if (moteP) gl.deleteProgram(moteP.p); moteP = m; }
-      traceP = t;
-      samples = Math.min(samples, 24);
-    } catch (e) {
+    pendingJob = { t: startProgram(VS_QUAD, makeCommon(sc) + FS_TRACE_BODY), m: startProgram(makeCommon(sc) + VS_MOTE_BODY, FS_MOTE) };
+    rebuildPending = false;
+  }
+  function pollRebuild() {
+    if (!pendingJob || !programReady(pendingJob.t) || !programReady(pendingJob.m)) return;
+    const job = pendingJob;
+    pendingJob = null;
+    let t;
+    try { t = finishProgram(job.t); }
+    catch (e) {
+      gl.deleteProgram(job.m.p);
       lastErr = `組み立て失敗（${VARIANTS[vIdx].name}）: ${(e && e.message || "").slice(0, 120)}`;
-      rebuildPending = false;
       if (vIdx < VARIANTS.length - 1) { vIdx++; rebuildPending = true; lastBuild = 0; }
       return;
     }
-    rebuildPending = false;
+    let m = null;
+    try { m = finishProgram(job.m); } catch (e) { motesOff = true; }
+    gl.deleteProgram(traceP.p);
+    if (m) { if (moteP) gl.deleteProgram(moteP.p); moteP = m; }
+    traceP = t;
+    builtAt = frameNo;
+    samples = Math.min(samples, 24);
   }
 
   // ================= 塵と胞子の粒 =================
@@ -1467,7 +1495,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     const night = [0.16, 0.15, 0.22]; // 都市の夜空（街明かりで真っ暗にはならない）
     const sky = day.map((d, i) => night[i] + (d - night[i]) * dayness);
     if (kind === "moon") for (let i = 0; i < 3; i++) sky[i] += 0.05 * moon.frac;
-    return { sun, moon, kind, L, E: body && L[1] > 0 ? E : [0, 0, 0], sky, lit, weather: w, grain: 0.03 + 0.02 * (1 - dayness), exposure: 1.15 + 1.6 * (1 - dayness) + (w.cloudy ? 0.9 * dayness : 0) };
+    return { sun, moon, kind, L, E: body && L[1] > 0 ? E : [0, 0, 0], sky, lit, weather: w, grain: 0.035 + 0.02 * (1 - dayness), exposure: 1.15 + 1.6 * (1 - dayness) + (w.cloudy ? 0.9 * dayness : 0) };
   }
 
   // ================= 蓄積バッファ =================
@@ -1766,6 +1794,8 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
   for (const b of document.querySelectorAll("[data-speed]")) {
     b.addEventListener("click", () => {
       speed = +b.dataset.speed;
+      fastForward = speed > 0;
+      boxesDirty = true;
       for (const o of document.querySelectorAll("[data-speed]")) o.setAttribute("aria-pressed", String(o === b));
     });
   }
@@ -1934,7 +1964,8 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     const t = (Date.now() / 1000) % 100000;
     light = lighting(S ? S.tau : Date.now());
     if (S && (boxesDirty)) { updateScene(); boxesDirty = false; }
-    if (rebuildPending && tp - lastBuild > 250) { rebuildPrograms(); lastBuild = tp; }
+    if (rebuildPending && !pendingJob && tp - lastBuild > 250) { rebuildPrograms(); lastBuild = tp; }
+    pollRebuild();
     if (texDirty) { uploadGrowth(); texDirty = false; }
     stepMotes(dt, t);
     if (tp - lastMeta > 500) { updateMeta(); lastMeta = tp; }

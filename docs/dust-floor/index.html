@@ -479,7 +479,6 @@
               vec3 d = sunDir();
               if (escapes(q, d)) s += uE * ph;
             }
-            s += skyNEE(q, vec3(0), true);
             acc += s * sd;
           }
           L += acc * seg * 0.5;
@@ -561,7 +560,7 @@
       vec2 q = (gl_FragCoord.xy * 2.0 - uRes) / uRes.y;
       c *= mix(0.62, 1.0, smoothstep(1.6, 0.3, length(q * vec2(0.82, 1.0))));
       float g = hash(vec3(gl_FragCoord.xy * 1.37, mod(uFrameF, 97.0) + 0.5)) - 0.5;
-      c += g * uGrain * (0.55 + 0.45 * (1.0 - lum));
+      c += g * uGrain * 4.0 * lum * (1.0 - lum);
       c = c * 0.975 + vec3(0.010, 0.009, 0.007);
       o = vec4(c, 1.0);
     }
