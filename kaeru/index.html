@@ -503,7 +503,7 @@
         const x = s.pos[i * 3], y = s.pos[i * 3 + 1];
         if (s.valid[i] && y < WIN.y0 && x > WIN.x0 - 0.3 && x < WIN.x1 + 0.3) s.W[i] += w.amount * 0.4;
       }
-      if (!S._rainLogged || S.simDay - S._rainLogged > 60) { addLog(dayMs, "開いた窓から雨が吹き込んだ。"); S._rainLogged = S.simDay; }
+      if (!S._rainLogged || S.simDay - S._rainLogged > 400) { addLog(dayMs, "開いた窓から雨が吹き込んだ。"); S._rainLogged = S.simDay; }
     }
 
     // シダの日陰
@@ -590,7 +590,7 @@
     // 胞子の生産と減衰
     P.M = Math.min(1, P.M * 0.97 + meanM * 0.02);
     P.Lv = Math.min(1, P.Lv * 0.96 + meanLv * 0.02);
-    P.F = Math.min(1, P.F * 0.97 + S.ferns.filter((f) => f.size > 0.6).length * 0.01);
+    P.F = Math.min(0.6, P.F * 0.97 + S.ferns.filter((f) => f.size > 0.6).length * 0.004);
     P.K = Math.min(1, P.K * 0.97 + S.mush.length * 0.01);
     sporeLevel = Math.min(1, P.M * 1.5 + P.F * 2 + P.K);
 
@@ -599,7 +599,7 @@
       for (let k = 0; k < 30; k++) {
         const i = Math.floor(r() * floor.n);
         const L = doseFor(floor, bin)[i] * w.light + floor.vf[i] * 3.0;
-        if (floor.M[i] > 0.45 && floor.O[i] > 0.12 && floor.W[i] > 0.3 && L > 0.02 && L < 0.6 && r() < P.F * 0.25) {
+        if (floor.M[i] > 0.45 && floor.O[i] > 0.12 && floor.W[i] > 0.3 && L > 0.02 && L < 0.6 && r() < P.F * 0.05) {
           const x = floor.pos[i * 3], z = floor.pos[i * 3 + 2];
           if (S.ferns.some((f) => Math.hypot(f.x - x, f.z - z) < 0.35)) continue;
           if (!S.chair.fallen && Math.abs(x - S.chair.x) < 0.25 && Math.abs(z - S.chair.z) < 0.25) continue;
@@ -1516,7 +1516,7 @@
     }
     if (S) {
       // 部屋の時間を進める
-      S.tau += dtMs * SPEEDS[speed];
+      S.tau += dtMs * SPEEDS[speed] * (window.__kaeruHold ? 0 : 1);
       S.real = Date.now();
       const target = Math.floor(S.tau / DAY);
       let steps = 0;
