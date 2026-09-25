@@ -1,0 +1,634 @@
+<title>塵の床</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #0b0c0f;
+    --ink: #e9e4da;
+    --ink-dim: #9c978d;
+    --ink-faint: #6b675f;
+    --line: rgba(233, 228, 218, 0.14);
+    --panel: rgba(12, 13, 16, 0.86);
+    --sun: #f2d7a6;
+    --mincho: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--mincho);
+    overflow: hidden;
+  }
+  #room {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  .hud {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    pointer-events: none;
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 16px;
+  }
+  .hud.top { top: calc(16px + env(safe-area-inset-top, 0px)); align-items: flex-start; }
+  .hud.bottom { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  h1 {
+    margin: 0;
+    font-weight: 600;
+    font-size: 18px;
+    letter-spacing: 0.4em;
+  }
+  .meta {
+    margin-top: 8px;
+    font-family: var(--mono);
+    font-size: 11px;
+    line-height: 1.7;
+    color: var(--ink-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .meta b { font-weight: 400; color: var(--ink); }
+  .message {
+    font-size: 14px;
+    line-height: 1.8;
+    max-width: 38em;
+    text-wrap: pretty;
+    color: var(--ink);
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+  }
+  .message small {
+    display: block;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-dim);
+  }
+  button.info {
+    pointer-events: auto;
+    appearance: none;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink-dim);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    padding: 6px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  button.info:hover, button.info:focus-visible { color: var(--ink); border-color: var(--ink-dim); outline: none; }
+  #notes {
+    position: fixed;
+    inset: 0;
+    background: var(--panel);
+    backdrop-filter: blur(6px);
+    overflow-y: auto;
+    padding-inline: 16px;
+    padding-block: calc(56px + env(safe-area-inset-top, 0px)) 48px;
+  }
+  #notes .inner { max-width: 640px; margin: 0 auto; }
+  #notes h2 { font-size: 16px; font-weight: 600; letter-spacing: 0.2em; margin: 0 0 16px; }
+  #notes p { font-size: 13px; line-height: 1.9; color: var(--ink-dim); margin: 0 0 16px; }
+  .tablewrap { overflow-x: auto; margin: 0 0 24px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: left; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink-faint); font-weight: 400; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+  td.v { font-family: var(--mono); white-space: nowrap; color: var(--ink); font-variant-numeric: tabular-nums; }
+  td.s { color: var(--ink-dim); }
+  .tag { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 2px; color: var(--ink-dim); white-space: nowrap; }
+  .tag.assume { color: var(--sun); border-color: rgba(242, 215, 166, 0.35); }
+  #close { position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); right: 16px; }
+  @media (max-width: 520px) {
+    .hud.bottom { flex-direction: column; align-items: flex-start; }
+    .message { font-size: 13px; }
+  }
+</style>
+
+<canvas id="room" aria-label="窓から光が差す、塵の積もった床。なぞると跡が残る"></canvas>
+
+<div class="hud top">
+  <div>
+    <h1>塵の床</h1>
+    <div class="meta" id="meta">東京・南向きの窓<br>計算中…</div>
+  </div>
+  <button class="info" id="openNotes" type="button">しくみ</button>
+</div>
+
+<div class="hud bottom">
+  <div class="message" id="message">床をなぞると、塵に跡が残ります。残せるのは一度だけです。</div>
+</div>
+
+<section id="notes" hidden>
+  <button class="info" id="close" type="button">閉じる</button>
+  <div class="inner">
+    <h2>しくみ</h2>
+    <p>この部屋は1926年9月25日から誰も入っていない、という設定です。床の塵の量、窓から差す光の位置、跡が埋もれるまでの時間は、すべて現在時刻から計算しています。訪れた人が残した跡は保存され、次に開いた人にも見えます。</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>項目</th><th>値</th><th>根拠</th></tr></thead>
+        <tbody>
+          <tr><td>場所・窓</td><td class="v">35.68°N 139.77°E</td><td class="s">東京。窓は南向き、幅1.2m、床上0.8〜2.0m <span class="tag assume">設定</span></td></tr>
+          <tr><td>太陽の位置</td><td class="v">実時刻</td><td class="s">低精度の太陽位置式（誤差は0.1°程度の見込み）。天気は反映していません</td></tr>
+          <tr><td>塵の堆積速度</td><td class="v">10 mg/m²/日</td><td class="s"><span class="tag assume">仮定</span> 室内の実測値は換気・人の出入り・場所で大きく変わるため要検証</td></tr>
+          <tr><td>一層分の塵</td><td class="v">6.7 g/m²</td><td class="s">直径10µm・密度1.0g/cm³の粒子が床を隙間なく一層覆う量</td></tr>
+          <tr><td>床の見え方</td><td class="v">1 − e<sup>−m/6.7</sup></td><td class="s">粒子がランダムに落ちるときの被覆率（ポアソン過程）</td></tr>
+          <tr><td>跡が見えなくなる</td><td class="v">差 &lt; 2%</td><td class="s"><span class="tag assume">仮定</span> 跡の内側と外側の被覆率の差が2%を下回った時点</td></tr>
+          <tr><td>指でなぞった跡</td><td class="v">幅 16mm</td><td class="s">なぞった部分の塵はすべて取り除かれるとみなす <span class="tag assume">仮定</span></td></tr>
+          <tr><td>塵の沈降</td><td class="v">v = (ρ−ρ<sub>air</sub>)gd²/18μ</td><td class="s">ストークスの式。直径10µmで約3mm/秒、1µmで約0.03mm/秒。宙を漂う動きの大半は空気の流れ</td></tr>
+          <tr><td>光の筋の境界</td><td class="v">約1cm/m</td><td class="s">太陽の視直径0.53°による半影。この画面ではほぼ鋭い縁になる</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>画面上の粒は、実際の大きさでは目に見えないため拡大して描いています。粒の動く速さと光の当たり方は計算どおりです。</p>
+  </div>
+</section>
+
+<script>
+(() => {
+  "use strict";
+
+  // ---- 設定 ----
+  const LAT = 35.68, LON = 139.77;
+  const EPOCH = Date.parse("1926-09-25T00:00:00+09:00");
+  const RATE = 0.010;        // g/m²/day（仮定）
+  const M0 = 6.7;            // g/m²：一層分
+  const THRESH = 0.02;       // 見えなくなる被覆率差
+  const DUST_ALPHA = 0.5;    // 被覆率1のときの塵の不透明度
+  const FINGER = 0.016;      // m
+  const FLOOR_W = 3.0;       // 画面の横幅が表す床の幅（m）
+  const WIN = { w: 1.2, z0: 0.8, z1: 2.0, frame: 0.04 };
+  const DAY = 86400000;
+  const R = Math.PI / 180;
+
+  const cover = (m) => 1 - Math.exp(-m / M0);
+  const massAt = (days) => RATE * Math.max(0, days);
+
+  // 跡が見えなくなるまでの日数（描いた時点の床の塵量から数値的に解く）
+  function fadeDays(tDrawn) {
+    const base = (tDrawn - EPOCH) / DAY;
+    let lo = 0, hi = 365.25 * 500;
+    for (let i = 0; i < 60; i++) {
+      const mid = (lo + hi) / 2;
+      const diff = cover(massAt(base + mid)) - cover(massAt(mid));
+      if (diff >= THRESH) lo = mid; else hi = mid;
+    }
+    return hi;
+  }
+
+  // ---- 太陽位置 ----
+  function sunPos(date) {
+    const n = date.getTime() / DAY + 2440587.5 - 2451545.0;
+    const L = (280.460 + 0.9856474 * n) % 360;
+    const g = (357.528 + 0.9856003 * n) * R;
+    const lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * R;
+    const eps = (23.439 - 0.0000004 * n) * R;
+    const ra = Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam));
+    const dec = Math.asin(Math.sin(eps) * Math.sin(lam));
+    const gmst = (18.697374558 + 24.06570982441908 * n) % 24;
+    const H = (gmst * 15 + LON) * R - ra;
+    const phi = LAT * R;
+    const alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
+    const az = Math.atan2(-Math.sin(H) * Math.cos(dec),
+      Math.sin(dec) * Math.cos(phi) - Math.cos(dec) * Math.sin(phi) * Math.cos(H));
+    return { alt, az: (az + 2 * Math.PI) % (2 * Math.PI) };
+  }
+
+  // 上から見た床。画面上端が南の壁（窓）。北が下なので東は画面の左。
+  // 光の水平方向：dx = sin(az), dy = −cos(az)
+  function beamGeometry(sun) {
+    if (sun.alt <= 0.5 * R) return null;
+    const dx = Math.sin(sun.az), dy = -Math.cos(sun.az);
+    if (dy <= 0.02) return null;               // 窓（南向き）に光が入らない
+    const t = 1 / Math.tan(sun.alt);
+    return { dx, dy, t, alt: sun.alt };
+  }
+
+  // ---- キャンバス ----
+  const cv = document.getElementById("room");
+  const ctx = cv.getContext("2d");
+  let W = 0, H = 0, dpr = 1, S = 1;           // S: px / m
+  let floorC, dustTex, dustLayer, sceneC;
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  const mk = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+  const toPx = (x, y) => [(x + FLOOR_W / 2) * S, y * S];   // x: 窓中心からの距離(m), y: 壁からの距離(m)
+  const toM = (px, py) => [px / S - FLOOR_W / 2, py / S];
+
+  // 決定論的な乱数（床の模様が毎回同じになるように）
+  function rng(seed) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+
+  function buildFloor() {
+    floorC = mk(W, H);
+    const c = floorC.getContext("2d");
+    const r = rng(7);
+    const board = 0.12 * S;
+    c.fillStyle = "#2a1e16";
+    c.fillRect(0, 0, W, H);
+    for (let x = -board * r(); x < W; x += board) {
+      const tone = 34 + r() * 16;
+      c.fillStyle = `hsl(${24 + r() * 8}, ${28 + r() * 10}%, ${tone * 0.42}%)`;
+      c.fillRect(x, 0, board - 1, H);
+      c.strokeStyle = "rgba(0,0,0,0.12)";
+      c.lineWidth = 1;
+      for (let k = 0; k < 9; k++) {
+        const gx = x + r() * board;
+        c.beginPath();
+        c.moveTo(gx, 0);
+        for (let y = 0; y <= H; y += 24) c.lineTo(gx + Math.sin(y * 0.01 + k) * 2 * r(), y);
+        c.stroke();
+      }
+      // 板の継ぎ目
+      let y = -r() * 1.8 * S;
+      while (y < H) {
+        y += (1.2 + r() * 1.2) * S;
+        c.fillStyle = "rgba(0,0,0,0.35)";
+        c.fillRect(x, y, board - 1, 1.5);
+      }
+      c.fillStyle = "rgba(0,0,0,0.5)";
+      c.fillRect(x + board - 1, 0, 1, H);
+    }
+  }
+
+  function buildDustTex() {
+    dustTex = mk(W, H);
+    const c = dustTex.getContext("2d");
+    c.fillStyle = "#b9b2a6";
+    c.fillRect(0, 0, W, H);
+    const img = c.getImageData(0, 0, W, H);
+    const d = img.data;
+    const r = rng(11);
+    for (let i = 0; i < d.length; i += 4) {
+      const n = (r() - 0.5) * 38;
+      d[i] += n; d[i + 1] += n; d[i + 2] += n * 0.9;
+    }
+    c.putImageData(img, 0, 0);
+    // 綿埃の固まり
+    for (let i = 0; i < W * H / 9000; i++) {
+      c.fillStyle = `rgba(215,208,196,${0.08 + r() * 0.12})`;
+      c.beginPath();
+      c.arc(r() * W, r() * H, 0.5 + r() * 1.6 * dpr, 0, Math.PI * 2);
+      c.fill();
+    }
+  }
+
+  function strokePath(c, pts) {
+    c.beginPath();
+    for (let i = 0; i < pts.length; i += 2) {
+      const [px, py] = toPx(pts[i], pts[i + 1]);
+      if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+    }
+    if (pts.length === 2) { const [px, py] = toPx(pts[0], pts[1]); c.lineTo(px + 0.1, py); }
+    c.stroke();
+  }
+
+  // 塵の層：床全体の被覆率で塗り、跡を古い順に「拭き取り → 経過分の塵を戻す」
+  function buildDust(now) {
+    dustLayer = dustLayer || mk(W, H);
+    const c = dustLayer.getContext("2d");
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, W, H);
+    const Cs = cover(massAt((now - EPOCH) / DAY));
+    c.globalCompositeOperation = "source-over";
+    c.globalAlpha = Cs * DUST_ALPHA;
+    c.drawImage(dustTex, 0, 0);
+    const pattern = c.createPattern(dustTex, "no-repeat");
+    c.lineCap = "round";
+    c.lineJoin = "round";
+    const list = visibleTraces(now);
+    for (const tr of list) {
+      const Ct = cover(massAt((now - tr.t) / DAY));
+      const w = FINGER * S;
+      // 指の縁：押しのけた塵が少し薄くなる
+      c.globalCompositeOperation = "destination-out";
+      c.globalAlpha = 0.35 * Math.max(0, 1 - Ct / Cs);
+      c.strokeStyle = "#000";
+      c.lineWidth = w * 1.7;
+      strokePath(c, tr.pts);
+      c.globalAlpha = 1;
+      c.lineWidth = w;
+      strokePath(c, tr.pts);
+      c.globalCompositeOperation = "source-over";
+      c.globalAlpha = Ct * DUST_ALPHA;
+      c.strokeStyle = pattern;
+      strokePath(c, tr.pts);
+    }
+    c.globalAlpha = 1;
+    c.globalCompositeOperation = "source-over";
+    if (current && current.pts.length) {
+      c.globalCompositeOperation = "destination-out";
+      c.strokeStyle = "#000";
+      c.lineWidth = FINGER * S * 1.7;
+      c.globalAlpha = 0.35;
+      strokePath(c, current.pts);
+      c.globalAlpha = 1;
+      c.lineWidth = FINGER * S;
+      strokePath(c, current.pts);
+      c.globalCompositeOperation = "source-over";
+    }
+    sceneC = sceneC || mk(W, H);
+    const s = sceneC.getContext("2d");
+    s.clearRect(0, 0, W, H);
+    s.drawImage(floorC, 0, 0);
+    s.drawImage(dustLayer, 0, 0);
+  }
+
+  // ---- 跡のデータ ----
+  let traces = [];          // {t, pts:[x,y,...]}（古い順）
+  let current = null;       // 描いている最中の跡
+  let myTrace = null;       // この訪問で残した跡
+  let dbTraces = null;      // db のコレクション参照
+
+  function visibleTraces(now) {
+    const all = myTrace && !traces.some((t) => t.t === myTrace.t) ? traces.concat([myTrace]) : traces;
+    return all.filter((tr) => now - tr.t < fadeDays(tr.t) * DAY).sort((a, b) => a.t - b.t);
+  }
+
+  function sanitize(d) {
+    if (!d || typeof d.t !== "number" || !Array.isArray(d.pts)) return null;
+    const pts = d.pts.slice(0, 800).filter((v) => typeof v === "number" && isFinite(v) && Math.abs(v) < 20);
+    if (pts.length < 2 || pts.length % 2) return null;
+    if (d.t > Date.now() + DAY || d.t < EPOCH) return null;
+    return { t: d.t, pts };
+  }
+
+  // ---- 塵の粒 ----
+  const AIR_MU = 1.81e-5, RHO = 1000, G = 9.81;
+  let motes = [];
+  function stokes(d) { return (RHO - 1.2) * G * d * d / (18 * AIR_MU); } // m/s
+  function spawnMote(m, r, anywhere) {
+    const D = H / S;
+    m.x = (r() - 0.5) * FLOOR_W;
+    m.y = r() * D;
+    m.z = anywhere ? r() * 2.4 : 2.4;
+    // 直径：1〜40µm（大きい粒ほど少ない）
+    m.d = 1e-6 * Math.exp(Math.log(1) + r() * Math.log(40));
+    m.vs = stokes(m.d);
+    m.ph = r() * Math.PI * 2;
+    m.tw = 0.6 + r() * 2.4;
+    return m;
+  }
+  function buildMotes() {
+    const r = rng(23);
+    const n = Math.round(Math.min(420, 90 * FLOOR_W * (H / S)));
+    motes = Array.from({ length: n }, () => spawnMote({}, r, true));
+    motes.rng = rng(99);
+  }
+  // 空気のゆっくりした対流（数cm/秒）
+  function flow(x, y, z, t) {
+    const a = 0.018, k = 1.3;
+    return [
+      a * Math.sin(k * y + 0.21 * t) + 0.6 * a * Math.sin(0.7 * z - 0.13 * t),
+      a * Math.cos(k * x - 0.17 * t) + 0.6 * a * Math.sin(0.9 * z + 0.11 * t),
+      0.5 * a * Math.sin(k * x + 0.9 * y + 0.07 * t),
+    ];
+  }
+  // 点が光の中にあるか：光線を窓までさかのぼる
+  function lit(x, y, z, bg) {
+    if (!bg) return false;
+    const s = y / bg.dy;
+    const zw = z + s * Math.tan(bg.alt);
+    const xw = x - bg.dx * s;
+    return zw > WIN.z0 && zw < WIN.z1 && Math.abs(xw) < WIN.w / 2;
+  }
+
+  // ---- 光の筋 ----
+  function panes() {
+    const f = WIN.frame, cx = [-WIN.w / 2, 0, WIN.w / 2], zm = (WIN.z0 + WIN.z1) / 2;
+    const zs = [WIN.z0, zm, WIN.z1];
+    const out = [];
+    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
+      out.push({ x0: cx[i] + f / 2, x1: cx[i + 1] - f / 2, z0: zs[j] + f / 2, z1: zs[j + 1] - f / 2 });
+    }
+    return out;
+  }
+  const PANES = panes();
+  function paneOnFloor(p, bg) {
+    const hit = (x, z) => toPx(x + bg.dx * z * bg.t, bg.dy * z * bg.t);
+    return [hit(p.x0, p.z0), hit(p.x1, p.z0), hit(p.x1, p.z1), hit(p.x0, p.z1)];
+  }
+
+  // ---- 描画 ----
+  let sun = sunPos(new Date()), bg = beamGeometry(sun);
+  let lastDust = 0, last = performance.now();
+
+  function ambientLevel() {
+    const s = Math.sin(sun.alt);
+    return Math.max(0.2, Math.min(0.58, 0.2 + s * 0.9));
+  }
+
+  function frame(tNow) {
+    const dt = Math.min(0.05, (tNow - last) / 1000);
+    last = tNow;
+    const now = Date.now();
+    if (now - lastDust > 60000) {
+      sun = sunPos(new Date());
+      bg = beamGeometry(sun);
+      buildDust(now);
+      lastDust = now;
+      updateMeta(now);
+    }
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = "source-over";
+    ctx.globalAlpha = 1;
+    ctx.drawImage(sceneC, 0, 0);
+    // 暗さ
+    const amb = ambientLevel();
+    ctx.fillStyle = sun.alt > 0 ? "rgb(10,11,14)" : "rgb(6,8,14)";
+    ctx.globalAlpha = 1 - amb;
+    ctx.fillRect(0, 0, W, H);
+    ctx.globalAlpha = 1;
+
+    if (bg) {
+      const strength = Math.min(1, Math.sin(bg.alt) * 4);
+      // 空中の光の筋（チンダル現象）：窓から床の光までをうっすら
+      ctx.save();
+      ctx.globalCompositeOperation = "lighter";
+      for (const p of PANES) {
+        const q = paneOnFloor(p, bg);
+        const a = toPx(p.x0, 0), b = toPx(p.x1, 0);
+        const grad = ctx.createLinearGradient(0, 0, 0, Math.max(q[2][1], 1));
+        grad.addColorStop(0, `rgba(242,215,166,${0.022 * strength})`);
+        grad.addColorStop(1, `rgba(242,215,166,${0.006 * strength})`);
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+        ctx.lineTo(q[2][0], q[2][1]); ctx.lineTo(q[3][0], q[3][1]);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.restore();
+      // 床の日だまり：明るいままの床を窓の形に切り抜いて重ねる
+      ctx.save();
+      ctx.beginPath();
+      for (const p of PANES) {
+        const q = paneOnFloor(p, bg);
+        ctx.moveTo(q[0][0], q[0][1]);
+        for (let i = 1; i < 4; i++) ctx.lineTo(q[i][0], q[i][1]);
+        ctx.closePath();
+      }
+      ctx.clip();
+      ctx.globalAlpha = 0.92 * strength;
+      ctx.drawImage(sceneC, 0, 0);
+      ctx.globalCompositeOperation = "soft-light";
+      ctx.fillStyle = `rgba(255,214,150,${0.55 * strength})`;
+      ctx.fillRect(0, 0, W, H);
+      ctx.globalCompositeOperation = "lighter";
+      ctx.globalAlpha = 0.08 * strength;
+      ctx.fillStyle = "#f2d7a6";
+      ctx.fillRect(0, 0, W, H);
+      ctx.restore();
+    }
+
+    // 塵の粒
+    const t = now / 1000;
+    const r = motes.rng;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    for (const m of motes) {
+      if (!reduceMotion) {
+        const [u, v, w] = flow(m.x, m.y, m.z, t);
+        m.x += u * dt; m.y += v * dt; m.z += (w - m.vs) * dt;
+        if (m.z < 0 || m.y < 0 || m.y > H / S || Math.abs(m.x) > FLOOR_W / 2) spawnMote(m, r, m.z >= 0);
+      }
+      const inBeam = lit(m.x, m.y, m.z, bg);
+      if (!inBeam) continue;
+      const [px, py] = toPx(m.x, m.y);
+      // 粒の向きで反射がまたたく
+      const glint = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(t * m.tw + m.ph), 3);
+      const size = (0.5 + Math.sqrt(m.d * 1e6) * 0.28) * dpr;
+      ctx.globalAlpha = Math.min(1, glint * 0.9);
+      ctx.fillStyle = "#fff1d8";
+      ctx.beginPath();
+      ctx.arc(px, py - m.z * 0.04 * S, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+    requestAnimationFrame(frame);
+  }
+
+  // ---- 表示 ----
+  const metaEl = document.getElementById("meta");
+  const msgEl = document.getElementById("message");
+  const pad = (n) => String(n).padStart(2, "0");
+  function fmtDate(ms) {
+    const d = new Date(ms + 9 * 3600000);
+    return `${d.getUTCFullYear()}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())}`;
+  }
+  function updateMeta(now) {
+    const d = new Date(now + 9 * 3600000);
+    const days = (now - EPOCH) / DAY;
+    const years = Math.floor(days / 365.2425);
+    const rem = Math.floor(days - years * 365.2425);
+    const alt = sun.alt / R, az = sun.az / R;
+    const count = visibleTraces(now).length;
+    metaEl.innerHTML =
+      `東京・南向きの窓 ${fmtDate(now)} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}<br>` +
+      `太陽 高度 <b>${alt.toFixed(1)}°</b> 方位 <b>${az.toFixed(1)}°</b>${bg ? "" : "（窓に光は入っていない）"}<br>` +
+      `閉ざされて <b>${years}年${rem}日</b> 床の塵 <b>${massAt(days).toFixed(0)} g/m²</b><br>` +
+      `見えている跡 <b>${count}</b>`;
+  }
+
+  function showResult(tr) {
+    const days = fadeDays(tr.t);
+    const years = days / 365.2425;
+    const until = tr.t + days * DAY;
+    msgEl.innerHTML =
+      `あなたの跡は約${years.toFixed(1)}年後、${fmtDate(until).slice(0, 7).replace(".", "年")}月ごろに塵に埋もれて見えなくなります。` +
+      `<small id="saveState">${dbTraces ? "保存中…" : "この環境では跡を共有できないため、この画面の中だけに残ります。"}</small>`;
+  }
+
+  // ---- 入力 ----
+  function pointerM(e) {
+    const rect = cv.getBoundingClientRect();
+    return toM((e.clientX - rect.left) * dpr, (e.clientY - rect.top) * dpr);
+  }
+  cv.addEventListener("pointerdown", (e) => {
+    if (myTrace) return;
+    cv.setPointerCapture(e.pointerId);
+    const [x, y] = pointerM(e);
+    current = { t: Date.now(), pts: [x, y] };
+    buildDust(Date.now());
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!current) return;
+    const [x, y] = pointerM(e);
+    const n = current.pts.length;
+    const lx = current.pts[n - 2], ly = current.pts[n - 1];
+    if (Math.hypot(x - lx, y - ly) < 0.006 || n >= 800) return;
+    current.pts.push(x, y);
+    buildDust(Date.now());
+  });
+  const finish = async () => {
+    if (!current) return;
+    const tr = { t: Date.now(), pts: current.pts.map((v) => Math.round(v * 10000) / 10000) };
+    current = null;
+    myTrace = tr;
+    cv.style.cursor = "default";
+    buildDust(Date.now());
+    updateMeta(Date.now());
+    showResult(tr);
+    if (!dbTraces) return;
+    const st = () => document.getElementById("saveState");
+    try {
+      await dbTraces.add({ t: tr.t, pts: tr.pts });
+      if (st()) st().textContent = "跡は保存されました。次にこの部屋を開いた人にも見えます。";
+    } catch (err) {
+      const code = err && err.code;
+      if (st()) st().textContent = code === "quota_exceeded"
+        ? "床が跡でいっぱいのため保存できませんでした。この画面の中だけに残ります。"
+        : "保存できませんでした。この画面の中だけに残ります。";
+    }
+  };
+  cv.addEventListener("pointerup", finish);
+  cv.addEventListener("pointercancel", finish);
+
+  const notes = document.getElementById("notes");
+  document.getElementById("openNotes").addEventListener("click", () => { notes.hidden = false; });
+  document.getElementById("close").addEventListener("click", () => { notes.hidden = true; });
+  addEventListener("keydown", (e) => { if (e.key === "Escape") notes.hidden = true; });
+
+  // ---- 初期化 ----
+  function resize() {
+    dpr = Math.min(2, window.devicePixelRatio || 1);
+    W = Math.round(innerWidth * dpr);
+    H = Math.round(innerHeight * dpr);
+    cv.width = W; cv.height = H;
+    S = W / FLOOR_W;
+    dustLayer = null; sceneC = null;
+    buildFloor();
+    buildDustTex();
+    buildMotes();
+    buildDust(Date.now());
+  }
+  let rt;
+  addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(resize, 150); });
+  resize();
+  updateMeta(Date.now());
+  lastDust = Date.now();
+  requestAnimationFrame(frame);
+
+  // 共有された跡を読み込む
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("db").then((db) => {
+      if (!db) return;
+      dbTraces = db.collection("traces");
+      dbTraces.orderBy("t", "desc").limit(1000).onSnapshot((snap) => {
+        traces = snap.docs.map((d) => sanitize(d.data())).filter(Boolean).reverse();
+        buildDust(Date.now());
+        updateMeta(Date.now());
+      }, () => {});
+    }).catch(() => {});
+  }
+})();
+</script>
