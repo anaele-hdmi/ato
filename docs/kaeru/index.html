@@ -726,6 +726,8 @@
     return Object.assign({}, rest, { grid, z, savedReal: Date.now() });
   }
   async function deserialize(o) {
+    // 保存領域から届くデータは凍結されている（書き換えできない）ので、まるごと複製して使う
+    o = JSON.parse(JSON.stringify(o));
     S = Object.assign(newState(), o);
     delete S.grid; delete S.z;
     try {
@@ -1459,6 +1461,7 @@
       `シェーダの準備: ${compileMs.toFixed(0)}ms`,
       `蓄積の値: 平均 ${pr.mean.toFixed(4)} NaN ${pr.nan} GLエラー ${pr.err}`,
       `バッファ: ${fbBroken ? "不完全" : "正常"} コンテキスト: ${gl.isContextLost() ? "失われた" : "正常"} 停止: ${losses}回${lost ? "（この表示中にも停止）" : ""} 軽量版: ${SAFE ? "はい" : "いいえ"}`,
+      `エラー: ${lastErr || "なし"}`,
       `光: ${light ? light.kind : "-"} E=${light ? light.E.map((v) => v.toFixed(2)).join(",") : "-"} 空=${light ? light.sky.map((v) => v.toFixed(2)).join(",") : "-"}`,
     ].join("\n");
   }
@@ -1691,11 +1694,22 @@
     gl.uniform3fv(u.uL, light.L); gl.uniform3fv(u.uE, light.E); gl.uniform3fv(u.uSky, light.sky);
     gl.uniform1f(u.uTanF, tanF);
   }
+  let lastErr = "";
   function frame(tp) {
+    try { frameBody(tp); }
+    catch (e) {
+      // 1つのエラーで描画全体が止まらないようにし、内容は診断に残す
+      if (!lastErr) console.error(e);
+      lastErr = `${e && e.message} @ ${(e && e.stack || "").split("\n")[1] || ""}`.trim();
+      frameNo++;
+    }
+    requestAnimationFrame(frame);
+  }
+  function frameBody(tp) {
     const dtMs = Math.min(200, tp - last);
     last = tp;
     const dt = dtMs / 1000;
-    if (lost) { requestAnimationFrame(frame); return; }
+    if (lost) return;
     // 端末の速さに合わせて解像度を上げ下げする
     if (frameNo > 20) {
       avgMs = avgMs * 0.95 + dtMs * 0.05;
@@ -1787,7 +1801,6 @@
     }
     gl.bindVertexArray(null);
     frameNo++;
-    requestAnimationFrame(frame);
   }
 
   // ================= 起動 =================
