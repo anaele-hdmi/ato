@@ -93,13 +93,12 @@
   .mhead b { font-family: var(--mono); font-weight: 500; font-size: 12px; color: var(--ink); white-space: nowrap; }
   .track { position: relative; height: 6px; border-radius: 99px; background: rgba(246,241,232,.1); }
   .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: linear-gradient(90deg, rgba(255,118,87,.5), var(--sun)); width: 0; }
-  .tick { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--mint); border-radius: 2px; box-shadow: 0 0 8px var(--mint); }
   .band { position: absolute; top: 0; bottom: 0; border-radius: 99px; background: rgba(99,240,191,.35); box-shadow: inset 0 0 0 1.5px var(--mint); }
   .needle { position: absolute; top: -4px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 10px var(--sun); transition: left .08s linear, background .2s; }
   .needle.ok { background: var(--mint); box-shadow: 0 0 14px var(--mint); }
   .needle.bad { background: var(--rose); box-shadow: 0 0 12px var(--rose); }
   #meter.coarse .band, #meter.coarse .needle { display: none; }
-  #meter:not(.coarse) .fill, #meter:not(.coarse) .tick { display: none; }
+  #meter:not(.coarse) .fill { display: none; }
 
   .row { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
   .lcol { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
@@ -204,7 +203,7 @@
 <div class="hud bottom">
   <section id="meter" class="card">
     <div class="mhead"><span id="mLabel">予測 近月点高度</span><b id="mValue">—</b></div>
-    <div class="track"><div class="fill" id="mFill"></div><div class="tick" id="mTick"></div><div class="band" id="mBand"></div><div class="needle" id="mNeedle"></div></div>
+    <div class="track"><div class="fill" id="mFill"></div><div class="band" id="mBand"></div><div class="needle" id="mNeedle"></div></div>
   </section>
   <div class="row">
     <div class="lcol">
@@ -1096,7 +1095,7 @@ const $ = id => document.getElementById(id);
 const ui = {
   step: $('stepPill'), mode: $('modePill'), title: $('objTitle'), hint: $('objHint'), cue: $('cue'), tele: $('tele'),
   next: $('next'), nextTxt: $('nextTxt'), head: $('objHead'), more: $('more'), skip: $('skipBtn'),
-  mLabel: $('mLabel'), mValue: $('mValue'), mBand: $('mBand'), mNeedle: $('mNeedle'), mFill: $('mFill'), mTick: $('mTick'), meter: $('meter'),
+  mLabel: $('mLabel'), mValue: $('mValue'), mBand: $('mBand'), mNeedle: $('mNeedle'), mFill: $('mFill'), meter: $('meter'),
   fuelBar: $('fuelBar'), wVal: $('wVal'),
   burn: $('burnBtn'), pad: $('pad'), padArea: $('padArea'), knob: $('knob'), pDv: $('pDv'), pT: $('pT'), exec: $('execBtn'), corr: $('corr'),
   toast: $('toast'), slow: $('slowTag'), modal: $('modal'), labels: $('labels'),
@@ -1598,7 +1597,7 @@ function nextAction() {
     const w = windowInfo();
     return [w && w.late ? '近月点を過ぎた！ 今すぐ『減速』を長押し' : `今！ 『${retro ? '減速' : '噴射'}』を長押し`, 'burn'];
   }
-  if (S.burn && S.burn.kind === 'main') return [S.slow ? '針が緑に入ったら 離す！' : '押し続けて… ゲージが満ちるまで', 'burn'];
+  if (S.burn && S.burn.kind === 'main') return [S.slow ? '針が緑に入ったら 離す！' : '押し続けて… スローになるまで離さない', 'burn'];
   if (S.auto) return S.auto.firing ? ['自動で噴射中…', 'none'] : ['点火を待っている（▶▶で進める）', 'skip'];
   if (mainAvailable()) return S.mode === 'B' ? ['パッドを上下に引いて針を緑へ → 噴射', 'pad'] : ['▶▶ で点火地点◎まで進める', 'skip'];
   const mt = metric(pred);
@@ -1652,10 +1651,11 @@ function updateHUD(w) {
   const coarse = S.burn && S.burn.kind === 'main' && !S.slow && !mt.ok;
   ui.meter.classList.toggle('coarse', !!coarse);
   if (coarse) {
-    const b = S.burn, f = Math.min(1, b.done / b.nom);
-    ui.mLabel.textContent = '噴射量（目安まで）';
-    ui.mValue.textContent = `${Math.round(b.done * 1000).toLocaleString('ja-JP')} / 約${Math.round(b.nom * 1000).toLocaleString('ja-JP')} m/s`;
-    ui.mFill.style.width = (f * 94) + '%'; ui.mTick.style.left = '94%';
+    // No target mark here: the stopping point only appears once the precision meter takes over.
+    const b = S.burn, f = Math.min(0.96, b.done / b.nom);
+    ui.mLabel.textContent = '押し続ける';
+    ui.mValue.textContent = `噴射量 ${Math.round(b.done * 1000).toLocaleString('ja-JP')} m/s`;
+    ui.mFill.style.width = (f * 100) + '%';
   } else {
     ui.mLabel.textContent = (src === plan ? '計画 ' : '') + mt.lab;
     ui.mValue.textContent = mt.val;
