@@ -993,12 +993,14 @@ ${sceneGLSL(sc)}
     }
     vec4 growth(vec3 p, vec3 n, out int surf) {
       surf = -1;
-      if (n.y > 0.5 && p.y < 0.01) { surf = 0; return texture(uGF, vec2((p.x + RX) / (2.0 * RX), (p.z - ZS) / (ZN - ZS))); }
-      if (n.z > 0.5 && p.z > ZS - 0.001 && p.z < ZS + 0.001) { surf = 1; return texture(uGS, vec2((p.x + RX) / (2.0 * RX), p.y / RH)); }
-      if (n.x > 0.5 && p.x < -RX + 0.001) { surf = 2; return texture(uGE, vec2((p.z - ZS) / (ZN - ZS), p.y / RH)); }
-      if (n.x < -0.5 && p.x > RX - 0.001) { surf = 3; return texture(uGW, vec2((p.z - ZS) / (ZN - ZS), p.y / RH)); }
+      if (n.y > 0.5 && p.y < 0.01) { surf = 0; return textureLod(uGF, vec2((p.x + RX) / (2.0 * RX), (p.z - ZS) / (ZN - ZS)), 0.0); }
+      if (n.z > 0.5 && p.z > ZS - 0.001 && p.z < ZS + 0.001) { surf = 1; return textureLod(uGS, vec2((p.x + RX) / (2.0 * RX), p.y / RH), 0.0); }
+      if (n.x > 0.5 && p.x < -RX + 0.001) { surf = 2; return textureLod(uGE, vec2((p.z - ZS) / (ZN - ZS), p.y / RH), 0.0); }
+      if (n.x < -0.5 && p.x > RX - 0.001) { surf = 3; return textureLod(uGW, vec2((p.z - ZS) / (ZN - ZS), p.y / RH), 0.0); }
       return vec4(0);
     }
+    // ループの中では自動のぼかし計算（勾配）が使えない環境があるため、距離から明示する
+    float gLod = 0.0;
     float cov(float c, float nz) { return smoothstep(nz - 0.12, nz + 0.12, c * 1.25); }
     vec3 albedo(vec3 p, vec3 n, int m, out float wet) {
       wet = 0.0;
@@ -1010,7 +1012,7 @@ ${sceneGLSL(sc)}
       if (m == 3) return vec3(0.07, 0.17, 0.045) * (0.8 + 0.4 * noise(p * 30.0));
       if (m == 4) return vec3(0.62, 0.53, 0.40) * (0.85 + 0.3 * noise(p * 90.0));
       vec3 a;
-      if (n.y > 0.5 && p.y < 0.01) a = pow(texture(uFloor, vec2((p.x + RX) / (2.0 * RX), (p.z - ZS) / (ZN - ZS))).rgb, vec3(2.2));
+      if (n.y > 0.5 && p.y < 0.01) a = pow(textureLod(uFloor, vec2((p.x + RX) / (2.0 * RX), (p.z - ZS) / (ZN - ZS)), gLod).rgb, vec3(2.2));
       else if (n.y < -0.5) a = vec3(0.40, 0.39, 0.37) * (0.92 + 0.12 * noise(p * 3.0));
       else {
         bool recess = p.z < ZS - 0.001;
@@ -1063,6 +1065,7 @@ ${sceneGLSL(sc)}
         vec3 p = ro + rd * h.t;
         vec3 n = h.n;
         float wet;
+        gLod = specChain ? log2(max(1.0, h.t * 2.0 * uTanF / uRes.y * 240.0)) : 3.0;
         vec3 a = albedo(p, n, h.m, wet);
         vec3 po = p + n * 1e-3;
         // 水たまり：鏡のような反射
@@ -1118,7 +1121,7 @@ ${sceneGLSL(sc)}
     vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
     void main() {
       vec2 uv = gl_FragCoord.xy / uRes;
-      vec3 c = texture(uAcc, uv).rgb;
+      vec3 c = textureLod(uAcc, uv, 0.0).rgb;
       vec3 b = vec3(0);
       vec2 asp = vec2(uRes.y / uRes.x, 1.0);
       for (int r = 0; r < 3; r++) {
@@ -1126,7 +1129,7 @@ ${sceneGLSL(sc)}
         float wt = r == 0 ? 0.5 : (r == 1 ? 0.3 : 0.2);
         for (int k = 0; k < 12; k++) {
           float a = float(k) * 0.5236 + float(r) * 0.9;
-          vec3 s = texture(uAcc, uv + vec2(cos(a), sin(a)) * rad * asp).rgb;
+          vec3 s = textureLod(uAcc, uv + vec2(cos(a), sin(a)) * rad * asp, 0.0).rgb;
           b += max(s - 0.9, 0.0) * wt / 12.0;
         }
       }
@@ -1858,6 +1861,7 @@ ${sceneGLSL(sc)}
     traceUniforms(traceP.u, W, H, acc[src], 1 / Math.min(samples + 1, maxN), t);
     gl.bindVertexArray(quadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (frameNo < 8 || frameNo % 300 === 0) { const ge = gl.getError(); if (ge) lastErr = `描画命令が拒否された（GL ${ge}）`; }
     samples++;
     ping = dst;
 
