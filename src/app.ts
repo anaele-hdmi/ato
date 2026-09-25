@@ -295,7 +295,7 @@ export class App {
     this.audio.update(frameA);
 
     const hudFade = 1 - smoothstep(6, 10, this.cam.idle) * env.terminal;
-    this.ui.update(c.season, c.seasonality, hudFade, env.year, c.exposure);
+    this.ui.update(dt, c.season, c.seasonality, hudFade, env.year, c.exposure, c.yearRate);
     const fc = shared.uFogColor.value;
     this.endTitle.update(dt, env.terminal, this.atmos.night < 0.3 && fc.r * 0.3 + fc.g * 0.59 + fc.b * 0.11 > 0.5);
 

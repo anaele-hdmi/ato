@@ -3,6 +3,7 @@
 // house's span thinning among them but never vanishing.
 import { DEEP_BASE_YEAR, DEEP_LOG_MAX, START_YEAR } from '../time/time-model';
 import { clamp } from '../util/rand';
+import { TimeTicks } from './ticks';
 
 // The span the first house stood. After it is gone this span is drawn to scale
 // against all the time since, so it thins to a hair.
@@ -65,6 +66,7 @@ export class Scrubber {
   private opacity = 1;
   private dpr = 1;
   private lastDrawYear = NaN;
+  private ticks: TimeTicks;
 
   constructor(parent: HTMLElement, private h: ScrubberHooks) {
     this.root = document.createElement('div');
@@ -75,6 +77,7 @@ export class Scrubber {
       <button class="btn mute" aria-label="sound"><svg viewBox="0 0 24 24" fill="currentColor"></svg></button>`;
     parent.appendChild(this.root);
     const scrub = this.root.querySelector('.scrub') as HTMLDivElement;
+    this.ticks = new TimeTicks(scrub, KNOB_FRAC);
     this.track = this.root.querySelector('.track') as HTMLDivElement;
     this.canvas = this.root.querySelector('.strata') as HTMLCanvasElement;
     this.ctx = this.canvas.getContext('2d', { alpha: true }) as CanvasRenderingContext2D;
@@ -120,6 +123,7 @@ export class Scrubber {
       this.canvas.height = height;
     }
     this.lastDrawYear = NaN; // force a redraw at the new size
+    this.ticks.layout(this.dpr);
   }
 
   // Draws the elapsed strata from START_YEAR up to the fixed playhead. Cheap: a
@@ -191,7 +195,8 @@ export class Scrubber {
     this.root.classList.remove('active');
   };
 
-  update(season: number, seasonality: number, fade: number, year: number, exposure: number): void {
+  update(dt: number, season: number, seasonality: number, fade: number, year: number, exposure: number, yearRate: number): void {
+    this.ticks.update(dt, year, yearRate);
     // Redraw only once the compressed past would visibly shift (roughly half a device px
     // at the playhead), so a slow crawl through deep time costs almost nothing per frame.
     const knobX = this.canvas.width * KNOB_FRAC;
