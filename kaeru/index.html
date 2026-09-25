@@ -144,7 +144,7 @@
   }
 </style>
 
-<canvas id="room" aria-label="窓から光が差す、100年閉ざされた部屋。植物が少しずつ部屋を覆っていく"></canvas>
+<canvas id="room" aria-label="窓から光が差す、長く閉ざされた部屋。植物が少しずつ部屋を覆っていく"></canvas>
 <div id="fallback" hidden></div>
 <div id="hint" hidden></div>
 
@@ -188,7 +188,7 @@
   <button class="b close" type="button" data-close="notes">閉じる</button>
   <div class="inner">
     <h2>しくみ</h2>
-    <p>1926年9月25日から閉ざされた部屋です。あなたにできるのは、窓を開けること、水をこぼすこと、椅子を動かすことだけです。何が育つかは、光と水と時間が決めます。部屋はあなただけのもので、閉じている間も時間は進みます（現実の1日が部屋の1年）。</p>
+    <p>長く閉ざされた部屋です。あなたにできるのは、窓を開けること、水をこぼすこと、椅子を動かすことだけです。何が育つかは、光と水と時間が決めます。部屋はあなただけのもので、閉じている間も時間は進みます（現実の1日が部屋の1年）。</p>
     <div class="tablewrap">
       <table>
         <thead><tr><th>項目</th><th>値</th><th>根拠</th></tr></thead>
@@ -217,7 +217,6 @@
 
   // ================= 定数 =================
   const LAT = 35.68, LON = 139.77;
-  const EPOCH = Date.parse("1926-09-25T00:00:00+09:00");
   const DAY = 86400000, YEAR = 365.2425 * DAY, R = Math.PI / 180;
   const RX = 2.1, RH = 2.7, ZS = -3.2, ZN = 3.6, WT = 0.22;
   const WIN = { x0: -1.0, x1: 0.2, y0: 0.8, y1: 2.1 };
@@ -454,7 +453,7 @@
     const r = mulberry(seed);
     const now = Date.now();
     return {
-      v: 1, seed, real: now, tau: now,
+      v: 1, seed, real: now, tau: now, tau0: now,
       simDay: Math.floor(now / DAY),
       windowOpen: false,
       chair: { x: -0.35 + r() * 0.6, z: -1.9 + r() * 0.7, fallen: false, rot: 0 },
@@ -720,6 +719,7 @@
     // 保存領域から届くデータは凍結されている（書き換えできない）ので、まるごと複製して使う
     o = JSON.parse(JSON.stringify(o));
     S = Object.assign(newState(), o);
+    if (!o.tau0) S.tau0 = o.tau;
     delete S.grid; delete S.z;
     try {
       let u = unb64(o.grid);
@@ -805,7 +805,7 @@ ${v.flat ? "#define FLAT 1" : ""}
     const float RX = ${RX.toFixed(3)}, RH = ${RH.toFixed(3)}, ZS = ${ZS.toFixed(3)}, ZN = ${ZN.toFixed(3)}, WT = ${WT.toFixed(3)};
     const float WX0 = ${WIN.x0.toFixed(3)}, WX1 = ${WIN.x1.toFixed(3)}, WY0 = ${WIN.y0.toFixed(3)}, WY1 = ${WIN.y1.toFixed(3)};
     const int MAXB = ${MAXB}, MAXF = ${MAXF}, MAXM = ${MAXM};
-    const int VOLS = ${v.vol ? (SAFE ? 1 : 2) : 0}, MAXBOUNCE = ${v.bounce && !SAFE ? 2 : 0};
+    const int VOLS = ${v.vol ? (SAFE ? 1 : 2) : 0}, MAXBOUNCE = ${v.bounce && !SAFE ? 1 : 0};
     const float PI = 3.14159265;
     const float SUNR = 0.00465;
     uniform vec3 uL, uE, uSky;
@@ -935,6 +935,19 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       return h;
     }
     bool escapes(vec3 ro, vec3 rd) { return trace(ro, rd).esc; }
+    // 光の筋と空の光の影は、壁・窓・箱だけで判定する（植物は省いて軽くする）
+    bool escapesFast(vec3 ro, vec3 rd) {
+      vec3 inv = safeInv(rd);
+      vec3 sn = vec3(0.0, 1.0, 0.0);
+      bool se = false;
+      float ts = shellT(ro, rd, inv, sn, se);
+      bool open = se;
+      for (int i = 0; i < NB; i++) {
+        vec3 n = vec3(0.0, 1.0, 0.0);
+        if (boxT(ro, inv, BMIN[i], BMAX[i], n) < ts) open = false;
+      }
+      return open;
+    }
     float hg(float c, float g) {
       float g2 = g * g;
       return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * c, 1.5));
@@ -968,8 +981,10 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
                  mix(mix(hash3(i + vec3(0,0,1)), hash3(i + vec3(1,0,1)), f.x), mix(hash3(i + vec3(0,1,1)), hash3(i + vec3(1,1,1)), f.x), f.y), f.z);
     }
     float dens(vec3 p) {
-      vec3 q = p * 1.5 + vec3(uTime * 0.010, -uTime * 0.005, uTime * 0.014);
-      float n = noise(q) * 0.55 + noise(q * 2.7 + 7.3) * 0.3 + noise(q * 7.1 + 1.7) * 0.15;
+      // 室内の対流（毎秒数cm）で流れる塵のむら。大きな渦と細かなゆらぎを別の向きに流す
+      vec3 q = p * 1.6 + vec3(uTime * 0.035, -uTime * 0.018, uTime * 0.045);
+      vec3 q2 = p * 6.5 + vec3(-uTime * 0.09, uTime * 0.05, uTime * 0.03);
+      float n = noise(q) * 0.5 + noise(q * 2.7 + 7.3) * 0.25 + noise(q2) * 0.25;
       return (0.35 + 1.9 * n * n * n + 0.3 * smoothstep(1.4, 0.0, p.y)) * (1.0 + uHum * 1.6);
     }
     vec3 skyL(vec3 d) {
@@ -992,7 +1007,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       float cosL = -d.z;
       float cosS = isVolume ? 1.0 / (4.0 * PI) : max(dot(n, d), 0.0);
       if (cosL <= 0.0 || cosS <= 0.0) return vec3(0);
-      if (!escapes(p, d)) return vec3(0);
+      if (!escapesFast(p, d)) return vec3(0);
       return skyL(d) * cosS * cosL * (WX1 - WX0) * (WY1 - WY0) / d2;
     }
     vec3 sunNEE(vec3 p, vec3 n, bool leaf) {
@@ -1064,7 +1079,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
             vec3 q = ro + rd * t;
             float sd = dens(q) * SIGS;
             vec3 s = vec3(0);
-            if (uE.x + uE.y + uE.z > 0.0) { vec3 d = sunDir(); if (escapes(q, d)) s += uE * ph; }
+            if (uE.x + uE.y + uE.z > 0.0) { vec3 d = sunDir(); if (escapesFast(q, d)) s += uE * ph; }
             acc += s * sd;
           }
           L += thr * acc * seg / float(max(VOLS, 1));
@@ -1181,17 +1196,17 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     void main() {
       vec3 v = aP.xyz - uCam;
       float z = dot(v, uCF);
-      bool lit = z > 0.15 && (uE.x + uE.y + uE.z) > 0.0 && escapes(aP.xyz, uL);
+      bool lit = z > 0.15 && (uE.x + uE.y + uE.z) > 0.0 && escapesFast(aP.xyz, uL);
       if (!lit) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vC = vec3(0); vB = 0.0; return; }
       gl_Position = vec4(dot(v, uCR) / (z * uTanF * uAspect), dot(v, uCU) / (z * uTanF), 0.0, 1.0);
-      float core = (0.6 + sqrt(aP.w) * 0.22) * uH / 900.0;
+      float core = (0.9 + sqrt(aP.w) * 0.3) * uH / 800.0;
       float coc = abs(z - 2.8) / z * uH * 0.02;
       float size = max(core, coc);
       gl_PointSize = size * 2.0 + 1.0;
       float phase = hg(dot(normalize(v), uL), 0.72);
       float glint = 0.2 + 0.8 * pow(0.5 + 0.5 * sin(uTime * (0.7 + fract(aPh * 7.1) * 2.4) + aPh), 6.0);
       vec3 tint = fract(aPh * 3.31) < uSpore * 0.5 ? vec3(0.75, 1.0, 0.55) : vec3(1.0);
-      vC = uE * tint * phase * glint * 0.09 * (core * core) / (size * size);
+      vC = uE * tint * phase * glint * 0.22 * (core * core) / (size * size);
       vB = clamp((coc - core) / (core * 2.0), 0.0, 1.0);
     }
   `;
@@ -1417,7 +1432,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
   }
 
   // ================= 塵と胞子の粒 =================
-  const AIR_MU = 1.81e-5, RHO = 1000, G = 9.81, NM = 900;
+  const AIR_MU = 1.81e-5, RHO = 1000, G = 9.81, NM = 1400;
   const mData = new Float32Array(NM * 4), mPh = new Float32Array(NM), mVs = new Float32Array(NM), mLife = new Float32Array(NM);
   const mr = lcg(23);
   let light = null;
@@ -1512,7 +1527,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
   function resize() {
     const cssW = innerWidth, cssH = innerHeight;
     let s = scale * Math.min(window.devicePixelRatio || 1, 1.25);
-    const maxPx = 1.2e6 * scale * scale;
+    const maxPx = 0.7e6 * scale * scale;
     if (cssW * cssH * s * s > maxPx) s = Math.sqrt(maxPx / (cssW * cssH));
     W = Math.max(2, Math.round(cssW * s)); H = Math.max(2, Math.round(cssH * s));
     cv.width = W; cv.height = H;
@@ -1727,9 +1742,9 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     if (!S) return;
     const w = light.weather;
     const wx = w.rain ? "雨" : w.cloudy ? "くもり" : "晴れ";
-    const years = Math.floor((S.tau - EPOCH) / YEAR);
+    const stay = (S.tau - S.tau0) / DAY;
     let lightLine = light.kind === "lamp" ? "夜 街灯の明かり" : light.lit ? (light.kind === "sun" ? `日差し ${(light.sun.alt / R).toFixed(0)}°` : "月明かり") : "窓に直射なし";
-    metaEl.innerHTML = `部屋の暦 ${fmtDate(S.tau)} ${fmtTime(S.tau)} ${wx}<br>閉ざされて ${years}年 ${lightLine}<br>湿り気 ${Math.round(hum * 100)}%${S.windowOpen ? " 窓は開いている" : ""}`;
+    metaEl.innerHTML = `部屋の暦 ${fmtDate(S.tau)} ${fmtTime(S.tau)} ${wx}<br>この部屋に来て ${fmtSpan(stay)} ${lightLine}<br>湿り気 ${Math.round(hum * 100)}%${S.windowOpen ? " 窓は開いている" : ""}`;
   }
   function renderLog() {
     if (!S) return;
@@ -1937,8 +1952,8 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     // 端末の速さに合わせて解像度を上げ下げする
     if (frameNo > 20) {
       avgMs = avgMs * 0.95 + dtMs * 0.05;
-      if (avgMs > 65 && scale > 0.3 && tp - lastScale > 1500) { scale = Math.max(0.3, scale * 0.8); lastScale = tp; lastDown = tp; resize(); }
-      else if (avgMs < 24 && scale < 1 && tp - lastScale > 6000 && tp - lastDown > 20000) { scale = Math.min(1, scale * 1.15); lastScale = tp; resize(); }
+      if (avgMs > 40 && scale > 0.3 && tp - lastScale > 1500) { scale = Math.max(0.3, scale * 0.8); lastScale = tp; lastDown = tp; resize(); }
+      else if (avgMs < 20 && scale < 0.85 && tp - lastScale > 6000 && tp - lastDown > 30000) { scale = Math.min(0.85, scale * 1.12); lastScale = tp; resize(); }
     }
     if (S) {
       // 部屋の時間を進める
@@ -1966,7 +1981,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     gl.viewport(0, 0, W, H);
     gl.disable(gl.BLEND);
     gl.useProgram(traceP.p);
-    const maxN = speed === 0 ? 200 : 90;
+    const maxN = speed === 0 ? 70 : 60;
     traceUniforms(traceP.u, W, H, acc[src], 1 / Math.min(samples + 1, maxN), t);
     if (frameNo - builtAt < 4) gl.getError();
     gl.bindVertexArray(quadVAO);
@@ -2046,7 +2061,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     } else {
       S = newState();
       seedSurfaces();
-      addLog(S.tau, "1926年から閉ざされた部屋。窓の外では、季節がめぐっている。");
+      addLog(S.tau, "閉ざされた部屋。窓の外では、季節がめぐっている。");
       hintEl.hidden = false;
       hintEl.textContent = "ドラッグで見回す・ピンチで歩く・ダブルタップで戻る";
       setTimeout(() => { if (!mode) hintEl.hidden = true; }, 7000);
