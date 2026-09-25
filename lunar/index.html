@@ -52,91 +52,98 @@
   .lbl i { width: 9px; height: 9px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; flex: none; transform: translateX(-4.5px); }
   .lbl.body { font-family: var(--pop); font-weight: 400; font-size: 12px; letter-spacing: .08em; color: var(--ink2); }
   .lbl.body i { display: none; }
-  .lbl.win { color: var(--sun); }
+  .lbl.win { color: var(--sun); margin-top: 20px; }
   .lbl.win i { width: 14px; height: 14px; background: none; border: 3px solid currentColor; transform: translateX(-7px); animation: ping 1.1s ease-out infinite; }
   @keyframes ping { 0% { box-shadow: 0 0 0 0 rgba(255,211,122,.7);} 100% { box-shadow: 0 0 0 14px rgba(255,211,122,0);} }
 
-  .hud { position: fixed; left: 0; right: 0; pointer-events: none; padding-inline: 12px; }
+  .hud { position: fixed; left: 0; right: 0; pointer-events: none; padding-inline: 10px; }
   .hud > * { pointer-events: auto; }
-  .top { top: 0; padding-top: calc(10px + env(safe-area-inset-top, 0px)); display: flex; gap: 8px; align-items: flex-start; }
   .card {
     background: var(--glass); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-    border: 1px solid var(--line); border-radius: 18px;
+    border: 1px solid var(--line); border-radius: 14px;
   }
-  #obj { flex: 1 1 auto; min-width: 0; padding: 10px 12px 11px; }
-  .pills { display: flex; gap: 6px; align-items: center; margin-bottom: 5px; }
-  .pill { font-family: var(--mono); font-size: 10px; letter-spacing: .06em; padding: 2px 8px; border-radius: 99px; background: rgba(246,241,232,.1); color: var(--ink2); }
+  .top { top: 0; padding-top: calc(8px + env(safe-area-inset-top, 0px)); display: flex; gap: 6px; align-items: flex-start; }
+  #obj { flex: 1 1 auto; min-width: 0; overflow: hidden; position: relative; }
+  #objHead { width: 100%; display: flex; align-items: center; gap: 7px; padding: 7px 10px 2px; text-align: left; }
+  .pill { font-family: var(--mono); font-size: 10px; padding: 1px 7px; border-radius: 99px; background: rgba(246,241,232,.1); color: var(--ink2); flex: none; }
   .pill.step { background: var(--coral); color: #1b0d08; font-weight: 700; }
-  #objTitle { margin: 0; font-family: var(--pop); font-weight: 400; font-size: 17px; line-height: 1.25; text-wrap: balance; }
-  #objHint { margin: 4px 0 0; font-size: 12.5px; line-height: 1.5; color: var(--ink2); }
-  #cue { margin-top: 7px; font-family: var(--mono); font-size: 12px; color: var(--sun); display: flex; gap: 8px; align-items: center; }
-  #cue.now { color: #1b1204; background: var(--sun); border-radius: 10px; padding: 3px 8px; font-weight: 700; animation: pulse .6s ease-in-out infinite alternate; }
-  @keyframes pulse { from { transform: scale(1);} to { transform: scale(1.04);} }
-  .side { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; }
-  #tele { padding: 8px 10px; font-family: var(--mono); font-size: 10.5px; line-height: 1.65; color: var(--ink2); font-variant-numeric: tabular-nums; min-width: 128px; }
-  #tele b { color: var(--ink); font-weight: 500; float: right; margin-left: 10px; }
-  .iconrow { display: flex; gap: 6px; }
-  .ib { width: 38px; height: 38px; border-radius: 13px; display: grid; place-items: center; font-size: 15px; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-  .ib svg { width: 18px; height: 18px; stroke: var(--ink); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+  #objTitle { flex: 1; min-width: 0; font-family: var(--pop); font-size: 13.5px; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #objHead .chev { flex: none; font-size: 10px; color: var(--ink3); transition: transform .2s; }
+  #objHead[aria-expanded="true"] .chev { transform: rotate(180deg); }
+  #next { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 2px 10px 8px; font-size: 12.5px; font-weight: 700; color: var(--ink); }
+  #next.act #nextTxt { color: var(--sun); }
+  #next.now { background: var(--sun); color: #1b1204; }
+  #next.now #nextTxt { color: #1b1204; }
+  #nextTxt { min-width: 0; }
+  #cue { flex: none; font-family: var(--mono); font-size: 11px; font-weight: 500; color: var(--ink2); }
+  #next.now #cue { color: #1b1204; }
+  #more { padding: 0 10px 9px; border-top: 1px solid var(--line); }
+  #objHint { margin: 7px 0 6px; font-size: 12px; line-height: 1.55; color: var(--ink2); }
+  #tele { display: grid; grid-template-columns: 1fr 1fr; gap: 1px 12px; font-family: var(--mono); font-size: 10.5px; line-height: 1.6; color: var(--ink2); font-variant-numeric: tabular-nums; }
+  #tele b { color: var(--ink); font-weight: 500; float: right; }
+  #fuelLine { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: rgba(246,241,232,.08); }
+  #fuelLine span { display: block; height: 100%; background: linear-gradient(90deg, var(--coral), var(--sun)); transform-origin: left; }
+  .iconcol { flex: 0 0 auto; display: flex; flex-direction: column; gap: 6px; }
+  .ib { width: 38px; height: 34px; border-radius: 11px; display: grid; place-items: center; background: var(--glass); border: 1px solid var(--line); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); font-family: var(--pop); font-size: 11px; color: var(--ink2); }
+  .ib svg { width: 16px; height: 16px; stroke: var(--ink); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
-  #meter { padding: 8px 12px 9px; }
-  .mhead { display: flex; justify-content: space-between; align-items: baseline; font-size: 11.5px; color: var(--ink2); margin-bottom: 6px; gap: 8px; }
-  .mhead b { font-family: var(--mono); font-weight: 500; font-size: 13px; color: var(--ink); white-space: nowrap; }
-  .track { position: relative; height: 10px; border-radius: 99px; background: rgba(246,241,232,.1); overflow: visible; }
+  .bottom { bottom: 0; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 6px; }
+  #meter { padding: 6px 10px 8px; }
+  .mhead { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--ink2); margin-bottom: 5px; gap: 8px; }
+  .mhead b { font-family: var(--mono); font-weight: 500; font-size: 12px; color: var(--ink); white-space: nowrap; }
+  .track { position: relative; height: 6px; border-radius: 99px; background: rgba(246,241,232,.1); }
+  .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 99px; background: linear-gradient(90deg, rgba(255,118,87,.5), var(--sun)); width: 0; }
+  .tick { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: var(--mint); border-radius: 2px; box-shadow: 0 0 8px var(--mint); }
   .band { position: absolute; top: 0; bottom: 0; border-radius: 99px; background: rgba(99,240,191,.35); box-shadow: inset 0 0 0 1.5px var(--mint); }
-  .needle { position: absolute; top: -4px; width: 18px; height: 18px; margin-left: -9px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 12px var(--sun); transition: left .08s linear, background .2s; }
-  .needle.ok { background: var(--mint); box-shadow: 0 0 16px var(--mint); }
-  .needle.bad { background: var(--rose); box-shadow: 0 0 14px var(--rose); }
-  .mends { display: flex; justify-content: space-between; font-family: var(--mono); font-size: 9.5px; color: var(--ink3); margin-top: 4px; }
+  .needle { position: absolute; top: -4px; width: 14px; height: 14px; margin-left: -7px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 10px var(--sun); transition: left .08s linear, background .2s; }
+  .needle.ok { background: var(--mint); box-shadow: 0 0 14px var(--mint); }
+  .needle.bad { background: var(--rose); box-shadow: 0 0 12px var(--rose); }
+  #meter.coarse .band, #meter.coarse .needle { display: none; }
+  #meter:not(.coarse) .fill, #meter:not(.coarse) .tick { display: none; }
 
-  #focus { position: fixed; right: 12px; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; gap: 6px; }
-  #focus button { width: 46px; height: 44px; border-radius: 15px; background: var(--glass); border: 1px solid var(--line); font-family: var(--pop); font-size: 12px; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); color: var(--ink2); }
-  #focus button[aria-pressed="true"] { background: var(--ink); color: var(--void); }
-
-  .bottom { bottom: 0; padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 8px; }
-  .fuel { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); padding: 0 4px; }
-  .fuel .bar { flex: 1; height: 6px; border-radius: 99px; background: rgba(246,241,232,.12); overflow: hidden; }
-  .fuel .bar span { display: block; height: 100%; width: 100%; background: linear-gradient(90deg, var(--coral), var(--sun)); border-radius: 99px; transform-origin: left; }
-  .row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
-  .warp { display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 18px; }
-  .warp button { width: 40px; height: 44px; border-radius: 14px; font-size: 20px; font-family: var(--pop); }
+  .row { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
+  .lcol { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  #skipBtn { height: 38px; padding: 0 14px; border-radius: 12px; background: var(--ink); color: var(--void); font-family: var(--pop); font-size: 13px; white-space: nowrap; }
+  #skipBtn:disabled { opacity: .35; }
+  .warp { display: flex; align-items: center; border-radius: 12px; }
+  .warp button { width: 34px; height: 32px; border-radius: 10px; font-size: 17px; font-family: var(--pop); }
   .warp button:active { background: rgba(246,241,232,.12); }
-  .warp .wv { min-width: 64px; text-align: center; font-family: var(--mono); font-size: 13px; line-height: 1.2; }
-  .warp .wv small { display: block; font-size: 9.5px; color: var(--ink3); }
-  .warp .wv small.cap { color: var(--sun); }
+  #wVal { min-width: 58px; text-align: center; font-family: var(--mono); font-size: 11.5px; }
+  #wVal.cap { color: var(--sun); }
 
   #burnBtn {
-    width: 104px; height: 104px; border-radius: 50%;
+    width: 84px; height: 84px; border-radius: 50%; flex: none;
     background: radial-gradient(circle at 38% 32%, #ffa58c, var(--coral) 55%, #d9482c);
-    box-shadow: 0 10px 30px rgba(255,118,87,.35), inset 0 -6px 12px rgba(0,0,0,.2);
-    font-family: var(--pop); font-size: 18px; color: #2a0d05; line-height: 1.15;
-    transition: transform .12s, filter .2s;
-    touch-action: none;
+    box-shadow: 0 8px 24px rgba(255,118,87,.35), inset 0 -5px 10px rgba(0,0,0,.2);
+    font-family: var(--pop); font-size: 16px; color: #2a0d05; line-height: 1.1;
+    transition: transform .12s, filter .2s; touch-action: none;
   }
-  #burnBtn small { display: block; font-family: var(--body); font-weight: 700; font-size: 10.5px; opacity: .75; }
-  #burnBtn.retro { background: radial-gradient(circle at 38% 32%, #a8e2ff, var(--sky) 55%, #2a8fd0); box-shadow: 0 10px 30px rgba(95,196,255,.35), inset 0 -6px 12px rgba(0,0,0,.2); color: #04192a; }
+  #burnBtn small { display: block; font-family: var(--body); font-weight: 700; font-size: 9.5px; opacity: .75; }
+  #burnBtn.retro { background: radial-gradient(circle at 38% 32%, #a8e2ff, var(--sky) 55%, #2a8fd0); box-shadow: 0 8px 24px rgba(95,196,255,.35), inset 0 -5px 10px rgba(0,0,0,.2); color: #04192a; }
   #burnBtn.on { transform: scale(.92); filter: brightness(1.2); }
   #burnBtn:disabled { filter: grayscale(1) brightness(.5); }
+  .attn { animation: attn 1s ease-out infinite; }
+  @keyframes attn { 0% { box-shadow: 0 0 0 0 rgba(255,211,122,.8); } 100% { box-shadow: 0 0 0 16px rgba(255,211,122,0); } }
 
-  #corr { display: grid; grid-template-columns: repeat(2, 46px); gap: 6px; padding: 6px; border-radius: 18px; }
-  #corr button { height: 40px; border-radius: 12px; background: rgba(246,241,232,.08); font-size: 11.5px; font-weight: 700; touch-action: none; }
+  #corr { display: grid; grid-template-columns: repeat(2, 42px); gap: 5px; padding: 5px; border-radius: 14px; }
+  #corr button { height: 34px; border-radius: 10px; background: rgba(246,241,232,.08); font-size: 11.5px; font-weight: 700; touch-action: none; }
   #corr button.on { background: var(--sky); color: #04192a; }
-  #corr .t { grid-column: 1 / -1; font-size: 9.5px; text-align: center; color: var(--ink3); letter-spacing: .08em; }
+  #corr .t { grid-column: 1 / -1; font-size: 9px; text-align: center; color: var(--ink3); letter-spacing: .08em; }
 
-  #pad { flex: 1; min-width: 0; padding: 8px; border-radius: 18px; display: flex; flex-direction: column; gap: 6px; }
+  #pad { flex: 1; min-width: 0; max-width: 250px; padding: 6px; border-radius: 14px; display: flex; flex-direction: column; gap: 5px; }
   #padArea {
-    position: relative; height: 96px; border-radius: 13px; touch-action: none;
+    position: relative; height: 64px; border-radius: 10px; touch-action: none;
     background:
-      linear-gradient(rgba(246,241,232,.07) 1px, transparent 1px) 0 0/100% 16px,
-      linear-gradient(90deg, rgba(246,241,232,.07) 1px, transparent 1px) 0 0/16px 100%,
+      linear-gradient(rgba(246,241,232,.07) 1px, transparent 1px) 0 0/100% 12px,
+      linear-gradient(90deg, rgba(246,241,232,.07) 1px, transparent 1px) 0 0/12px 100%,
       rgba(0,0,0,.25);
     overflow: hidden;
   }
-  #padArea .knob { position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; margin: -15px 0 0 -15px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 18px var(--sun); }
-  #padArea .ax { position: absolute; font-size: 9.5px; color: var(--ink3); }
-  #padVals { display: flex; justify-content: space-between; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--ink2); }
+  #padArea .knob { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 14px var(--sun); }
+  #padArea .ax { position: absolute; font-size: 9px; color: var(--ink3); }
+  #padVals { display: flex; justify-content: space-between; gap: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); }
   #padVals b { color: var(--ink); font-weight: 500; }
-  #execBtn { height: 42px; border-radius: 13px; background: var(--sun); color: #231704; font-family: var(--pop); font-size: 15px; }
+  #execBtn { height: 34px; border-radius: 10px; background: var(--sun); color: #231704; font-family: var(--pop); font-size: 13px; }
   #execBtn:disabled { filter: grayscale(1) brightness(.55); }
 
   #toast {
@@ -169,7 +176,7 @@
   .stars .off { color: rgba(246,241,232,.18); text-shadow: none; }
   .howto { margin: 10px 0 0; padding-left: 1.2em; font-size: 12.5px; line-height: 1.75; color: var(--ink2); }
   #boot { position: fixed; inset: 0; display: grid; place-items: center; font-family: var(--mono); font-size: 12px; color: var(--ink3); pointer-events: none; }
-  @media (prefers-reduced-motion: reduce) { .lbl.win i, #cue.now { animation: none; } #toast { transition: opacity .2s; } }
+  @media (prefers-reduced-motion: reduce) { .lbl.win i, .attn { animation: none; } #toast { transition: opacity .2s; } }
 </style>
 </head>
 <body>
@@ -179,43 +186,38 @@
 
 <div class="hud top">
   <section id="obj" class="card" aria-live="polite">
-    <div class="pills"><span class="pill step" id="stepPill">1 / 5</span><span class="pill" id="modePill">長押し</span></div>
-    <h1 id="objTitle">月へ向けて加速</h1>
-    <p id="objHint"></p>
-    <div id="cue" hidden></div>
-  </section>
-  <div class="side">
-    <div id="tele" class="card"></div>
-    <div class="iconrow">
-      <button class="ib" id="muteBtn" aria-label="音のオンオフ"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path id="muteWave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
-      <button class="ib" id="menuBtn" aria-label="メニュー"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
+    <button id="objHead" aria-expanded="false"><span class="pill step" id="stepPill">1/5</span><span id="objTitle">月へ向けて加速</span><span class="pill" id="modePill">A</span><span class="chev">▼</span></button>
+    <div id="next"><span id="nextTxt"></span><span id="cue"></span></div>
+    <div id="more" hidden>
+      <p id="objHint"></p>
+      <div id="tele"></div>
     </div>
+    <div id="fuelLine"><span id="fuelBar"></span></div>
+  </section>
+  <div class="iconcol">
+    <button class="ib" id="viewBtn" aria-label="視点を切り替える">地球</button>
+    <button class="ib" id="muteBtn" aria-label="音のオンオフ"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path id="muteWave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
+    <button class="ib" id="menuBtn" aria-label="メニュー"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
   </div>
 </div>
-
-<nav id="focus" aria-label="視点">
-  <button data-f="all" aria-pressed="false">全体</button>
-  <button data-f="earth" aria-pressed="true">地球</button>
-  <button data-f="ship" aria-pressed="false">船</button>
-  <button data-f="moon" aria-pressed="false">月</button>
-</nav>
 
 <div class="hud bottom">
   <section id="meter" class="card">
     <div class="mhead"><span id="mLabel">予測 近月点高度</span><b id="mValue">—</b></div>
-    <div class="track"><div class="band" id="mBand"></div><div class="needle" id="mNeedle"></div></div>
-    <div class="mends"><span id="mLo"></span><span id="mHi"></span></div>
+    <div class="track"><div class="fill" id="mFill"></div><div class="tick" id="mTick"></div><div class="band" id="mBand"></div><div class="needle" id="mNeedle"></div></div>
   </section>
-  <div class="fuel"><span>Δv</span><div class="bar"><span id="fuelBar"></span></div><span id="fuelTxt">5,500 m/s</span></div>
   <div class="row">
-    <div class="warp card">
-      <button id="wDown" aria-label="時間を遅く">−</button>
-      <div class="wv"><span id="wVal">×1</span><small id="wCap">時間加速</small></div>
-      <button id="wUp" aria-label="時間を速く">+</button>
+    <div class="lcol">
+      <button id="skipBtn">▶▶ 次へ</button>
+      <div class="warp card">
+        <button id="wDown" aria-label="時間を遅く">−</button>
+        <span id="wVal">×1</span>
+        <button id="wUp" aria-label="時間を速く">+</button>
+      </div>
     </div>
     <button id="burnBtn">噴射<small>長押し</small></button>
     <section id="pad" class="card" hidden>
-      <div id="padArea"><span class="ax" style="left:8px;top:6px">↑ Δv多く</span><span class="ax" style="right:8px;bottom:6px">→ 遅く点火</span><div class="knob" id="knob"></div></div>
+      <div id="padArea"><span class="ax" style="left:6px;top:4px">↑ Δv多く</span><span class="ax" style="right:6px;bottom:4px">→ 遅く点火</span><div class="knob" id="knob"></div></div>
       <div id="padVals"><span>Δv <b id="pDv">—</b></span><span>点火 <b id="pT">—</b></span></div>
       <button id="execBtn">この計画で噴射</button>
     </section>
@@ -466,9 +468,15 @@ function windowInfo() {
     const a = Math.atan2(s[1], s[0]) + n * (t - S.t);
     return { t, x: r * Math.cos(a), y: r * Math.sin(a), frame: 'earth' };
   }
-  if (S.stage === 'loi' && !S.main.loi && pred.pm && pred.pm.t > S.t - 20) {
-    const dvn = loiNominal();
-    return { t: pred.pm.t - dvn / THR / 2, x: pred.pm.x, y: pred.pm.y, frame: 'moon', mt: pred.pm.t };
+  if (S.stage === 'loi' && !S.main.loi) {
+    if (pred.pm && pred.pm.t > S.t - 20) {
+      const dvn = loiNominal();
+      return { t: pred.pm.t - dvn / THR / 2, x: pred.pm.x, y: pred.pm.y, frame: 'moon', mt: pred.pm.t };
+    }
+    // Past the periselene already (moving away from the Moon): braking now still captures, just less efficiently.
+    const d = dominant(S.s, S.t);
+    if (d.moon && d.rx * d.vx + d.ry * d.vy > 0) return { t: S.t, x: S.s[0], y: S.s[1], frame: 'moon', mt: S.t, late: true };
+    return null;
   }
   if (S.stage === 'tei' && !S.main.tei && S.captured) {
     const w = teiIgnition(true);
@@ -484,7 +492,7 @@ function loiNominal() {
 }
 
 // ---------- prediction ----------
-const pred = { n: 0, x: new Float64Array(8000), y: new Float64Array(8000), t: new Float64Array(8000), events: [], pm: null, crash: false, entry: null, peAlt: null, burnIdx: -1 };
+const pred = { n: 0, x: new Float64Array(8000), y: new Float64Array(8000), vx: new Float64Array(8000), vy: new Float64Array(8000), t: new Float64Array(8000), events: [], pm: null, crash: false, entry: null, peAlt: null, burnIdx: -1 };
 let predDirty = true, planDirty = true;
 const _pk = [0, 0];
 
@@ -492,13 +500,16 @@ const _pk = [0, 0];
 function predict(from, plan, out) {
   const s = from.s.slice(); let t = from.t;
   const th0 = S.th0;
-  out.n = 0; out.moonEl = null; out.ca = null; out.events = []; out.pm = null; out.crash = false; out.entry = null; out.peAlt = null; out.burnIdx = -1; out.maxg = 0; out.skip = false; out.splash = false; out.soiIn = null;
+  out.n = 0; out.moonEl = null; out.ca = null; out.events = []; out.pm = null; out.crash = false; out.entry = null; out.peAlt = null; out.burnIdx = -1; out.maxg = 0; out.skip = false; out.splash = false; out.soiIn = null; out.soiOut = null;
   let prevRM = Infinity, prevVrE = null, prevVrM = null, ang = 0, prevA = null, prevDom = null;
   let entered = false, burnDone = 0, firing = false;
+  // Seed the approach direction from the start state so a periselene inside the first step is not missed.
+  { const m = moonAt(t, th0), rx = s[0] - m[0], ry = s[1] - m[1]; if (Math.hypot(rx, ry) < SOI && !plan) prevVrM = (rx * (s[2] - m[2]) + ry * (s[3] - m[3])) / Math.hypot(rx, ry); }
   const MAXN = out.x.length - 1;
   const tv = [0, 0];
   for (let i = 0; i < 7000 && out.n < MAXN; i++) {
     let h = stepSize(s, t, th0, 0.03, firing, 1.0);
+    { const mm = moonAt(t, th0); if (Math.hypot(s[0] - mm[0], s[1] - mm[1]) < SOI) h = Math.min(h, stepSize(s, t, th0, 0.012, firing, 1.0)); }
     if (plan) {
       if (!firing && burnDone === 0) { const dt = plan.tIgn - t; if (dt <= 1e-6) { firing = true; out.burnIdx = out.n; h = Math.min(h, 0.5); } else h = Math.min(h, dt); }
       if (firing) { h = Math.min(h, 0.5, (plan.dv - burnDone) / THR); }
@@ -506,7 +517,7 @@ function predict(from, plan, out) {
     if (firing) thrustVec(plan.dir, s, t, THR, tv); else { tv[0] = 0; tv[1] = 0; }
     const g = rk4(s, t, h, th0, tv[0], tv[1]); t += h;
     if (firing) { burnDone += THR * h; if (burnDone >= plan.dv - 1e-9) firing = false; }
-    const k = out.n++; out.x[k] = s[0]; out.y[k] = s[1]; out.t[k] = t;
+    const k = out.n++; out.x[k] = s[0]; out.y[k] = s[1]; out.vx[k] = s[2]; out.vy[k] = s[3]; out.t[k] = t;
     const m = moonAt(t, th0);
     const rE = Math.hypot(s[0], s[1]), rx = s[0] - m[0], ry = s[1] - m[1], rM = Math.hypot(rx, ry);
     const alt = rE - RE;
@@ -522,10 +533,16 @@ function predict(from, plan, out) {
     // Moon closest approach inside its sphere of influence.
     const vrM = (rx * (s[2] - m[2]) + ry * (s[3] - m[3])) / rM;
     if (rM < SOI && prevVrM !== null && prevVrM < 0 && vrM >= 0 && !out.pm) {
-      out.pm = { t, x: s[0], y: s[1], r: rM, alt: rM - RM, v: Math.hypot(s[2] - m[2], s[3] - m[3]) };
-      out.events.push({ k: 'pm', t, x: s[0], y: s[1], alt: rM - RM });
+      // Interpolate the turn-around inside the step so the burn timing is not off by a whole step.
+      const f = -prevVrM / (vrM - prevVrM);
+      const t0 = k > 0 ? out.t[k - 1] : from.t, x0 = k > 0 ? out.x[k - 1] : from.s[0], y0 = k > 0 ? out.y[k - 1] : from.s[1];
+      const tp = t0 + (t - t0) * f, xp = x0 + (s[0] - x0) * f, yp = y0 + (s[1] - y0) * f, mp = moonAt(tp, th0);
+      const rp = Math.hypot(xp - mp[0], yp - mp[1]);
+      out.pm = { t: tp, x: xp, y: yp, r: rp, alt: rp - RM, v: Math.hypot(s[2] - m[2], s[3] - m[3]) * rM / rp };
+      out.events.push({ k: 'pm', t: tp, x: xp, y: yp, alt: rp - RM });
     }
     if (rM < SOI && prevRM >= SOI && !out.soiIn) { out.soiIn = { t }; }
+    if (rM >= SOI && prevRM < SOI && !out.soiOut) { out.soiOut = { t }; }
     prevVrM = vrM;
     // Vacuum perigee, read inside 80,000 km where the Moon no longer bends the path.
     if (out.peAlt === null && rE < 80000 && rM > SOI) {
@@ -725,7 +742,8 @@ const atmMat = new THREE.ShaderMaterial({
       float mu=dot(rd,uSun); float g=0.76;
       float pR=0.0597*(1.0+mu*mu);
       float pM=0.1194*((1.0-g*g)*(1.0+mu*mu))/((2.0+g*g)*pow(1.0+g*g-2.0*g*mu,1.5));
-      vec3 col=11.0*(sR*BR*pR+sM*BM*pM*0.6);
+      vec3 col=9.0*(sR*BR*pR+sM*BM*pM*0.22);
+      col=col/(1.0+0.35*col);
       gl_FragColor=vec4(col,1.0);
     }`,
   side: THREE.BackSide, transparent: true, depthWrite: false, depthTest: false,
@@ -918,7 +936,8 @@ const soiRing = (() => {
 })();
 
 // ---------- post ----------
-const composer = new EffectComposer(renderer);
+// Post-processing bypasses the canvas MSAA, so the composer gets its own multisampled target.
+const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(1, 1, { type: THREE.HalfFloatType, samples: 4 }));
 const bgPass = new RenderPass(bgScene, bgCam);
 const mainPass = new RenderPass(scene, camera);
 mainPass.clear = false; mainPass.clearDepth = true;
@@ -963,14 +982,16 @@ function setFocus(f, keepDist) {
   const cur = cam.target.clone();
   cam.focus = f; focusPos(f, tmpV); cam.off.copy(cur).sub(tmpV);
   if (!keepDist) cam.distT = f === 'all' ? fitAll() : DIST[f][2];
-  document.querySelectorAll('#focus button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.f === f)));
+  document.getElementById('viewBtn').textContent = FOCUS_NAME[f];
   predDirty = planDirty = true;
 }
-document.querySelectorAll('#focus button').forEach(b => b.addEventListener('click', () => { sfx.tick(); setFocus(b.dataset.f); }));
+const FOCUS_ORDER = ['all', 'earth', 'ship', 'moon'], FOCUS_NAME = { all: '全体', earth: '地球', ship: '船', moon: '月' };
+function cycleFocus() { setFocus(FOCUS_ORDER[(FOCUS_ORDER.indexOf(cam.focus) + 1) % FOCUS_ORDER.length]); }
+document.getElementById('viewBtn').addEventListener('click', () => { sfx.tick(); cycleFocus(); });
 {
   const pts = new Map(); let pinch = 0, lastTap = 0;
   canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) pinch = pdist(); audioInit();
-    const now = performance.now(); if (pts.size === 1 && now - lastTap < 280) { const order = ['all', 'earth', 'ship', 'moon']; setFocus(order[(order.indexOf(cam.focus) + 1) % 4]); } lastTap = now; });
+    const now = performance.now(); if (pts.size === 1 && now - lastTap < 280) { cycleFocus(); } lastTap = now; });
   canvas.addEventListener('pointermove', e => {
     const p = pts.get(e.pointerId); if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y; p.x = e.clientX; p.y = e.clientY;
@@ -1048,16 +1069,20 @@ function audioInit() { sfx.init(); }
 const $ = id => document.getElementById(id);
 const ui = {
   step: $('stepPill'), mode: $('modePill'), title: $('objTitle'), hint: $('objHint'), cue: $('cue'), tele: $('tele'),
-  mLabel: $('mLabel'), mValue: $('mValue'), mBand: $('mBand'), mNeedle: $('mNeedle'), mLo: $('mLo'), mHi: $('mHi'), meter: $('meter'),
-  fuelBar: $('fuelBar'), fuelTxt: $('fuelTxt'), wVal: $('wVal'), wCap: $('wCap'),
+  next: $('next'), nextTxt: $('nextTxt'), head: $('objHead'), more: $('more'), skip: $('skipBtn'),
+  mLabel: $('mLabel'), mValue: $('mValue'), mBand: $('mBand'), mNeedle: $('mNeedle'), mFill: $('mFill'), mTick: $('mTick'), meter: $('meter'),
+  fuelBar: $('fuelBar'), wVal: $('wVal'),
   burn: $('burnBtn'), pad: $('pad'), padArea: $('padArea'), knob: $('knob'), pDv: $('pDv'), pT: $('pT'), exec: $('execBtn'), corr: $('corr'),
   toast: $('toast'), slow: $('slowTag'), modal: $('modal'), labels: $('labels'),
 };
 let toastTimer = 0;
 function toast(msg, ms = 1800) { ui.toast.textContent = msg; ui.toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => ui.toast.classList.remove('show'), ms); }
 
-$('wUp').addEventListener('click', () => { S.warpIdx = Math.min(WARPS.length - 1, S.warpIdx + 1); sfx.tick(); });
-$('wDown').addEventListener('click', () => { S.warpIdx = Math.max(0, S.warpIdx - 1); sfx.tick(); });
+$('wUp').addEventListener('click', () => { S.warpIdx = Math.min(WARPS.length - 1, S.warpIdx + 1); S.skip = false; sfx.tick(); });
+ui.head.addEventListener('click', () => { const open = ui.more.hidden; ui.more.hidden = !open; ui.head.setAttribute('aria-expanded', String(open)); sfx.tick(); });
+// Skip: run at full speed until the next thing that matters; event caps still slow the approach.
+ui.skip.addEventListener('click', () => { audioInit(); const t = nextEvent(); if (t === null) { toast('しばらく何も起きない'); return; } S.skip = true; S.skipT = t; sfx.pop(); });
+$('wDown').addEventListener('click', () => { S.warpIdx = Math.max(0, S.warpIdx - 1); S.skip = false; sfx.tick(); });
 $('muteBtn').addEventListener('click', () => { audioInit(); const on = sfx.toggle(); $('muteWave').style.opacity = on ? 1 : 0.15; });
 $('menuBtn').addEventListener('click', () => { sfx.tick(); openMenu(); });
 
@@ -1066,8 +1091,9 @@ function mainAvailable() { const d = STAGES[S.stage].dir; return !!d && !S.main[
 ui.burn.addEventListener('pointerdown', e => {
   e.preventDefault(); audioInit();
   if (S.mode !== 'A' || !mainAvailable() || S.burn) return;
-  ui.burn.setPointerCapture(e.pointerId);
-  S.burn = { kind: 'main', dir: STAGES[S.stage].dir, a: THR, stage: S.stage };
+  try { ui.burn.setPointerCapture(e.pointerId); } catch (_) {}
+  S.burn = { kind: 'main', dir: STAGES[S.stage].dir, a: THR, stage: S.stage, done: 0, nom: S.stage === 'tli' ? DV_NOM.tli : S.stage === 'loi' ? loiNominal() : DV_NOM.tei };
+  S.skip = false; S._fine = false;
   ui.burn.classList.add('on'); sfx.pop();
 });
 function endMainBurn() {
@@ -1084,7 +1110,7 @@ ui.burn.addEventListener('lostpointercapture', endMainBurn);
 
 // Correction thrusters: small, held.
 ui.corr.querySelectorAll('button').forEach(b => {
-  const start = e => { e.preventDefault(); audioInit(); if (S.over || S.fuel <= 0 || (S.burn && S.burn.kind === 'main') || S.auto) return; b.setPointerCapture(e.pointerId); S.burn = { kind: 'corr', dir: b.dataset.d, a: THR_CORR }; b.classList.add('on'); };
+  const start = e => { e.preventDefault(); audioInit(); if (S.over || S.fuel <= 0 || (S.burn && S.burn.kind === 'main') || S.auto) return; try { b.setPointerCapture(e.pointerId); } catch (_) {} S.burn = { kind: 'corr', dir: b.dataset.d, a: THR_CORR }; b.classList.add('on'); };
   const end = () => { if (S.burn && S.burn.kind === 'corr') { S.burn = null; predDirty = true; } b.classList.remove('on'); };
   b.addEventListener('pointerdown', start); b.addEventListener('pointerup', end); b.addEventListener('pointercancel', end); b.addEventListener('lostpointercapture', end);
 });
@@ -1099,7 +1125,7 @@ function defaultPlan() {
 }
 {
   let last = null;
-  ui.padArea.addEventListener('pointerdown', e => { e.preventDefault(); audioInit(); if (!S.plan) S.plan = defaultPlan(); if (!S.plan) return; ui.padArea.setPointerCapture(e.pointerId); last = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+  ui.padArea.addEventListener('pointerdown', e => { e.preventDefault(); audioInit(); if (!S.plan) S.plan = defaultPlan(); if (!S.plan) return; try { ui.padArea.setPointerCapture(e.pointerId); } catch (_) {} last = { x: e.clientX, y: e.clientY, t: performance.now() }; });
   ui.padArea.addEventListener('pointermove', e => {
     if (!last || !S.plan) return;
     const now = performance.now(), dx = e.clientX - last.x, dy = e.clientY - last.y, dt = Math.max(1, now - last.t);
@@ -1138,9 +1164,10 @@ function openStart() {
     <p class="sub">LUNAR FREE FLIGHT · 地球 ⇄ 月</p>
     <p>高度200 kmの地球周回から月へ行き、月を回って帰ってくる。噴射は各段階で1回だけ。実際の物理で飛ぶ（表示は見やすく縮めてある）。</p>
     <ol class="howto">
-      <li>金色の◎で噴射。下のメーターの緑の帯に針を入れる</li>
-      <li>1本指で回転、2本指で拡大縮小、ダブルタップで視点切替</li>
-      <li>＋−で時間加速。大事な場面の手前では自動でゆっくりになる</li>
+      <li>上の1行が「次にやること」。光っているボタンを使う</li>
+      <li>『▶▶ 次へ』で次の場面まで早送り。点火地点では自動で止まる</li>
+      <li>噴射中は下のゲージを見る。針が緑に入ったら離す</li>
+      <li>1本指で回転、2本指で拡大縮小、右上のボタンで視点切替</li>
     </ol>
     ${modeOpts()}
     <button class="go" id="goBtn">はじめる</button>
@@ -1208,7 +1235,7 @@ function openResult(kind) {
   $('stageBtn').addEventListener('click', openStages);
 }
 function applyMode() {
-  ui.mode.textContent = S.mode === 'A' ? '長押し' : '引っ張り';
+  ui.mode.textContent = S.mode;
   S.plan = null; S.auto = null; planDirty = true;
 }
 
@@ -1265,8 +1292,7 @@ function place(el, v3, text, color) {
 
 // ---------- main loop helpers ----------
 function effWarp(burnB) {
-  let w = WARPS[S.warpIdx];
-  const d = dominant(S.s, S.t);
+  let w = S.skip ? WARPS[WARPS.length - 1] : WARPS[S.warpIdx];
   const rE = Math.hypot(S.s[0], S.s[1]);
   const m = moonAt(S.t, S.th0), rM = Math.hypot(S.s[0] - m[0], S.s[1] - m[1]);
   const T = Math.min(2 * Math.PI * Math.sqrt(rE ** 3 / MUE), 2 * Math.PI * Math.sqrt(rM ** 3 / MUM));
@@ -1306,6 +1332,21 @@ function nearTarget() {
   return mt.pos > lo - 0.12 && mt.pos < hi + 0.12;
 }
 
+function nextEvent() {
+  const c = [];
+  if (mainAvailable() && !S.auto) { const w = windowInfo(); if (w) c.push(w.t); }
+  if (S.auto && !S.auto.firing) c.push(S.auto.tIgn);
+  if (pred.soiIn && S.stage === 'coast') c.push(pred.soiIn.t);
+  if (pred.soiOut && S.stage === 'tei' && S.main.tei) c.push(pred.soiOut.t);
+  if (pred.entry && S.stage === 'ret') c.push(pred.entry.t);
+  const f = c.filter(t => t > S.t + 0.5);
+  return f.length ? Math.min(...f) : null;
+}
+// Hold the clock at a burn window until the player acts (mode A presses, mode B executes a plan).
+function holdGap() {
+  if (!mainAvailable() || S.burn || S.auto || S.over) return null;
+  const w = windowInfo(); return w ? w.t - S.t : null;
+}
 function currentBurn() {
   if (S.auto) {
     if (!S.auto.firing && S.t >= S.auto.tIgn - 1e-6) { S.auto.firing = true; sfx.pop(); }
@@ -1332,6 +1373,7 @@ function advance(dtSim) {
     if (b) {
       const dv = b.a * h; S.fuel = Math.max(0, S.fuel - dv);
       if (b.kind === 'corr') S.corr += dv;
+      if (S.burn && S.burn.kind === 'main') S.burn.done += dv;
       if (S.auto && S.auto.firing) { S.auto.done += dv; if (S.auto.done >= S.auto.dv - 1e-7) { finishAuto(); } }
       if (S.fuel <= 0 && S.burn) { S.burn = null; toast('燃料切れ'); }
     }
@@ -1389,7 +1431,7 @@ function runPredict() {
   predDirty = false;
   buildPredLine(pred, predLine, true);
 }
-const plan = { n: 0, x: new Float64Array(8000), y: new Float64Array(8000), t: new Float64Array(8000), events: [] };
+const plan = { n: 0, x: new Float64Array(8000), y: new Float64Array(8000), vx: new Float64Array(8000), vy: new Float64Array(8000), t: new Float64Array(8000), events: [] };
 function runPlan() {
   planDirty = false;
   if (S.mode !== 'B' || !S.plan || !mainAvailable() || S.auto) { planLine.visible = false; return; }
@@ -1401,22 +1443,36 @@ const C_A = new THREE.Color(), C_B = new THREE.Color();
 // Build the display-space polyline; in the Moon frame points are taken relative to the Moon at their own time.
 function buildPredLine(p, line, colored) {
   const mf = frameMoon(), mNow = moonAt(S.t, S.th0);
-  const n = p.n, stride = Math.max(1, Math.ceil(n / 2500));
+  const n = p.n, stride = Math.max(1, Math.ceil(n / 1200));
   const pos = [], col = [];
   const mt = colored ? metric(p) : null;
   const tip = mt && mt.ok ? new THREE.Color(0.35, 1.0, 0.72) : mt && mt.bad ? new THREE.Color(1.0, 0.3, 0.45) : new THREE.Color(1.0, 0.42, 0.3);
   C_A.set(1.0, 0.86, 0.5);
   const base = mf ? moonCenter(mNow) : [0, 0];
-  for (let i = 0; i < n; i += stride) {
-    let x = p.x[i], y = p.y[i];
-    let mx, my;
-    if (mf) { const m = moonAt(p.t[i], S.th0); x = x - m[0] + mNow[0]; y = y - m[1] + mNow[1]; mx = mNow[0]; my = mNow[1]; }
-    else { const m = moonAt(p.t[i], S.th0); mx = m[0]; my = m[1]; }
+  const push = (x, y, t, u) => {
+    const m = moonAt(t, S.th0);
+    let mx = m[0], my = m[1];
+    if (mf) { x = x - m[0] + mNow[0]; y = y - m[1] + mNow[1]; mx = mNow[0]; my = mNow[1]; }
     dispXY(x, y, mx, my, _d2);
     pos.push(_d2[0] - base[0], 0, -(_d2[1] - base[1]));
-    const u = i / Math.max(1, n - 1);
-    C_B.copy(C_A).lerp(tip, Math.pow(u, 0.8)).multiplyScalar(colored ? 1.25 - 0.55 * u : 0.8);
+    C_B.copy(C_A).lerp(tip, Math.pow(u, 0.8)).multiplyScalar(colored ? 1.15 - 0.5 * u : 0.8);
     col.push(C_B.r, C_B.g, C_B.b);
+  };
+  // Cubic Hermite between samples (positions + velocities) so long steps still draw as smooth arcs.
+  const SUB = 4;
+  let i0 = 0;
+  push(p.x[0], p.y[0], p.t[0], 0);
+  while (i0 < n - 1) {
+    const i1 = Math.min(n - 1, i0 + stride), dt = p.t[i1] - p.t[i0];
+    const x0 = p.x[i0], y0 = p.y[i0], x1 = p.x[i1], y1 = p.y[i1];
+    const ax = p.vx[i0] * dt, ay = p.vy[i0] * dt, bx = p.vx[i1] * dt, by = p.vy[i1] * dt;
+    for (let k = 1; k <= SUB; k++) {
+      const u = k / SUB, u2 = u * u, u3 = u2 * u;
+      const h00 = 2 * u3 - 3 * u2 + 1, h10 = u3 - 2 * u2 + u, h01 = -2 * u3 + 3 * u2, h11 = u3 - u2;
+      const t = p.t[i0] + dt * u;
+      push(h00 * x0 + h10 * ax + h01 * x1 + h11 * bx, h00 * y0 + h10 * ay + h01 * y1 + h11 * by, t, (i0 + (i1 - i0) * u) / Math.max(1, n - 1));
+    }
+    i0 = i1;
   }
   line.userData.mf = mf;
   setLine(line, pos, col);
@@ -1481,56 +1537,82 @@ function hint() {
   return '';
 }
 let hudT = 0;
+function nextAction() {
+  const st = S.stage, retro = STAGES[st].dir === 'retro';
+  if (S.over) return ['', 'none'];
+  if (S.holding) {
+    if (S.mode === 'B') return ['今！ パッドで量を決めて『噴射』', 'pad'];
+    const w = windowInfo();
+    return [w && w.late ? '近月点を過ぎた！ 今すぐ『減速』を長押し' : `今！ 『${retro ? '減速' : '噴射'}』を長押し`, 'burn'];
+  }
+  if (S.burn && S.burn.kind === 'main') return [S.slow ? '針が緑に入ったら 離す！' : '押し続けて… ゲージが満ちるまで', 'burn'];
+  if (S.auto) return S.auto.firing ? ['自動で噴射中…', 'none'] : ['点火を待っている（▶▶で進める）', 'skip'];
+  if (mainAvailable()) return S.mode === 'B' ? ['パッドを上下に引いて針を緑へ → 噴射', 'pad'] : ['▶▶ で点火地点◎まで進める', 'skip'];
+  const mt = metric(pred);
+  if (st === 'coast') return mt.ok ? ['▶▶ で月まで進める（約4日）', 'skip'] : ['修正噴射で針を緑へ（小刻みに）', 'corr'];
+  if (st === 'loi') return ['修正噴射『後』で月に捕まる', 'corr'];
+  if (st === 'tei') return mt.ok || !mt.band ? ['▶▶ で月を離れる', 'skip'] : ['修正噴射で針を緑へ', 'corr'];
+  if (st === 'ret') return mt.ok ? ['▶▶ で地球まで進める', 'skip'] : ['修正噴射『外』『内』で針を緑へ', 'corr'];
+  if (st === 'entry') return [`再突入中… ${S.g.toFixed(1)} G`, 'none'];
+  return ['', 'none'];
+}
 function updateHUD(w) {
   const st = STAGES[S.stage];
-  ui.step.textContent = `${st.n} / 5`;
+  ui.step.textContent = `${st.n}/5`;
   ui.title.textContent = st.title;
-  ui.hint.textContent = hint();
-  // Countdown to the window.
-  const wi = mainAvailable() && S.mode === 'A' && !S.burn ? windowInfo() : null;
+  if (!ui.more.hidden) ui.hint.textContent = hint();
   const au = S.auto;
   if (au && !au.firing && au.tIgn - S.t > 20) { const w2 = windowInfo(); if (w2) au.tIgn = Math.max(S.t + 1, w2.t + au.shift); }
-  if (au) {
-    ui.cue.hidden = false; ui.cue.classList.toggle('now', au.firing);
-    ui.cue.textContent = au.firing ? `自動噴射中 ${Math.round(au.done * 1000)} / ${Math.round(au.dv * 1000)} m/s` : `点火まで ${fmtDur(au.tIgn - S.t)}`;
-  } else if (wi) {
-    const dt = wi.t - S.t; ui.cue.hidden = false;
-    const now = dt < 3 && dt > -25;
-    ui.cue.classList.toggle('now', now);
-    ui.cue.textContent = now ? '今！ 噴射を長押し' : `◎ 点火まで ${fmtDur(dt)}`;
-    if (now && !S._cued) { S._cued = true; sfx.alert(); }
-    if (!now) S._cued = false;
-  } else ui.cue.hidden = true;
 
-  const d = dominant(S.s, S.t);
-  const el = elements(d.rx, d.ry, d.vx, d.vy, d.mu);
-  const alt = d.r - d.R, v = Math.hypot(d.vx, d.vy);
-  ui.tele.innerHTML = `<div>${fmtMET(S.t)}</div>
-    <div>基準<b>${d.moon ? '月' : '地球'}</b></div>
-    <div>高度<b>${fmtKm(alt)}</b></div>
-    <div>速度<b>${(v).toFixed(3)} km/s</b></div>
-    <div>${d.moon ? '近月点' : '近地点'}<b>${fmtKm(el.rp - d.R)}</b></div>
-    <div>${d.moon ? '遠月点' : '遠地点'}<b>${el.en < 0 ? fmtKm(el.ra - d.R) : '脱出'}</b></div>
-    ${S.stage === 'entry' ? `<div>G<b>${S.g.toFixed(1)}</b></div>` : ''}`;
+  const [txt, target] = nextAction();
+  ui.nextTxt.textContent = txt;
+  ui.next.classList.toggle('now', S.holding || (S.burn && S.burn.kind === 'main' && S.slow));
+  ui.next.classList.toggle('act', target !== 'none');
+  let cue = '';
+  if (au && !au.firing) cue = `点火まで ${fmtDur(au.tIgn - S.t)}`;
+  else if (au && au.firing) cue = `${Math.round(au.done * 1000)}/${Math.round(au.dv * 1000)} m/s`;
+  else if (!S.holding && mainAvailable() && !S.burn) { const wi = windowInfo(); if (wi) cue = `◎まで ${fmtDur(wi.t - S.t)}`; }
+  else if (!S.holding && !mainAvailable()) { const t = nextEvent(); if (t !== null) cue = `あと ${fmtDur(t - S.t)}`; }
+  ui.cue.textContent = cue;
+  for (const [el, k] of [[ui.burn, 'burn'], [ui.skip, 'skip'], [ui.corr, 'corr'], [ui.exec, 'pad']]) el.classList.toggle('attn', target === k);
+  if (S.holding && !S._heldAlert) { S._heldAlert = true; sfx.alert(); }
+  if (!S.holding) S._heldAlert = false;
+  ui.skip.disabled = S.holding || !!S.burn || S.stage === 'entry' || nextEvent() === null;
+  ui.skip.textContent = S.skip ? '▶▶ 進行中' : '▶▶ 次へ';
 
+  if (!ui.more.hidden) {
+    const d = dominant(S.s, S.t);
+    const el = elements(d.rx, d.ry, d.vx, d.vy, d.mu);
+    const alt = d.r - d.R, v = Math.hypot(d.vx, d.vy);
+    ui.tele.innerHTML = `<div>時刻<b>${fmtMET(S.t).slice(3)}</b></div><div>基準<b>${d.moon ? '月' : '地球'}</b></div>
+      <div>高度<b>${fmtKm(alt)}</b></div><div>速度<b>${v.toFixed(3)}</b></div>
+      <div>${d.moon ? '近月点' : '近地点'}<b>${fmtKm(el.rp - d.R)}</b></div><div>${d.moon ? '遠月点' : '遠地点'}<b>${el.en < 0 ? fmtKm(el.ra - d.R) : '脱出'}</b></div>
+      <div>残りΔv<b>${Math.round(S.fuel * 1000).toLocaleString('ja-JP')}</b></div><div>G<b>${S.g.toFixed(1)}</b></div>`;
+  }
   ui.fuelBar.style.transform = `scaleX(${S.fuel / FUEL0})`;
-  ui.fuelTxt.textContent = Math.round(S.fuel * 1000).toLocaleString('ja-JP') + ' m/s';
-  ui.wVal.textContent = '×' + (w.eff >= 1 ? Math.round(w.eff).toLocaleString('ja-JP') : w.eff.toFixed(2));
-  ui.wCap.textContent = S.slow ? 'スロー' : w.capped ? `自動減速（設定 ×${WARPS[S.warpIdx].toLocaleString('ja-JP')}）` : '時間加速';
-  ui.wCap.classList.toggle('cap', w.capped || S.slow);
+  ui.wVal.textContent = S.holding ? '停止中' : S.slow ? 'スロー' : '×' + (w.eff >= 1 ? Math.round(w.eff).toLocaleString('ja-JP') : w.eff.toFixed(2));
+  ui.wVal.classList.toggle('cap', w.capped || S.slow || S.holding || S.skip);
 
   const src = S.mode === 'B' && S.plan && !S.auto ? plan : pred;
   const mt = metric(src);
-  ui.mLabel.textContent = (src === plan ? '計画 ' : '') + mt.lab;
-  ui.mValue.textContent = mt.val;
-  const sc = SCALES[mt.scale];
-  if (mt.band) {
-    const lo = scalePos(mt.scale, mt.band.lo), hi = scalePos(mt.scale, mt.band.hi);
-    ui.mBand.style.left = (lo * 100) + '%'; ui.mBand.style.width = Math.max(1.5, (hi - lo) * 100) + '%';
+  // While the main burn is far from the target, show how much has been burned against the rough need, so progress is visible.
+  const coarse = S.burn && S.burn.kind === 'main' && !S.slow && !mt.ok;
+  ui.meter.classList.toggle('coarse', !!coarse);
+  if (coarse) {
+    const b = S.burn, f = Math.min(1, b.done / b.nom);
+    ui.mLabel.textContent = '噴射量（目安まで）';
+    ui.mValue.textContent = `${Math.round(b.done * 1000).toLocaleString('ja-JP')} / 約${Math.round(b.nom * 1000).toLocaleString('ja-JP')} m/s`;
+    ui.mFill.style.width = (f * 94) + '%'; ui.mTick.style.left = '94%';
+  } else {
+    ui.mLabel.textContent = (src === plan ? '計画 ' : '') + mt.lab;
+    ui.mValue.textContent = mt.val;
+    if (mt.band) {
+      const lo = scalePos(mt.scale, mt.band.lo), hi = scalePos(mt.scale, mt.band.hi);
+      ui.mBand.style.left = (lo * 100) + '%'; ui.mBand.style.width = Math.max(1.5, (hi - lo) * 100) + '%';
+    }
+    ui.mNeedle.style.left = (mt.pos * 100) + '%';
+    ui.mNeedle.classList.toggle('ok', !!mt.ok); ui.mNeedle.classList.toggle('bad', !!mt.bad);
   }
-  ui.mNeedle.style.left = (mt.pos * 100) + '%';
-  ui.mNeedle.classList.toggle('ok', !!mt.ok); ui.mNeedle.classList.toggle('bad', !!mt.bad);
-  ui.mLo.textContent = sc.lt; ui.mHi.textContent = sc.ht;
   if (mt.ok && !S._wasOk && (S.burn || S.auto)) sfx.ok();
   S._wasOk = !!mt.ok;
 
@@ -1572,8 +1654,13 @@ function frame(now) {
 
   const b0 = currentBurn();
   const w = effWarp(b0);
+  S.holding = false;
   if (!S.paused && S.started && !S.over) {
-    advance(dtR * w.eff);
+    let dtSim = dtR * w.eff;
+    const gap = holdGap();
+    if (gap !== null) { if (gap <= 0.05) { dtSim = 0; if (!S.holding) { S.skip = false; } S.holding = true; } else dtSim = Math.min(dtSim, gap); }
+    if (S.skip && (S.t >= S.skipT - 0.5 || nextEvent() === null)) S.skip = false;
+    if (dtSim > 0) advance(dtSim);
     stageLogic();
     const rE = Math.hypot(S.s[0], S.s[1]);
     const d = dominant(S.s, S.t);
@@ -1584,6 +1671,7 @@ function frame(now) {
   if (b || S.auto) predDirty = true;
   if ((predDirty && (b ? true : frameN % 3 === 0)) || frameN % 20 === 0) runPredict();
   if (frameN % 20 === 0) planDirty = true;
+  if (S.burn && S.burn.kind === 'main' && S.slow && !S._fine) { S._fine = true; toast('あと少し！ 緑で離す', 1400); }
   const planning = S.mode === 'B' && S.plan && !S.auto && mainAvailable();
   if (planDirty && planning) { runPlan(); buildPredLine(plan, planLine, true); }
   if (!planning) planLine.visible = false;
