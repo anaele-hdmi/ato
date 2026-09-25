@@ -787,7 +787,7 @@
     { name: "固定色", vol: false, bounce: false, plants: false, flat: true, mode: 1 },
   ];
   let builtAt = 0, motesOff = false;
-  let vIdx = (() => { try { const v = +sessionStorage.getItem("kaeru-variant"); return v > 0 && v < VARIANTS.length ? v : 0; } catch (e) { return 0; } })();
+  let vIdx = (() => { try { const v = +sessionStorage.getItem("kaeru-variant-2"); return v > 0 && v < VARIANTS.length ? v : 0; } catch (e) { return 0; } })();
   function sceneGLSL(sc) {
     const bx = sc.boxes.length ? sc.boxes : [[[1e5, 1e5, 1e5], [1e5, 1e5, 1e5], 0]];
     let g = `const int NB = ${bx.length};
@@ -820,14 +820,16 @@ ${v.flat ? "#define FLAT 1" : ""}
     uniform vec3 uL, uE, uSky;
 ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
 
-    vec3 safeInv(vec3 d) { return 1.0 / mix(d, vec3(1e-7), lessThan(abs(d), vec3(1e-7))); }
+    // Direct3D 向けの変換でも通るよう、出力引数は必ず先に代入し、分岐から早く抜けない書き方にしている
+    vec3 safeInv(vec3 d) {
+      return vec3(abs(d.x) < 1e-7 ? 1e7 : 1.0 / d.x, abs(d.y) < 1e-7 ? 1e7 : 1.0 / d.y, abs(d.z) < 1e-7 ? 1e7 : 1.0 / d.z);
+    }
     float boxT(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, out vec3 n) {
       vec3 t0 = (bmin - ro) * inv, t1 = (bmax - ro) * inv;
       vec3 tn3 = min(t0, t1), tf3 = max(t0, t1);
       float tn = max(max(tn3.x, tn3.y), tn3.z), tf = min(min(tf3.x, tf3.y), tf3.z);
-      if (tf < tn || tn < 1e-4) return 1e9;
-      n = tn == tn3.x ? vec3(-sign(inv.x), 0, 0) : (tn == tn3.y ? vec3(0, -sign(inv.y), 0) : vec3(0, 0, -sign(inv.z)));
-      return tn;
+      n = tn == tn3.x ? vec3(-sign(inv.x), 0.0, 0.0) : (tn == tn3.y ? vec3(0.0, -sign(inv.y), 0.0) : vec3(0.0, 0.0, -sign(inv.z)));
+      return (tf < tn || tn < 1e-4) ? 1e9 : tn;
     }
     bool aabb(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, float tmax) {
       vec3 t0 = (bmin - ro) * inv, t1 = (bmax - ro) * inv;
@@ -836,39 +838,39 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       return tf >= max(tn, 0.0) && tn < tmax;
     }
     float shellT(vec3 ro, vec3 rd, vec3 inv, out vec3 n, out bool esc) {
-      esc = false;
       float txT = ((rd.x > 0.0 ? WX1 : WX0) - ro.x) * inv.x;
       float tyT = ((rd.y > 0.0 ? WY1 : WY0) - ro.y) * inv.y;
       float tx = ((rd.x > 0.0 ? RX : -RX) - ro.x) * inv.x;
       float ty = ((rd.y > 0.0 ? RH : 0.0) - ro.y) * inv.y;
       float tz = ((rd.z > 0.0 ? ZN : ZS) - ro.z) * inv.z;
-      if (ro.z >= ZS) {
-        float t = min(tx, min(ty, tz));
-        if (t == tz && rd.z < 0.0) {
-          vec3 p = ro + rd * t;
-          if (!(p.x > WX0 && p.x < WX1 && p.y > WY0 && p.y < WY1)) { n = vec3(0, 0, 1); return t; }
+      float tRoom = min(tx, min(ty, tz));
+      vec3 nRoom = tRoom == tx ? vec3(-sign(rd.x), 0.0, 0.0) : (tRoom == ty ? vec3(0.0, -sign(rd.y), 0.0) : vec3(0.0, 0.0, -sign(rd.z)));
+      float ts = min(txT, tyT);
+      vec3 ns = ts == txT ? vec3(-sign(rd.x), 0.0, 0.0) : vec3(0.0, -sign(rd.y), 0.0);
+      float tzF = (ZS - ro.z) * inv.z;
+      float tzB = (ZS - WT - ro.z) * inv.z;
+      vec3 ps = ro + rd * tRoom;
+      bool inHole = ps.x > WX0 && ps.x < WX1 && ps.y > WY0 && ps.y < WY1;
+      bool tunnel = ro.z < ZS || (tRoom == tz && rd.z < 0.0 && inHole);
+      float res = tRoom;
+      vec3 rn = nRoom;
+      bool re = false;
+      if (tunnel) {
+        if (rd.z > 0.0) {
+          if (ts < tzF) { res = ts; rn = ns; }
         } else {
-          n = t == tx ? vec3(-sign(rd.x), 0, 0) : (t == ty ? vec3(0, -sign(rd.y), 0) : vec3(0, 0, -1));
-          return t;
+          if (ts < tzB) { res = ts; rn = ns; }
+          else { res = tzB; re = true; }
         }
       }
-      float ts = min(txT, tyT);
-      vec3 ns = ts == txT ? vec3(-sign(rd.x), 0, 0) : vec3(0, -sign(rd.y), 0);
-      if (rd.z > 0.0) {
-        float tzF = (ZS - ro.z) * inv.z;
-        if (ts < tzF) { n = ns; return ts; }
-        float t = min(tx, min(ty, tz));
-        n = t == tx ? vec3(-sign(rd.x), 0, 0) : (t == ty ? vec3(0, -sign(rd.y), 0) : vec3(0, 0, -1));
-        return t;
-      }
-      float tzB = (ZS - WT - ro.z) * inv.z;
-      if (ts < tzB) { n = ns; return ts; }
-      esc = true;
-      return tzB;
+      n = rn;
+      esc = re;
+      return res;
     }
     // シダの葉：平らな羽状の面
     float frond(vec3 ro, vec3 rd, vec3 o, vec3 a, vec3 b, float len, float u0, float u1, float L, out vec3 n) {
       vec3 nn = normalize(cross(a, b));
+      n = nn;
       float dn = dot(rd, nn);
       if (abs(dn) < 1e-5) return 1e9;
       float t = dot(o - ro, nn) / dn;
@@ -891,10 +893,14 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     Hit trace(vec3 ro, vec3 rd) {
       vec3 inv = safeInv(rd);
       Hit h;
-      h.t = shellT(ro, rd, inv, h.n, h.esc);
+      vec3 sn = vec3(0.0, 1.0, 0.0);
+      bool se = false;
+      h.t = shellT(ro, rd, inv, sn, se);
+      h.n = sn;
+      h.esc = se;
       h.m = 0;
       for (int i = 0; i < NB; i++) {
-        vec3 n;
+        vec3 n = vec3(0.0, 1.0, 0.0);
         float t = boxT(ro, inv, BMIN[i], BMAX[i], n);
         if (t < h.t) { h.t = t; h.n = n; h.m = BMAT[i]; h.esc = false; }
       }
@@ -910,7 +916,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
           vec3 a1 = normalize(hz * cos(e) + vec3(0, sin(e), 0));
           vec3 a2 = normalize(hz * cos(0.15) + vec3(0, sin(0.15), 0));
           float l1 = L * 0.5, l2 = L * 0.5;
-          vec3 n;
+          vec3 n = vec3(0.0, 1.0, 0.0);
           float t = frond(ro, rd, f.xyz, a1, b, l1, 0.0, 0.5, L, n);
           if (t < h.t) { h.t = t; h.n = n; h.m = 3; h.esc = false; }
           t = frond(ro, rd, f.xyz + a1 * l1, a2, b, l2, 0.5, 1.0, L, n);
@@ -1120,6 +1126,10 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       vec3 c;
 #if DBG_MODE == 1
       c = vec3(0.5);
+#elif DBG_MODE == 3
+      { vec3 d3 = normalize(fp - ro); vec3 sn = vec3(0.0); bool se = false; float st = shellT(ro, d3, safeInv(d3), sn, se); c = vec3(se ? 0.9 : 0.1 + 0.02 * st); }
+#elif DBG_MODE == 4
+      { vec3 d4 = normalize(fp - ro); vec3 iv = safeInv(d4); float best = 1e9; for (int i = 0; i < NB; i++) { vec3 n4 = vec3(0.0); best = min(best, boxT(ro, iv, BMIN[i], BMAX[i], n4)); } c = vec3(best < 1e8 ? 0.8 : 0.1); }
 #elif DBG_MODE == 2
       { Hit hh = trace(ro, normalize(fp - ro)); c = hh.esc ? vec3(0.9, 0.85, 0.8) * 2.0 : (0.05 + 0.25 * abs(hh.n)) * (1.0 + uE.x * 0.02); }
 #else
@@ -1547,7 +1557,11 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     gl.disable(gl.BLEND);
     gl.getError();
     const sc = JSON.parse(sceneKey);
-    for (const v of VARIANTS) {
+    const EXTRA = [
+      { name: "壁と窓だけ判定", vol: false, bounce: false, plants: false, flat: true, mode: 3 },
+      { name: "箱だけ判定", vol: false, bounce: false, plants: false, flat: true, mode: 4 },
+    ];
+    for (const v of VARIANTS.concat(EXTRA)) {
       const t0 = performance.now();
       let P = null, res;
       try {
@@ -1941,7 +1955,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
         lastErr = `描画命令が拒否された（GL ${ge}、${VARIANTS[vIdx].name}）`;
         if (ge === gl.INVALID_OPERATION && vIdx < VARIANTS.length - 1) {
           vIdx++;
-          try { sessionStorage.setItem("kaeru-variant", String(vIdx)); } catch (e) { /* 使えない環境 */ }
+          try { sessionStorage.setItem("kaeru-variant-2", String(vIdx)); } catch (e) { /* 使えない環境 */ }
           rebuildPending = true; lastBuild = 0;
         }
       }
