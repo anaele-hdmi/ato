@@ -38,8 +38,6 @@ export const shared = {
   uSeaLevel: { value: -2 },
   uRoads: { value: null as THREE.Texture | null },
   uRoadExt: { value: 1200 },
-  // 0..1: the sea-cut cliff at the very end, carving the sea floor in front of the rock face
-  uCliff: { value: 0 },
   // era scalars used by several materials
   uGravel: { value: 0 },
   uPaved: { value: 0 },

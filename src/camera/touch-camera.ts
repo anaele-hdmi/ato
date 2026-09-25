@@ -182,18 +182,6 @@ export class TouchCamera {
     this.target.z += (dx * s + -dy * c) * k;
   }
 
-  /** Eases the view toward a framing; only ever called while nobody is touching. */
-  steer(tx: number, tz: number, az: number, el: number, dist: number, k: number): void {
-    this.target.x += (tx - this.target.x) * k;
-    this.target.z += (tz - this.target.z) * k;
-    let da = az - this.azimuth;
-    da = Math.atan2(Math.sin(da), Math.cos(da));
-    this.azimuth += da * k;
-    this.elevation += (el - this.elevation) * k;
-    this.logTarget += (Math.log(dist) - this.logTarget) * k;
-    this.vAz = this.vEl = 0;
-  }
-
   update(dt: number): void {
     this.idle += dt;
     if (this.ptrs.size === 0) {

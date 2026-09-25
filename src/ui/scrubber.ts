@@ -11,7 +11,7 @@ const HOUSE_TO = 2104;
 
 // The playhead sits at a fixed fraction of the track; everything to its left is the
 // past, drawn to a linear scale from START_YEAR to "now". Must match .knob's `left`.
-export const KNOB_FRAC = 0.82;
+const KNOB_FRAC = 0.82;
 
 const DEEP_MAX_YEAR = DEEP_BASE_YEAR + Math.pow(10, DEEP_LOG_MAX) - 1;
 const ICE_FROM = DEEP_BASE_YEAR + Math.pow(10, 3.95) - 1;
@@ -55,8 +55,8 @@ export interface ScrubberHooks {
 
 export class Scrubber {
   readonly root: HTMLDivElement;
-  readonly track: HTMLDivElement;
-  readonly canvas: HTMLCanvasElement;
+  private track: HTMLDivElement;
+  private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
   private knob: HTMLDivElement;
   private speedBtn: HTMLButtonElement;
