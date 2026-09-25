@@ -232,7 +232,9 @@
   const WIN = { x0: -1.0, x1: 0.2, y0: 0.8, y1: 2.1 };
   const CAM = [1.0, 1.15, 0.6], TARGET = [-0.45, 0.2, -3.2];
   const SPEEDS = [365, 86400, 604800];
-  const MAXB = 32, MAXF = 16, MAXM = 24;
+  const MAXB = 16, MAXF = 12, MAXM = 16;
+  // 描画が2回止まった端末では、光の跳ね返りを減らした軽量版にする
+  const SAFE = (() => { try { return sessionStorage.getItem("kaeru-safe") === "1"; } catch (e) { return false; } })();
 
   // ================= 乱数 =================
   function mulberry(a) {
@@ -775,12 +777,12 @@
     const float RX = ${RX.toFixed(3)}, RH = ${RH.toFixed(3)}, ZS = ${ZS.toFixed(3)}, ZN = ${ZN.toFixed(3)}, WT = ${WT.toFixed(3)};
     const float WX0 = ${WIN.x0.toFixed(3)}, WX1 = ${WIN.x1.toFixed(3)}, WY0 = ${WIN.y0.toFixed(3)}, WY1 = ${WIN.y1.toFixed(3)};
     const int MAXB = ${MAXB}, MAXF = ${MAXF}, MAXM = ${MAXM};
+    const int VOLS = ${SAFE ? 1 : 2}, MAXBOUNCE = ${SAFE ? 0 : 2};
     const float PI = 3.14159265;
     const float SUNR = 0.00465;
     uniform vec3 uL, uE, uSky;
     uniform vec3 uBMin[MAXB], uBMax[MAXB];
     uniform int uBMat[MAXB];
-    uniform int uNB, uNF, uNM;
     uniform vec4 uFern[MAXF];
     uniform float uFernRot[MAXF];
     uniform vec4 uMush[MAXM];
@@ -859,13 +861,11 @@
       h.t = shellT(ro, rd, inv, h.n, h.esc);
       h.m = 0;
       for (int i = 0; i < MAXB; i++) {
-        if (i >= uNB) break;
         vec3 n;
         float t = boxT(ro, inv, uBMin[i], uBMax[i], n);
         if (t < h.t) { h.t = t; h.n = n; h.m = uBMat[i]; h.esc = false; }
       }
       for (int i = 0; i < MAXF; i++) {
-        if (i >= uNF) break;
         vec4 f = uFern[i];
         float L = f.w;
         if (!aabb(ro, inv, f.xyz - vec3(L * 0.8, 0.0, L * 0.8), f.xyz + vec3(L * 0.8, L * 0.85, L * 0.8), h.t)) continue;
@@ -884,7 +884,6 @@
         }
       }
       for (int i = 0; i < MAXM; i++) {
-        if (i >= uNM) break;
         vec4 s = uMush[i];
         vec3 oc = ro - s.xyz;
         float b = dot(oc, rd), c = dot(oc, oc) - s.w * s.w;
@@ -1020,8 +1019,8 @@
           float seg = min(h.t, 12.0);
           float ph = hg(dot(rd, uL), 0.66) * 0.88 + 0.12 / (4.0 * PI);
           vec3 acc = vec3(0);
-          for (int k = 0; k < 2; k++) {
-            float t = (float(k) + rnd()) * 0.5 * seg;
+          for (int k = 0; k < VOLS; k++) {
+            float t = (float(k) + rnd()) / float(VOLS) * seg;
             vec3 q = ro + rd * t;
             float sd = dens(q) * SIGS;
             vec3 s = vec3(0);
@@ -1029,7 +1028,7 @@
             s += skyNEE(q, vec3(0), true) * 0.3;
             acc += s * sd;
           }
-          L += thr * acc * seg * 0.5;
+          L += thr * acc * seg / float(VOLS);
         }
         if (h.esc) {
           if (specChain) {
@@ -1058,7 +1057,7 @@
         vec3 t2 = cross(n, t1);
         rd = normalize(t1 * cos(phi) * sr + t2 * sin(phi) * sr + n * sqrt(1.0 - r2));
         ro = po;
-        if (b >= 2) break;
+        if (b >= MAXBOUNCE) break;
       }
       return L;
     }
@@ -1302,18 +1301,20 @@
   function updateScene() {
     const boxes = sceneBoxes();
     nB = Math.min(MAXB, boxes.length);
+    bMin.fill(1e5); bMax.fill(1e5); bMat.fill(0);
     for (let i = 0; i < nB; i++) { bMin.set(boxes[i][0], i * 3); bMax.set(boxes[i][1], i * 3); bMat[i] = boxes[i][2]; }
     const fs = S.ferns.filter((f) => f.stage >= 1);
     nF = Math.min(MAXF, fs.length);
+    for (let i = 0; i < MAXF; i++) fernU.set([1e5, 1e5, 1e5, 0], i * 4);
     for (let i = 0; i < nF; i++) { fernU.set([fs[i].x, 0, fs[i].z, 0.12 + fs[i].size * 0.62], i * 4); fernRot[i] = fs[i].rot; }
     nM = Math.min(MAXM, S.mush.length);
+    for (let i = 0; i < MAXM; i++) mushU.set([1e5, 1e5, 1e5, 0], i * 4);
     for (let i = 0; i < nM; i++) { const m = S.mush[i]; mushU.set([m.x, m.y + m.r * 0.35, m.z, m.r], i * 4); }
     const key = JSON.stringify([nB, S.windowOpen, S.chair, fs.map((f) => [f.x, Math.round(f.size * 50)]), S.mush.map((m) => m.born)]);
     if (key !== sceneKey) { sceneKey = key; samples = Math.min(samples, 24); }
   }
   function setScene(u) {
     gl.uniform3fv(u.uBMin, bMin); gl.uniform3fv(u.uBMax, bMax); gl.uniform1iv(u.uBMat, bMat);
-    gl.uniform1i(u.uNB, nB); gl.uniform1i(u.uNF, nF); gl.uniform1i(u.uNM, nM);
     gl.uniform4fv(u.uFern, fernU); gl.uniform1fv(u.uFernRot, fernRot); gl.uniform4fv(u.uMush, mushU);
   }
 
@@ -1457,7 +1458,7 @@
       `1フレーム: ${avgMs.toFixed(0)}ms 蓄積: ${samples} フレーム: ${frameNo}`,
       `シェーダの準備: ${compileMs.toFixed(0)}ms`,
       `蓄積の値: 平均 ${pr.mean.toFixed(4)} NaN ${pr.nan} GLエラー ${pr.err}`,
-      `バッファ: ${fbBroken ? "不完全" : "正常"} コンテキスト: ${gl.isContextLost() ? "失われた" : "正常"}`,
+      `バッファ: ${fbBroken ? "不完全" : "正常"} コンテキスト: ${gl.isContextLost() ? "失われた" : "正常"} 停止: ${losses}回${lost ? "（この表示中にも停止）" : ""} 軽量版: ${SAFE ? "はい" : "いいえ"}`,
       `光: ${light ? light.kind : "-"} E=${light ? light.E.map((v) => v.toFixed(2)).join(",") : "-"} 空=${light ? light.sky.map((v) => v.toFixed(2)).join(",") : "-"}`,
     ].join("\n");
   }
@@ -1467,15 +1468,28 @@
     f.textContent = `画面が描けていないようです。「しくみ」の「表示の診断」の内容を伝えてもらえると原因を調べられます。GPU: ${gpuName()}`;
     f.hidden = false;
   }
+  const losses = (() => { try { return +sessionStorage.getItem("kaeru-lost") || 0; } catch (e) { return 0; } })();
+  let reloading = false;
+  function reloadSoon() {
+    if (reloading) return;
+    reloading = true;
+    const wait = new Promise((r) => setTimeout(r, 1200));
+    Promise.race([save().catch(() => {}), wait]).then(() => location.reload());
+  }
   cv.addEventListener("webglcontextlost", (e) => {
     e.preventDefault();
     lost = true;
-    try { sessionStorage.setItem("kaeru-scale", String(Math.max(0.25, scale * 0.6))); } catch (err) { /* 使えない環境 */ }
+    try {
+      sessionStorage.setItem("kaeru-lost", String(losses + 1));
+      sessionStorage.setItem("kaeru-scale", String(Math.max(0.25, scale * 0.6)));
+      if (losses + 1 >= 2) sessionStorage.setItem("kaeru-safe", "1");
+    } catch (err) { /* 使えない環境 */ }
     const h = document.getElementById("hint");
     h.hidden = false;
-    h.textContent = "描画が重すぎて止まりました。画質を下げて再開します";
-    save().finally(() => setTimeout(() => location.reload(), 1200));
+    h.textContent = losses + 1 >= 2 ? "描画が止まりました。軽い描き方に切り替えて再開します" : "描画が止まりました。画質を下げて再開します";
+    reloadSoon();
   });
+  cv.addEventListener("webglcontextrestored", reloadSoon);
 
   // ================= UI =================
   const metaEl = document.getElementById("meta"), logEl = document.getElementById("log"), hintEl = document.getElementById("hint");
@@ -1726,7 +1740,16 @@
     bind(0, acc[src], "uPrev"); bind(1, floorTex, "uFloor");
     bind(2, surfs[0].tex, "uGF"); bind(3, surfs[1].tex, "uGS"); bind(4, surfs[2].tex, "uGE"); bind(5, surfs[3].tex, "uGW");
     gl.bindVertexArray(quadVAO);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    // 1回の描画命令が長くならないよう、画面を帯に分けて描く（GPUのリセット対策）
+    const strips = Math.max(1, Math.ceil(W * H / (SAFE ? 60000 : 120000)));
+    const sh = Math.ceil(H / strips);
+    gl.enable(gl.SCISSOR_TEST);
+    for (let k = 0; k < strips; k++) {
+      gl.scissor(0, k * sh, W, sh);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      if (strips > 1) gl.flush();
+    }
+    gl.disable(gl.SCISSOR_TEST);
     samples++;
     ping = dst;
 
