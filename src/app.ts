@@ -125,6 +125,7 @@ export class App {
     if (q.has('t')) this.clock.setU(yearToU(parseFloat(q.get('t') as string)));
     if (q.has('u')) this.clock.setU(parseFloat(q.get('u') as string));
     this.clock.settle();
+    if (q.has('reach')) this.clock.reach = Math.max(this.clock.u, yearToU(parseFloat(q.get('reach') as string)));
     if (q.has('d')) this.cam.logDist = Math.log(parseFloat(q.get('d') as string));
     (this.cam as unknown as { logTarget: number }).logTarget = this.cam.logDist;
     if (q.has('az')) this.cam.azimuth = parseFloat(q.get('az') as string);
@@ -268,6 +269,7 @@ export class App {
       ca: 0.55,
       // contrast breaks before anything else does
       contrast: 1 + 0.38 * win(env.year, 2284, 2300, 2330, 2350),
+      memory: smoothstep(0.02, 0.75, c.reach - c.u),
       time: this.elapsed,
     });
 

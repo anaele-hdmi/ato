@@ -25,12 +25,15 @@ export class Clock {
   exposure = 0;
   /** Days per second, smoothed. */
   dayRate = 0;
+  /** The furthest u ever reached; looking back from there is remembering. */
+  reach = this.u;
   private lastU = this.u;
 
   /** Jump without any sense of motion: used by debug parameters. */
   settle(): void {
     this.year = uToYear(this.u);
     this.lastU = this.u;
+    this.reach = Math.max(this.reach, this.u);
     this.yearRate = 0;
     this.scrubRate = 0;
     this.exposure = 0;
@@ -64,6 +67,7 @@ export class Clock {
     const rawU = dt > 0 ? Math.abs(this.u - this.lastU) / dt : 0;
     this.scrubRate += (rawU - this.scrubRate) * (1 - Math.exp(-dt * 8));
     this.lastU = this.u;
+    this.reach = Math.max(this.reach, this.u);
 
     // Season follows the year along the shortest arc, rate-limited so a fast drag
     // reads as drift rather than strobing.

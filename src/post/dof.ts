@@ -16,6 +16,8 @@ export interface DofParams {
   grain: number;
   ca: number;
   contrast: number;
+  /** 0..1: how far back from the furthest point reached the viewer is looking. */
+  memory: number;
   time: number;
 }
 
@@ -152,6 +154,7 @@ uniform float uContrast;
 uniform float uTime;
 uniform float uDebug;
 uniform float uStyle;
+uniform float uMemory;
 ${COC}
 varying vec2 vUv;
 float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
@@ -244,6 +247,24 @@ vec3 stylePlatinum(vec3 c, vec2 uv) {
   tone *= 1.0 - 0.45 * pow(dot(dv, dv) * 2.2, 1.4);
   return tone;
 }
+// Looking back from far ahead, the past comes as an old print: the cyan dye has
+// gone, blacks lift to a brown, detail softens and the edges burn.
+vec3 remembered(vec3 c, vec3 soft, vec2 uv, float m) {
+  c = mix(c, soft * vec3(1.0, 0.97, 0.9), 0.55 * m);
+  float l = lum(c);
+  vec3 aged = mix(vec3(0.24, 0.17, 0.12), vec3(0.95, 0.86, 0.66), smoothstep(0.0, 0.95, l));
+  aged = mix(aged, c * vec3(1.12, 0.95, 0.7), 0.25);
+  c = mix(c, aged, 0.8 * m);
+  vec2 dv = uv - 0.5;
+  float edge = smoothstep(0.12, 0.5, dot(dv * vec2(1.0, 0.8), dv * vec2(1.0, 0.8)) * 2.0);
+  c = mix(c, c * vec3(0.55, 0.36, 0.22), edge * m * 0.6);
+  float g = hash(floor(uv * vec2(260.0, 560.0)) + fract(uTime * 3.1)) - 0.5;
+  c += g * 0.09 * m;
+  // a faint water stain drifting across the print
+  float st = smoothstep(0.35, 0.8, sin(uv.x * 7.0 + sin(uv.y * 5.0) * 1.3) * sin(uv.y * 4.0 + 1.1));
+  c = mix(c, c * vec3(0.9, 0.82, 0.68), st * m * 0.35);
+  return clamp(c, 0.0, 1.0);
+}
 void main() {
   float coc = abs(cocAt(vUv));
   vec4 b = upsampleBlur(vUv, coc);
@@ -267,6 +288,7 @@ void main() {
   else if (uStyle > 1.5 && uStyle < 2.5) c = styleEtching(c, vUv);
   else if (uStyle > 2.5 && uStyle < 3.5) c = stylePlatinum(c, vUv);
   else if (uStyle > 3.5) c = stylePolaroid(c, vUv);
+  if (uMemory > 0.001) c = remembered(c, blur, vUv, uMemory);
   gl_FragColor = vec4(c, 1.0);
 }
 `;
@@ -333,6 +355,7 @@ export class DofPipeline {
         uContrast: { value: 1 },
         uTime: { value: 0 },
         uDebug: { value: new URLSearchParams(location.search).has('dofdebug') ? 1 : 0 },
+        uMemory: { value: 0 },
         uStyle: { value: parseFloat(new URLSearchParams(location.search).get('style') ?? '4') },
       },
       vertexShader: fsVert, fragmentShader: compFrag, depthTest: false, depthWrite: false,
@@ -378,6 +401,7 @@ export class DofPipeline {
     this.comp.uniforms.uGrain.value = p.grain;
     this.comp.uniforms.uCa.value = p.ca;
     this.comp.uniforms.uContrast.value = p.contrast;
+    this.comp.uniforms.uMemory.value = p.memory;
     this.comp.uniforms.uTime.value = p.time;
 
     this.quad.material = this.prep;
