@@ -269,6 +269,17 @@ void main() {
   float sh = sampleShadow(vWorld, n);
   vec3 lit = shade(col, n, vWorld, 0.1, sh);
 
+  // standing water in the ruts after rain: the pale sky caught in the mud,
+  // the thing that makes a dull morning read as a photograph
+  float wet = uMist * (1.0 - uGravel) * mainRoad * (1.0 - roadGone);
+  float pud = wet * smoothstep(0.62, 0.72, vnoise(p * 0.5 + 17.0)) * (1.0 - smoothstep(0.1, 0.45, abs(rd.r - 0.75)));
+  if (pud > 0.001) {
+    vec3 v = normalize(cameraPosition - vWorld);
+    float fres = 0.35 + 0.65 * pow(1.0 - max(v.y, 0.0), 3.0);
+    vec3 sky = uFogColor * 1.15 + vec3(0.02);
+    lit = mix(lit, mix(lit * 0.6, sky, fres * 0.6), pud);
+  }
+
   // street light: pools along roads, never inside the square
   float lightsOn = urban * uNight * (1.0 - smoothstep(2318.0, 2340.0, uYear)) * (1.0 - voidM);
   // lamps every ~30 m along streets

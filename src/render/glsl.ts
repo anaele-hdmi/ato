@@ -126,7 +126,9 @@ vec3 applyFog(vec3 c, vec3 wp) {
   // ground mist: its own pale layer pooled in the low fields, drifting in banks;
   // what stands above it (trees, the house) reads as a silhouette
   float bank = 0.25 + 1.5 * smoothstep(0.3, 0.75, vnoise(wp.xz * 0.0028 + vec2(uTime * 0.004, 0.0)));
-  float odm = heightFogDepth(wp, 13.0, 6.5, uMist * 0.045 * bank);
+  float odm = heightFogDepth(wp, 13.0, 9.0, uMist * 0.045 * bank);
+  // on a misty morning even near things sit a little inside the air
+  odm += min(uMist * 0.0022 * length(wp - cameraPosition), 0.22);
   vec3 mistCol = mix(uFogColor, vec3(dot(uFogColor, vec3(0.3, 0.55, 0.15))) * 1.15 + 0.04, 0.55);
   return mix(c, mistCol, clamp(1.0 - exp(-odm), 0.0, 0.92));
 }
