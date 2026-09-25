@@ -766,6 +766,19 @@
   // ================= GLSL =================
   // 形（窓枠・椅子・シダ・キノコ）は描画プログラムに定数として埋め込む。形が変わったらプログラムを作り直す
   const gv = (v) => `vec3(${v.map((x) => (+x).toFixed(4)).join(",")})`;
+  // 描画の段階的な軽量版。Direct3D 向けの組み立てに失敗する端末では、映る版まで自動で下げる
+  const VARIANTS = [
+    { name: "全部入り", vol: true, bounce: true, plants: true },
+    { name: "跳ね返りなし", vol: true, bounce: false, plants: true },
+    { name: "光の筋なし", vol: false, bounce: true, plants: true },
+    { name: "跳ね返り・光の筋なし", vol: false, bounce: false, plants: true },
+    { name: "立体の植物もなし", vol: false, bounce: false, plants: false },
+    { name: "模様もなし", vol: false, bounce: false, plants: false, flat: true },
+    { name: "形だけ", vol: false, bounce: false, plants: false, flat: true, mode: 2 },
+    { name: "固定色", vol: false, bounce: false, plants: false, flat: true, mode: 1 },
+  ];
+  let builtAt = 0, motesOff = false;
+  let vIdx = (() => { try { const v = +sessionStorage.getItem("kaeru-variant"); return v > 0 && v < VARIANTS.length ? v : 0; } catch (e) { return 0; } })();
   function sceneGLSL(sc) {
     const bx = sc.boxes.length ? sc.boxes : [[[1e5, 1e5, 1e5], [1e5, 1e5, 1e5], 0]];
     let g = `const int NB = ${bx.length};
@@ -784,17 +797,19 @@
 `;
     return g;
   }
-  const makeCommon = (sc) => `#version 300 es
+  const makeCommon = (sc, v = VARIANTS[vIdx]) => `#version 300 es
+${v.flat ? "#define FLAT 1" : ""}
+#define DBG_MODE ${v.mode || 0}
     precision highp float;
     precision highp int;
     const float RX = ${RX.toFixed(3)}, RH = ${RH.toFixed(3)}, ZS = ${ZS.toFixed(3)}, ZN = ${ZN.toFixed(3)}, WT = ${WT.toFixed(3)};
     const float WX0 = ${WIN.x0.toFixed(3)}, WX1 = ${WIN.x1.toFixed(3)}, WY0 = ${WIN.y0.toFixed(3)}, WY1 = ${WIN.y1.toFixed(3)};
     const int MAXB = ${MAXB}, MAXF = ${MAXF}, MAXM = ${MAXM};
-    const int VOLS = ${SAFE ? 1 : 2}, MAXBOUNCE = ${SAFE ? 0 : 2};
+    const int VOLS = ${v.vol ? (SAFE ? 1 : 2) : 0}, MAXBOUNCE = ${v.bounce && !SAFE ? 2 : 0};
     const float PI = 3.14159265;
     const float SUNR = 0.00465;
     uniform vec3 uL, uE, uSky;
-${sceneGLSL(sc)}
+${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
 
     vec3 safeInv(vec3 d) { return 1.0 / mix(d, vec3(1e-7), lessThan(abs(d), vec3(1e-7))); }
     float boxT(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, out vec3 n) {
@@ -995,6 +1010,9 @@ ${sceneGLSL(sc)}
     float cov(float c, float nz) { return smoothstep(nz - 0.12, nz + 0.12, c * 1.25); }
     vec3 albedo(vec3 p, vec3 n, int m, out float wet) {
       wet = 0.0;
+#ifdef FLAT
+      return m == 2 ? vec3(0.16, 0.10, 0.065) : (n.y > 0.5 && p.y < 0.01 ? vec3(0.22, 0.18, 0.14) : vec3(0.40, 0.38, 0.34));
+#endif
       if (m == 1) return vec3(0.50, 0.48, 0.43) * (0.9 + 0.2 * noise(p * 40.0));
       if (m == 2) {
         vec3 w = vec3(0.16, 0.10, 0.065) * (0.8 + 0.4 * noise(p * vec3(60.0, 8.0, 60.0)));
@@ -1031,12 +1049,12 @@ ${sceneGLSL(sc)}
       bool specChain = true;
       for (int b = 0; b < 4; b++) {
         Hit h = trace(ro, rd);
-        if (specChain && uDebug != 3) {
+        if (VOLS > 0 && specChain && uDebug != 3) {
           float seg = min(h.t, 12.0);
           float ph = hg(dot(rd, uL), 0.66) * 0.88 + 0.12 / (4.0 * PI);
           vec3 acc = vec3(0);
           for (int k = 0; k < VOLS; k++) {
-            float t = (float(k) + rnd()) / float(VOLS) * seg;
+            float t = (float(k) + rnd()) / float(max(VOLS, 1)) * seg;
             vec3 q = ro + rd * t;
             float sd = dens(q) * SIGS;
             vec3 s = vec3(0);
@@ -1044,7 +1062,7 @@ ${sceneGLSL(sc)}
             s += skyNEE(q, vec3(0), true) * 0.3;
             acc += s * sd;
           }
-          L += thr * acc * seg / float(VOLS);
+          L += thr * acc * seg / float(max(VOLS, 1));
         }
         if (h.esc) {
           if (specChain) {
@@ -1091,9 +1109,15 @@ ${sceneGLSL(sc)}
       float lr = APER * sqrt(rnd()), la = 2.0 * PI * rnd();
       vec3 ro = uCam + (uCR * cos(la) + uCU * sin(la)) * lr;
       vec3 c;
+#if DBG_MODE == 1
+      c = vec3(0.5);
+#elif DBG_MODE == 2
+      { Hit hh = trace(ro, normalize(fp - ro)); c = hh.esc ? vec3(0.9, 0.85, 0.8) * 2.0 : (0.05 + 0.25 * abs(hh.n)) * (1.0 + uE.x * 0.02); }
+#else
       if (uDebug == 1) c = vec3(0.5);
       else if (uDebug == 2) { Hit hh = trace(ro, normalize(fp - ro)); c = hh.esc ? vec3(0.9, 0.2, 0.2) : 0.2 + 0.6 * abs(hh.n); }
       else c = radiance(ro, normalize(fp - ro));
+#endif
       if (any(isnan(c)) || any(isinf(c))) c = vec3(0);
       // 最適化で isnan が消える環境（ANGLE/Direct3D など）でも NaN を 0 にするため、clamp で丸める
       c = clamp(c, vec3(0.0), vec3(60.0));
@@ -1215,10 +1239,13 @@ ${sceneGLSL(sc)}
   try {
     const tc = performance.now();
     const sc0 = currentScene();
-    traceP = program(VS_QUAD, makeCommon(sc0) + FS_TRACE_BODY);
+    for (;;) {
+      try { traceP = program(VS_QUAD, makeCommon(sc0) + FS_TRACE_BODY); break; }
+      catch (e) { if (vIdx >= VARIANTS.length - 1) throw e; vIdx++; }
+    }
     compileMs = performance.now() - tc;
     showP = program(VS_QUAD, FS_SHOW);
-    moteP = program(makeCommon(sc0) + VS_MOTE_BODY, FS_MOTE);
+    try { moteP = program(makeCommon(sc0) + VS_MOTE_BODY, FS_MOTE); } catch (e) { moteP = null; motesOff = true; }
     sceneKey = JSON.stringify(sc0);
   } catch (err) {
     console.error(err);
@@ -1333,13 +1360,21 @@ ${sceneGLSL(sc)}
   }
   function rebuildPrograms() {
     const sc = JSON.parse(sceneKey);
+    builtAt = frameNo;
     try {
       const t = program(VS_QUAD, makeCommon(sc) + FS_TRACE_BODY);
-      const m = program(makeCommon(sc) + VS_MOTE_BODY, FS_MOTE);
-      gl.deleteProgram(traceP.p); gl.deleteProgram(moteP.p);
-      traceP = t; moteP = m;
+      let m = null;
+      try { m = program(makeCommon(sc) + VS_MOTE_BODY, FS_MOTE); } catch (e) { motesOff = true; }
+      gl.deleteProgram(traceP.p);
+      if (m) { if (moteP) gl.deleteProgram(moteP.p); moteP = m; }
+      traceP = t;
       samples = Math.min(samples, 24);
-    } catch (e) { lastErr = "shader: " + (e && e.message); }
+    } catch (e) {
+      lastErr = `組み立て失敗（${VARIANTS[vIdx].name}）: ${(e && e.message || "").slice(0, 120)}`;
+      rebuildPending = false;
+      if (vIdx < VARIANTS.length - 1) { vIdx++; rebuildPending = true; lastBuild = 0; }
+      return;
+    }
     rebuildPending = false;
   }
 
@@ -1384,11 +1419,11 @@ ${sceneGLSL(sc)}
   const mBuf = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, mBuf);
   gl.bufferData(gl.ARRAY_BUFFER, mData, gl.DYNAMIC_DRAW);
-  const aP = gl.getAttribLocation(moteP.p, "aP");
+  const aP = 0;
   gl.enableVertexAttribArray(aP); gl.vertexAttribPointer(aP, 4, gl.FLOAT, false, 0, 0);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, mPh, gl.STATIC_DRAW);
-  const aPh = gl.getAttribLocation(moteP.p, "aPh");
+  const aPh = 1;
   gl.enableVertexAttribArray(aPh); gl.vertexAttribPointer(aPh, 1, gl.FLOAT, false, 0, 0);
   gl.bindVertexArray(null);
 
@@ -1490,6 +1525,42 @@ ${sceneGLSL(sc)}
     bind(2, surfs[0].tex, "uGF"); bind(3, surfs[1].tex, "uGS"); bind(4, surfs[2].tex, "uGE"); bind(5, surfs[3].tex, "uGW");
   }
   // その端末の上で、描画の段階ごとに値が出ているかを確かめる（読み取りは8ビットのみ）
+  // 各段階の版を実際に組み立てて小さく描き、拒否されるかを調べる
+  function ladderTest() {
+    const w = 16, h = 10, out = [];
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    gl.bindVertexArray(quadVAO);
+    gl.disable(gl.BLEND);
+    gl.getError();
+    const sc = JSON.parse(sceneKey);
+    for (const v of VARIANTS) {
+      const t0 = performance.now();
+      let P = null, res;
+      try {
+        P = program(VS_QUAD, makeCommon(sc, v) + FS_TRACE_BODY);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+        gl.viewport(0, 0, w, h);
+        gl.useProgram(P.p);
+        traceUniforms(P.u, w, h, acc[ping], 1, 1);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        const ge = gl.getError();
+        const px = new Uint8Array(4);
+        gl.readPixels(w >> 1, h >> 1, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, px);
+        res = ge ? `拒否（GL ${ge}）` : `OK 値${px[0]},${px[1]},${px[2]}`;
+      } catch (e) { res = `組み立て失敗 ${(e && e.message || "").slice(0, 80)}`; }
+      if (P) gl.deleteProgram(P.p);
+      out.push(`版「${v.name}」: ${res} ${Math.round(performance.now() - t0)}ms`);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteFramebuffer(f); gl.deleteTexture(t);
+    gl.bindVertexArray(null);
+    return out.join("\n");
+  }
   function selfTest() {
     const w = 24, h = 16, out = [];
     const mkT = (internal, type) => {
@@ -1568,6 +1639,8 @@ ${sceneGLSL(sc)}
       `蓄積の値: 平均 ${pr.mean.toFixed(4)} NaN ${pr.nan} GLエラー ${pr.err}`,
       `バッファ: ${fbBroken ? "不完全" : "正常"} コンテキスト: ${gl.isContextLost() ? "失われた" : "正常"} 停止: ${losses}回${lost ? "（この表示中にも停止）" : ""} 軽量版: ${SAFE ? "はい" : "いいえ"}`,
       `エラー: ${lastErr || "なし"}`,
+      `使っている描き方: ${VARIANTS[vIdx].name}${motesOff ? "（粒は停止）" : ""}`,
+      ladderTest(),
       selfTest(),
       `光: ${light ? light.kind : "-"} E=${light ? light.E.map((v) => v.toFixed(2)).join(",") : "-"} 空=${light ? light.sky.map((v) => v.toFixed(2)).join(",") : "-"}`,
     ].join("\n");
@@ -1850,9 +1923,20 @@ ${sceneGLSL(sc)}
     gl.useProgram(traceP.p);
     const maxN = speed === 0 ? 200 : 90;
     traceUniforms(traceP.u, W, H, acc[src], 1 / Math.min(samples + 1, maxN), t);
+    if (frameNo - builtAt < 4) gl.getError();
     gl.bindVertexArray(quadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-    if (frameNo < 8 || frameNo % 300 === 0) { const ge = gl.getError(); if (ge) lastErr = `描画命令が拒否された（GL ${ge}）`; }
+    if (frameNo - builtAt < 4 || frameNo % 300 === 0) {
+      const ge = gl.getError();
+      if (ge) {
+        lastErr = `描画命令が拒否された（GL ${ge}、${VARIANTS[vIdx].name}）`;
+        if (ge === gl.INVALID_OPERATION && vIdx < VARIANTS.length - 1) {
+          vIdx++;
+          try { sessionStorage.setItem("kaeru-variant", String(vIdx)); } catch (e) { /* 使えない環境 */ }
+          rebuildPending = true; lastBuild = 0;
+        }
+      }
+    }
     samples++;
     ping = dst;
 
@@ -1873,7 +1957,7 @@ ${sceneGLSL(sc)}
       if (pr.nan > 0 || pr.mean < 0.002 || fbBroken) showDiag();
     }
 
-    if (light.lit && speed === 0) {
+    if (light.lit && speed === 0 && !motesOff && moteP) {
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(moteP.p);
@@ -1886,6 +1970,7 @@ ${sceneGLSL(sc)}
       gl.bindBuffer(gl.ARRAY_BUFFER, mBuf);
       gl.bufferSubData(gl.ARRAY_BUFFER, 0, mData);
       gl.drawArrays(gl.POINTS, 0, NM);
+      if (frameNo - builtAt < 6 && gl.getError() === gl.INVALID_OPERATION) motesOff = true;
     }
     gl.bindVertexArray(null);
     frameNo++;
