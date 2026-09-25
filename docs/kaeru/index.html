@@ -935,6 +935,7 @@ ${sceneGLSL(sc)}
   const FS_TRACE_BODY = `
     uniform vec2 uRes;
     uniform float uTime, uW, uTanF, uHum, uCover;
+    uniform int uDebug;
     uniform uint uFrame;
     uniform vec3 uCam, uCR, uCU, uCF;
     uniform sampler2D uPrev, uFloor, uGF, uGS, uGE, uGW;
@@ -1037,7 +1038,7 @@ ${sceneGLSL(sc)}
       bool specChain = true;
       for (int b = 0; b < 4; b++) {
         Hit h = trace(ro, rd);
-        if (specChain) {
+        if (specChain && uDebug != 3) {
           float seg = min(h.t, 12.0);
           float ph = hg(dot(rd, uL), 0.66) * 0.88 + 0.12 / (4.0 * PI);
           vec3 acc = vec3(0);
@@ -1095,7 +1096,10 @@ ${sceneGLSL(sc)}
       vec3 fp = uCam + dir * (FOCUS / dot(dir, uCF));
       float lr = APER * sqrt(rnd()), la = 2.0 * PI * rnd();
       vec3 ro = uCam + (uCR * cos(la) + uCU * sin(la)) * lr;
-      vec3 c = radiance(ro, normalize(fp - ro));
+      vec3 c;
+      if (uDebug == 1) c = vec3(0.5);
+      else if (uDebug == 2) { Hit hh = trace(ro, normalize(fp - ro)); c = hh.esc ? vec3(0.9, 0.2, 0.2) : 0.2 + 0.6 * abs(hh.n); }
+      else c = radiance(ro, normalize(fp - ro));
       if (any(isnan(c)) || any(isinf(c))) c = vec3(0);
       // 最適化で isnan が消える環境（ANGLE/Direct3D など）でも NaN を 0 にするため、clamp で丸める
       c = clamp(c, vec3(0.0), vec3(60.0));
@@ -1479,6 +1483,86 @@ ${sceneGLSL(sc)}
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     return { nan, mean: n ? sum / n : 0, err: gl.getError() };
   }
+  function traceUniforms(u, w, h, prevTex, weight, t) {
+    setCam(u);
+    gl.uniform2f(u.uRes, w, h);
+    gl.uniform1f(u.uTime, t);
+    gl.uniform1ui(u.uFrame, frameNo);
+    gl.uniform1f(u.uHum, hum);
+    gl.uniform1f(u.uCover, 0.99);
+    gl.uniform1f(u.uW, weight);
+    const bind = (unit, tex, name) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(u[name], unit); };
+    bind(0, prevTex, "uPrev"); bind(1, floorTex, "uFloor");
+    bind(2, surfs[0].tex, "uGF"); bind(3, surfs[1].tex, "uGS"); bind(4, surfs[2].tex, "uGE"); bind(5, surfs[3].tex, "uGW");
+  }
+  // その端末の上で、描画の段階ごとに値が出ているかを確かめる（読み取りは8ビットのみ）
+  function selfTest() {
+    const w = 24, h = 16, out = [];
+    const mkT = (internal, type) => {
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, gl.RGBA, type, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      const f = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+      return [t, f, gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE];
+    };
+    const read = () => {
+      const px = new Uint8Array(w * h * 4);
+      gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      const a = [0, 0, 0];
+      for (let i = 0; i < w * h; i++) for (let c = 0; c < 3; c++) a[c] += px[i * 4 + c];
+      return a.map((v) => (v / (w * h)).toFixed(1)).join(",");
+    };
+    try {
+      const [t8, f8, ok8] = mkT(gl.RGBA8, gl.UNSIGNED_BYTE);
+      const [t16, f16, ok16] = mkT(gl.RGBA16F, gl.HALF_FLOAT);
+      out.push(`テスト用バッファ: 8bit ${ok8 ? "正常" : "不完全"} 16bit浮動小数点 ${ok16 ? "正常" : "不完全"}`);
+      const names = ["", "1 固定の灰色", "2 形の判定", "3 光（散乱なし）", "4 全部"];
+      gl.bindVertexArray(quadVAO);
+      gl.disable(gl.BLEND);
+      for (const mode of [1, 2, 3, 4]) {
+        gl.bindFramebuffer(gl.FRAMEBUFFER, f8);
+        gl.viewport(0, 0, w, h);
+        gl.useProgram(traceP.p);
+        traceUniforms(traceP.u, w, h, acc[ping], 1, 1);
+        gl.uniform1i(traceP.u.uDebug, mode);
+        gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+        out.push(`テスト${names[mode]}: ${read()}`);
+      }
+      // 5: 浮動小数点バッファに書いて、表示用の処理で8bitに写して読む
+      gl.bindFramebuffer(gl.FRAMEBUFFER, f16);
+      gl.useProgram(traceP.p);
+      traceUniforms(traceP.u, w, h, acc[ping], 1, 1);
+      gl.uniform1i(traceP.u.uDebug, 1);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      gl.uniform1i(traceP.u.uDebug, 0);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, f8);
+      gl.useProgram(showP.p);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, t16);
+      gl.uniform1i(showP.u.uAcc, 0);
+      gl.uniform2f(showP.u.uRes, w, h);
+      gl.uniform1f(showP.u.uGrain, 0);
+      gl.uniform1f(showP.u.uExposure, 1);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      out.push(`テスト5 浮動小数点経由: ${read()}`);
+      // 6: いま画面に使っている蓄積バッファをそのまま写して読む
+      gl.bindTexture(gl.TEXTURE_2D, acc[ping]);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+      out.push(`テスト6 蓄積バッファ: ${read()}`);
+      out.push(`テスト後のGLエラー: ${gl.getError()}`);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.deleteFramebuffer(f8); gl.deleteFramebuffer(f16); gl.deleteTexture(t8); gl.deleteTexture(t16);
+      gl.bindVertexArray(null);
+    } catch (e) {
+      out.push(`テスト中のエラー: ${e && e.message}`);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+    return out.join("\n");
+  }
   function diagText() {
     const pr = probe();
     return [
@@ -1490,6 +1574,7 @@ ${sceneGLSL(sc)}
       `蓄積の値: 平均 ${pr.mean.toFixed(4)} NaN ${pr.nan} GLエラー ${pr.err}`,
       `バッファ: ${fbBroken ? "不完全" : "正常"} コンテキスト: ${gl.isContextLost() ? "失われた" : "正常"} 停止: ${losses}回${lost ? "（この表示中にも停止）" : ""} 軽量版: ${SAFE ? "はい" : "いいえ"}`,
       `エラー: ${lastErr || "なし"}`,
+      selfTest(),
       `光: ${light ? light.kind : "-"} E=${light ? light.E.map((v) => v.toFixed(2)).join(",") : "-"} 空=${light ? light.sky.map((v) => v.toFixed(2)).join(",") : "-"}`,
     ].join("\n");
   }
@@ -1769,18 +1854,8 @@ ${sceneGLSL(sc)}
     gl.viewport(0, 0, W, H);
     gl.disable(gl.BLEND);
     gl.useProgram(traceP.p);
-    const u = traceP.u;
-    setCam(u);
-    gl.uniform2f(u.uRes, W, H);
-    gl.uniform1f(u.uTime, t);
-    gl.uniform1ui(u.uFrame, frameNo);
-    gl.uniform1f(u.uHum, hum);
-    gl.uniform1f(u.uCover, 0.99);
     const maxN = speed === 0 ? 200 : 90;
-    gl.uniform1f(u.uW, 1 / Math.min(samples + 1, maxN));
-    const bind = (unit, tex, name) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(u[name], unit); };
-    bind(0, acc[src], "uPrev"); bind(1, floorTex, "uFloor");
-    bind(2, surfs[0].tex, "uGF"); bind(3, surfs[1].tex, "uGS"); bind(4, surfs[2].tex, "uGE"); bind(5, surfs[3].tex, "uGW");
+    traceUniforms(traceP.u, W, H, acc[src], 1 / Math.min(samples + 1, maxN), t);
     gl.bindVertexArray(quadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     samples++;
