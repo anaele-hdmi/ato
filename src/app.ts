@@ -59,6 +59,7 @@ export class App {
   private disp = 0;
   private weather = new Weather();
   private weatherFixed: number | null = null;
+  private aoOn = !new URLSearchParams(location.search).has('noao');
   private tmpV2 = new THREE.Vector2();
   private fwd = new THREE.Vector3();
   private poleNear = 0;
@@ -270,6 +271,9 @@ export class App {
       // contrast breaks before anything else does
       contrast: 1 + 0.38 * win(env.year, 2284, 2300, 2330, 2350),
       memory: smoothstep(0.02, 0.75, c.reach - c.u),
+      // reach grows with distance so a house from the air still sits in its own dark
+      aoRadius: clamp(eye * 0.024, 0.5, 8),
+      aoIntensity: this.aoOn ? 1.8 : 0,
       time: this.elapsed,
     });
 

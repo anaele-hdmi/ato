@@ -5,6 +5,7 @@
 // smooth (small bilateral tent pass to kill residual gather noise) -> composite
 // (CoC-aware bilateral upsample + sharp/blur mix + grain/CA/contrast/vignette).
 import * as THREE from 'three';
+import { DepthAO } from './ao';
 
 export interface DofParams {
   focus: number;
@@ -18,6 +19,9 @@ export interface DofParams {
   contrast: number;
   /** 0..1: how far back from the furthest point reached the viewer is looking. */
   memory: number;
+  /** Occlusion reach in metres and strength; see ao.ts. */
+  aoRadius: number;
+  aoIntensity: number;
   time: number;
 }
 
@@ -37,6 +41,11 @@ uniform float uMaxPx;
 float linearDepth(vec2 uv) {
   float z = texture2D(tDepth, uv).r * 2.0 - 1.0;
   return 2.0 * uNear * uFar / (uFar + uNear - z * (uFar - uNear));
+}
+uniform sampler2D tAO;
+// occlusion only where the air is still thin; far off it would darken the haze itself
+float aoAt(vec2 uv) {
+  return mix(1.0, texture2D(tAO, uv).r, 1.0 - smoothstep(250.0, 1500.0, linearDepth(uv)));
 }
 // signed circle of confusion in full-resolution pixels; negative = in front
 float cocAt(vec2 uv) {
@@ -59,7 +68,7 @@ void main() {
          + texture2D(tColor, vUv + uTexel * vec2(-0.5, 0.5)).rgb
          + texture2D(tColor, vUv + uTexel * vec2(0.5, 0.5)).rgb;
   float coc = cocAt(vUv);
-  gl_FragColor = vec4(c * 0.25, 0.5 + 0.5 * coc / uMaxPx);
+  gl_FragColor = vec4(c * 0.25 * aoAt(vUv), 0.5 + 0.5 * coc / uMaxPx);
 }
 `;
 
@@ -271,7 +280,7 @@ void main() {
   float t = smoothstep(0.7, 2.8, max(coc, b.a * uMaxPx));
   vec2 dir = vUv - 0.5;
   vec2 off = dir * dot(dir, dir) * uCa * uTexel * 8.0;
-  vec3 sharp = vec3(texture2D(tColor, vUv + off).r, texture2D(tColor, vUv).g, texture2D(tColor, vUv - off).b);
+  vec3 sharp = vec3(texture2D(tColor, vUv + off).r, texture2D(tColor, vUv).g, texture2D(tColor, vUv - off).b) * aoAt(vUv);
   vec3 blur = vec3(texture2D(tBlur, vUv + off).r, b.g, texture2D(tBlur, vUv - off).b);
   vec3 c = mix(sharp, blur, t);
   // halation: bright parts bleed softly into their surroundings, as on film
@@ -283,6 +292,7 @@ void main() {
   c += g * uGrain * (1.0 - 0.6 * l);
   c *= 1.0 - 0.18 * dot(dir, dir) * 2.0;
   // -- colour grading insertion point: adjust final 'c' below, before debug/output --
+  if (uDebug > 1.5) { gl_FragColor = vec4(vec3(texture2D(tAO, vUv).r), 1.0); return; }
   if (uDebug > 0.5) { float k = cocAt(vUv) / uMaxPx; c = vec3(max(-k, 0.0), max(k, 0.0), b.a); }
   if (uStyle > 0.5 && uStyle < 1.5) c = styleSilhouette(c, vUv);
   else if (uStyle > 1.5 && uStyle < 2.5) c = styleEtching(c, vUv);
@@ -306,12 +316,14 @@ export class DofPipeline {
   private smooth: THREE.ShaderMaterial;
   private comp: THREE.ShaderMaterial;
   private h = 1;
+  private ao: DepthAO;
 
   constructor() {
     const depthTexture = new THREE.DepthTexture(1, 1, THREE.UnsignedIntType);
     depthTexture.minFilter = THREE.NearestFilter;
     depthTexture.magFilter = THREE.NearestFilter;
     this.sceneRT = new THREE.WebGLRenderTarget(1, 1, { depthTexture, depthBuffer: true });
+    this.ao = new DepthAO(depthTexture);
     const opts = { minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false };
     this.halfA = new THREE.WebGLRenderTarget(1, 1, opts);
     this.halfB = new THREE.WebGLRenderTarget(1, 1, opts);
@@ -324,6 +336,7 @@ export class DofPipeline {
       uCocPx: { value: 10 },
       uTiltPx: { value: 0 },
       uMaxPx: { value: 20 },
+      tAO: { value: this.ao.target.texture },
     });
     this.prep = new THREE.ShaderMaterial({
       uniforms: { ...cocUniforms(), tColor: { value: this.sceneRT.texture }, uTexel: { value: new THREE.Vector2() } },
@@ -354,7 +367,7 @@ export class DofPipeline {
         uCa: { value: 0.6 },
         uContrast: { value: 1 },
         uTime: { value: 0 },
-        uDebug: { value: new URLSearchParams(location.search).has('dofdebug') ? 1 : 0 },
+        uDebug: { value: new URLSearchParams(location.search).has('aodebug') ? 2 : new URLSearchParams(location.search).has('dofdebug') ? 1 : 0 },
         uMemory: { value: 0 },
         uStyle: { value: parseFloat(new URLSearchParams(location.search).get('style') ?? '4') },
       },
@@ -370,6 +383,7 @@ export class DofPipeline {
   setSize(w: number, h: number): void {
     this.h = h;
     this.sceneRT.setSize(w, h);
+    this.ao.setSize(w, h);
     const hw = Math.max(1, Math.floor(w / 2)), hh = Math.max(1, Math.floor(h / 2));
     this.halfA.setSize(hw, hh);
     this.halfB.setSize(hw, hh);
@@ -385,6 +399,7 @@ export class DofPipeline {
     renderer.setRenderTarget(this.sceneRT);
     renderer.clear();
     renderer.render(scene, camera);
+    this.ao.render(renderer, camera, p.aoRadius, p.aoIntensity);
 
     const maxPx = Math.max(2, p.maxFrac * this.h);
     for (const m of [this.prep, this.comp]) {
