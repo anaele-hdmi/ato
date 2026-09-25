@@ -1,0 +1,1089 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
+<style>:root{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
+</head>
+<body>
+<title>塵の床</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@400;600&family=IBM+Plex+Mono:wght@400&display=swap">
+<style>
+  :root {
+    color-scheme: dark;
+    --ground: #07080a;
+    --ink: #ebe5da;
+    --ink-dim: #a39d92;
+    --ink-faint: #6f6a62;
+    --line: rgba(235, 229, 218, 0.14);
+    --panel: rgba(8, 9, 11, 0.88);
+    --sun: #f2d7a6;
+    --mincho: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
+    --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; }
+  body {
+    margin: 0;
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--mincho);
+    overflow: hidden;
+  }
+  #room {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    touch-action: none;
+    cursor: crosshair;
+  }
+  #room.done { cursor: default; }
+  .hud {
+    position: fixed;
+    left: 16px;
+    right: 16px;
+    pointer-events: none;
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9);
+  }
+  .hud.top { top: calc(16px + env(safe-area-inset-top, 0px)); align-items: flex-start; }
+  .hud.bottom { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); align-items: flex-end; }
+  h1 {
+    margin: 0;
+    font-weight: 400;
+    font-size: 15px;
+    letter-spacing: 0.5em;
+    color: var(--ink);
+  }
+  .meta {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    line-height: 1.8;
+    color: var(--ink-dim);
+    font-variant-numeric: tabular-nums;
+  }
+  .message {
+    font-size: 13px;
+    line-height: 1.9;
+    max-width: 36em;
+    text-wrap: pretty;
+    color: var(--ink);
+    opacity: 0.9;
+  }
+  .message small {
+    display: block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-dim);
+  }
+  button.info {
+    pointer-events: auto;
+    appearance: none;
+    border: 1px solid var(--line);
+    background: rgba(0, 0, 0, 0.2);
+    color: var(--ink-dim);
+    font-family: var(--mincho);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    padding: 6px 10px 6px 12px;
+    border-radius: 2px;
+    cursor: pointer;
+    flex-shrink: 0;
+  }
+  button.info:hover, button.info:focus-visible { color: var(--ink); border-color: var(--ink-dim); outline: none; }
+  #notes {
+    position: fixed;
+    inset: 0;
+    background: var(--panel);
+    backdrop-filter: blur(8px);
+    overflow-y: auto;
+    padding-inline: 16px;
+    padding-block: calc(60px + env(safe-area-inset-top, 0px)) 48px;
+  }
+  #notes .inner { max-width: 660px; margin: 0 auto; }
+  #notes h2 { font-size: 15px; font-weight: 400; letter-spacing: 0.4em; margin: 0 0 18px; }
+  #notes p { font-size: 13px; line-height: 1.95; color: var(--ink-dim); margin: 0 0 16px; }
+  .tablewrap { overflow-x: auto; margin: 0 0 24px; }
+  table { border-collapse: collapse; width: 100%; font-size: 12px; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink-faint); font-weight: 400; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; }
+  td.v { font-family: var(--mono); white-space: nowrap; color: var(--ink); font-variant-numeric: tabular-nums; }
+  td.s { color: var(--ink-dim); line-height: 1.7; }
+  .tag { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 2px; white-space: nowrap; }
+  .tag.assume { color: var(--sun); border-color: rgba(242, 215, 166, 0.35); }
+  #close { position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); right: 16px; }
+  #fallback { position: fixed; inset: 0; display: grid; place-items: center; padding-inline: 16px; color: var(--ink-dim); font-size: 13px; }
+  @media (max-width: 520px) { .message { font-size: 12.5px; } }
+</style>
+
+<canvas id="room" aria-label="窓から差す光の筋の中で塵が漂う部屋。床をなぞると跡が残る"></canvas>
+<div id="fallback" hidden>この端末ではWebGLが使えないため表示できません。</div>
+
+<div class="hud top">
+  <div>
+    <h1>塵の床</h1>
+    <div class="meta" id="meta"></div>
+  </div>
+  <button class="info" id="openNotes" type="button">しくみ</button>
+</div>
+
+<div class="hud bottom">
+  <div class="message" id="message">床をなぞると、塵に跡が残ります。残せるのは一度だけです。</div>
+</div>
+
+<section id="notes" hidden>
+  <button class="info" id="close" type="button">閉じる</button>
+  <div class="inner">
+    <h2>しくみ</h2>
+    <p>1926年9月25日から誰も入っていない部屋、という設定です。窓から差す光の向き、床に積もった塵の量、跡が埋もれるまでの時間は、開いた時点の時刻から計算しています。訪れた人が残した跡は保存され、次に開いた人にも見えます。</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>項目</th><th>値</th><th>根拠</th></tr></thead>
+        <tbody>
+          <tr><td>場所・窓</td><td class="v">35.68°N 139.77°E</td><td class="s">東京。南向きの窓、幅1.2m、床上0.8〜2.1m <span class="tag assume">設定</span></td></tr>
+          <tr><td>太陽</td><td class="v">実時刻</td><td class="s">低精度の太陽位置式（誤差0.1°程度の見込み）。高度が低いほど大気を長く通るため、光は赤くなる</td></tr>
+          <tr><td>月</td><td class="v">実時刻</td><td class="s">低精度の月位置式（誤差1°程度の見込み）。明るさは満ち欠けの割合に比例させている</td></tr>
+          <tr><td>夜の見え方</td><td class="v">露出補正</td><td class="s">月光は日光の数十万分の一なので、長時間露光のカメラで見たように明るさを上げている</td></tr>
+          <tr><td>描き方</td><td class="v">パストレーシング</td><td class="s">光線を1画素ずつ追跡し、壁や床での跳ね返り（3回まで）、窓を面光源とする空の光、太陽の視直径0.53°による影のぼけを計算。開いてから数秒かけて画が落ち着く</td></tr>
+          <tr><td>光の筋</td><td class="v">前方散乱</td><td class="s">塵の粒は光を進行方向へ強く散らす（ミー散乱）。窓の方を向いたときに筋がいちばん明るく見える</td></tr>
+          <tr><td>塵の沈降</td><td class="v">v = (ρ−ρ<sub>air</sub>)gd²/18μ</td><td class="s">ストークスの式。直径10µmで約3mm/秒、1µmで約0.03mm/秒。宙を漂う動きの大半は空気の流れ</td></tr>
+          <tr><td>塵の堆積速度</td><td class="v">10 mg/m²/日</td><td class="s"><span class="tag assume">仮定</span> 室内の実測値は換気・人の出入り・場所で大きく変わる。要検証</td></tr>
+          <tr><td>床の見え方</td><td class="v">1 − e<sup>−m/6.7</sup></td><td class="s">粒子がランダムに落ちるときの被覆率（ポアソン過程）。6.7 g/m²は直径10µmの粒が床を一層覆う量</td></tr>
+          <tr><td>跡が見えなくなる</td><td class="v">差 &lt; 2%</td><td class="s"><span class="tag assume">仮定</span> 跡の内と外の被覆率の差が2%を下回った時点</td></tr>
+          <tr><td>指の跡</td><td class="v">幅 16mm</td><td class="s">なぞった部分の塵はすべて取り除かれるとみなす <span class="tag assume">仮定</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p>光の筋の中に見える粒は、実際の大きさでは目に見えないため拡大して描いています。手前や奥がぼけて見えるのは、ピントを部屋の中ほど（約3.6m）に合わせたカメラを想定しているためです。椅子は物語上の設定です。天気は反映していません。</p>
+  </div>
+</section>
+
+<script>
+(() => {
+  "use strict";
+
+  // ================= 物理と設定 =================
+  const LAT = 35.68, LON = 139.77;
+  const EPOCH = Date.parse("1926-09-25T00:00:00+09:00");
+  const RATE = 0.010, M0 = 6.7, THRESH = 0.02;
+  const DAY = 86400000, R = Math.PI / 180;
+  const FINGER = 0.016;
+  // 部屋（m）。y が上、-z が南（窓の壁）、+x が西。
+  const RX = 2.1, RH = 2.7, ZS = -3.2, ZN = 3.6, WT = 0.22;
+  const WIN = { x0: -1.0, x1: 0.2, y0: 0.8, y1: 2.1 };
+  const CAM = [1.2, 1.3, 2.9], TARGET = [-0.2, 0.85, -3.2];
+  const CHAIR = { x: -0.15, z: -1.55 };
+
+  const cover = (m) => 1 - Math.exp(-m / M0);
+  const massAt = (days) => RATE * Math.max(0, days);
+  function fadeDays(tDrawn) {
+    const base = (tDrawn - EPOCH) / DAY;
+    let lo = 0, hi = 365.25 * 500;
+    for (let i = 0; i < 50; i++) {
+      const mid = (lo + hi) / 2;
+      if (cover(massAt(base + mid)) - cover(massAt(mid)) >= THRESH) lo = mid; else hi = mid;
+    }
+    return hi;
+  }
+
+  // ---- 天体の位置 ----
+  const jdn = (ms) => ms / DAY + 2440587.5 - 2451545.0;
+  function altAz(ra, dec, n) {
+    const gmst = (18.697374558 + 24.06570982441908 * n) % 24;
+    const H = (gmst * 15 + LON) * R - ra;
+    const phi = LAT * R;
+    const alt = Math.asin(Math.sin(phi) * Math.sin(dec) + Math.cos(phi) * Math.cos(dec) * Math.cos(H));
+    const az = Math.atan2(-Math.sin(H) * Math.cos(dec),
+      Math.sin(dec) * Math.cos(phi) - Math.cos(dec) * Math.sin(phi) * Math.cos(H));
+    return { alt, az: (az + 2 * Math.PI) % (2 * Math.PI) };
+  }
+  function sunPos(ms) {
+    const n = jdn(ms);
+    const L = (280.460 + 0.9856474 * n) % 360;
+    const g = (357.528 + 0.9856003 * n) * R;
+    const lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * R;
+    const eps = (23.439 - 0.0000004 * n) * R;
+    const ra = Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam));
+    const dec = Math.asin(Math.sin(eps) * Math.sin(lam));
+    return Object.assign(altAz(ra, dec, n), { lam });
+  }
+  function moonPos(ms, sunLam) {
+    const n = jdn(ms);
+    const L = (218.316 + 13.176396 * n) * R;
+    const M = (134.963 + 13.064993 * n) * R;
+    const F = (93.272 + 13.229350 * n) * R;
+    const lon = L + 6.289 * R * Math.sin(M);
+    const lat = 5.128 * R * Math.sin(F);
+    const eps = 23.439 * R;
+    const ra = Math.atan2(Math.sin(lon) * Math.cos(eps) - Math.tan(lat) * Math.sin(eps), Math.cos(lon));
+    const dec = Math.asin(Math.sin(lat) * Math.cos(eps) + Math.cos(lat) * Math.sin(eps) * Math.sin(lon));
+    const elong = Math.acos(Math.cos(lat) * Math.cos(lon - sunLam));
+    return Object.assign(altAz(ra, dec, n), { frac: (1 - Math.cos(elong)) / 2 });
+  }
+  // 天体へ向かう単位ベクトル。南を向くと東は左（-x）。
+  const dirOf = (b) => [-Math.sin(b.az) * Math.cos(b.alt), Math.sin(b.alt), Math.cos(b.az) * Math.cos(b.alt)];
+  const entersWindow = (b) => b.alt > 0.5 * R && dirOf(b)[2] < -0.03;
+
+  // 大気の透過（Kasten–Young の大気路程）
+  function sunColor(alt) {
+    const h = alt / R;
+    const m = 1 / (Math.sin(alt) + 0.50572 * Math.pow(h + 6.07995, -1.6364));
+    return [0.085, 0.16, 0.33].map((k) => Math.exp(-k * m));
+  }
+
+  function lighting(ms) {
+    const sun = sunPos(ms);
+    const moon = moonPos(ms, sun.lam);
+    const dayness = Math.min(1, Math.max(0, (sun.alt / R + 6) / 16));
+    let body = null, E = [0, 0, 0], kind = "none";
+    if (sun.alt > -1 * R) {
+      body = sun; kind = "sun";
+      E = sunColor(Math.max(sun.alt, 0.2 * R)).map((v) => v * 14);
+    } else if (moon.alt > 0) {
+      body = moon; kind = "moon";
+      const f = 0.2 + 0.8 * moon.frac;
+      E = [0.62, 0.74, 1.0].map((v) => v * 5.5 * f);
+    }
+    const L = body ? dirOf(body) : [0, 0.5, -0.8];
+    const lit = !!body && entersWindow(body);
+    const day = [0.95, 1.0, 1.1].map((v) => v * 1.5), night = [0.018, 0.026, 0.05];
+    const sky = day.map((d, i) => night[i] + (d - night[i]) * dayness);
+    if (kind === "moon") for (let i = 0; i < 3; i++) sky[i] += 0.05 * moon.frac;
+    return { sun, moon, kind, L, E: body && L[1] > 0 ? E : [0, 0, 0], sky, lit, grain: 0.03 + 0.025 * (1 - dayness) };
+  }
+  function nextLight(ms) {
+    for (let t = ms + 5 * 60000; t < ms + 3 * DAY; t += 5 * 60000) if (entersWindow(sunPos(t))) return t;
+    return null;
+  }
+
+  // ================= シーンの箱（窓枠と椅子）=================
+  const boxes = [];
+  const box = (a, b, m) => boxes.push([a, b, m]);
+  {
+    const zf0 = ZS - 0.135, zf1 = ZS - 0.085, s = 0.05, mx = (WIN.x0 + WIN.x1) / 2, my = (WIN.y0 + WIN.y1) / 2, h = 0.0175;
+    box([WIN.x0, WIN.y0, zf0], [WIN.x0 + s, WIN.y1, zf1], 1);
+    box([WIN.x1 - s, WIN.y0, zf0], [WIN.x1, WIN.y1, zf1], 1);
+    box([WIN.x0, WIN.y1 - s, zf0], [WIN.x1, WIN.y1, zf1], 1);
+    box([WIN.x0, WIN.y0, zf0], [WIN.x1, WIN.y0 + 0.065, zf1], 1);
+    box([mx - h, WIN.y0, zf0 + 0.01], [mx + h, WIN.y1, zf1 - 0.01], 1);
+    box([WIN.x0, my - h, zf0 + 0.01], [WIN.x1, my + h, zf1 - 0.01], 1);
+    box([WIN.x0 - 0.07, WIN.y0 - 0.035, ZS - 0.09], [WIN.x1 + 0.07, WIN.y0 + 0.001, ZS + 0.05], 1);
+    const cx = CHAIR.x, cz = CHAIR.z, l = 0.034;
+    box([cx - 0.21, 0.43, cz - 0.2], [cx + 0.21, 0.465, cz + 0.2], 2);
+    for (const [sx, sz] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+      const x = cx + sx * (0.19 - l / 2), z = cz + sz * (0.18 - l / 2);
+      const top = sz < 0 ? 0.93 : 0.43;
+      box([x - l / 2, 0, z - l / 2], [x + l / 2, top, z + l / 2], 2);
+    }
+    box([cx - 0.19, 0.83, cz - 0.2], [cx + 0.19, 0.91, cz - 0.172], 2);
+    box([cx - 0.19, 0.63, cz - 0.195], [cx + 0.19, 0.665, cz - 0.175], 2);
+    box([cx - 0.19, 0.12, cz - 0.01], [cx + 0.19, 0.145, cz + 0.01], 2);
+  }
+  const f3 = (v) => `vec3(${v.map((x) => x.toFixed(4)).join(",")})`;
+  const NB = boxes.length;
+
+  // ================= GLSL =================
+  const COMMON = `#version 300 es
+    precision highp float;
+    precision highp int;
+    const float RX = ${RX.toFixed(3)}, RH = ${RH.toFixed(3)}, ZS = ${ZS.toFixed(3)}, ZN = ${ZN.toFixed(3)}, WT = ${WT.toFixed(3)};
+    const float WX0 = ${WIN.x0.toFixed(3)}, WX1 = ${WIN.x1.toFixed(3)}, WY0 = ${WIN.y0.toFixed(3)}, WY1 = ${WIN.y1.toFixed(3)};
+    const int NB = ${NB};
+    const vec3 BMIN[NB] = vec3[NB](${boxes.map((b) => f3(b[0])).join(",")});
+    const vec3 BMAX[NB] = vec3[NB](${boxes.map((b) => f3(b[1])).join(",")});
+    const int BMAT[NB] = int[NB](${boxes.map((b) => b[2]).join(",")});
+    const float PI = 3.14159265;
+    const float SUNR = 0.00465;
+    uniform vec3 uL, uE, uSky;
+
+    vec3 safeInv(vec3 d) { return 1.0 / mix(d, vec3(1e-7), lessThan(abs(d), vec3(1e-7))); }
+
+    float boxT(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, out vec3 n) {
+      vec3 t0 = (bmin - ro) * inv, t1 = (bmax - ro) * inv;
+      vec3 tn3 = min(t0, t1), tf3 = max(t0, t1);
+      float tn = max(max(tn3.x, tn3.y), tn3.z), tf = min(min(tf3.x, tf3.y), tf3.z);
+      if (tf < tn || tn < 1e-4) return 1e9;
+      n = tn == tn3.x ? vec3(-sign(inv.x), 0, 0) : (tn == tn3.y ? vec3(0, -sign(inv.y), 0) : vec3(0, 0, -sign(inv.z)));
+      return tn;
+    }
+
+    // 部屋の内側＋窓の穴（壁の厚み分のトンネル）。esc = 外へ抜けた
+    float shellT(vec3 ro, vec3 rd, vec3 inv, out vec3 n, out bool esc) {
+      esc = false;
+      float txT = ((rd.x > 0.0 ? WX1 : WX0) - ro.x) * inv.x;
+      float tyT = ((rd.y > 0.0 ? WY1 : WY0) - ro.y) * inv.y;
+      float tx = ((rd.x > 0.0 ? RX : -RX) - ro.x) * inv.x;
+      float ty = ((rd.y > 0.0 ? RH : 0.0) - ro.y) * inv.y;
+      float tz = ((rd.z > 0.0 ? ZN : ZS) - ro.z) * inv.z;
+      bool inTunnel = ro.z < ZS;
+      if (!inTunnel) {
+        float t = min(tx, min(ty, tz));
+        if (t == tz && rd.z < 0.0) {
+          vec3 p = ro + rd * t;
+          if (!(p.x > WX0 && p.x < WX1 && p.y > WY0 && p.y < WY1)) { n = vec3(0, 0, 1); return t; }
+        } else {
+          n = t == tx ? vec3(-sign(rd.x), 0, 0) : (t == ty ? vec3(0, -sign(rd.y), 0) : vec3(0, 0, -1));
+          return t;
+        }
+      }
+      float ts = min(txT, tyT);
+      vec3 ns = ts == txT ? vec3(-sign(rd.x), 0, 0) : vec3(0, -sign(rd.y), 0);
+      if (rd.z > 0.0) {
+        float tzF = (ZS - ro.z) * inv.z;
+        if (ts < tzF) { n = ns; return ts; }
+        float t = min(tx, min(ty, tz));
+        n = t == tx ? vec3(-sign(rd.x), 0, 0) : (t == ty ? vec3(0, -sign(rd.y), 0) : vec3(0, 0, -1));
+        return t;
+      }
+      float tzB = (ZS - WT - ro.z) * inv.z;
+      if (ts < tzB) { n = ns; return ts; }
+      esc = true;
+      return tzB;
+    }
+
+    struct Hit { float t; vec3 n; int m; bool esc; };
+    Hit trace(vec3 ro, vec3 rd) {
+      vec3 inv = safeInv(rd);
+      Hit h;
+      h.t = shellT(ro, rd, inv, h.n, h.esc);
+      h.m = 0;
+      for (int i = 0; i < NB; i++) {
+        vec3 n;
+        float t = boxT(ro, inv, BMIN[i], BMAX[i], n);
+        if (t < h.t) { h.t = t; h.n = n; h.m = BMAT[i]; h.esc = false; }
+      }
+      return h;
+    }
+    bool escapes(vec3 ro, vec3 rd) { return trace(ro, rd).esc; }
+
+    float hg(float c, float g) {
+      float g2 = g * g;
+      return (1.0 - g2) / (4.0 * PI * pow(1.0 + g2 - 2.0 * g * c, 1.5));
+    }
+  `;
+
+  const VS_QUAD = `#version 300 es
+    in vec2 aPos; void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+  const FS_TRACE = COMMON + `
+    uniform vec2 uRes;
+    uniform float uTime, uW, uTanF;
+    uniform uint uFrame;
+    uniform vec3 uCam, uCR, uCU, uCF;
+    uniform sampler2D uPrev, uFloor;
+    uniform float uCover;
+    out vec4 o;
+
+    uint seed;
+    float rnd() {
+      seed = seed * 747796405u + 2891336453u;
+      uint w = ((seed >> ((seed >> 28u) + 4u)) ^ seed) * 277803737u;
+      w = (w >> 22u) ^ w;
+      return float(w) / 4294967296.0;
+    }
+    float hash3(vec3 p) {
+      p = fract(p * 0.3183099 + 0.1);
+      p *= 17.0;
+      return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+    }
+    float noise(vec3 x) {
+      vec3 i = floor(x), f = fract(x);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(mix(hash3(i), hash3(i + vec3(1,0,0)), f.x), mix(hash3(i + vec3(0,1,0)), hash3(i + vec3(1,1,0)), f.x), f.y),
+                 mix(mix(hash3(i + vec3(0,0,1)), hash3(i + vec3(1,0,1)), f.x), mix(hash3(i + vec3(0,1,1)), hash3(i + vec3(1,1,1)), f.x), f.y), f.z);
+    }
+    // 空気中の塵の濃さ（m⁻¹ 相当の相対値）。ゆっくり流れるむら
+    float dens(vec3 p) {
+      vec3 q = p * 1.5 + vec3(uTime * 0.010, -uTime * 0.005, uTime * 0.014);
+      float n = noise(q) * 0.55 + noise(q * 2.7 + 7.3) * 0.3 + noise(q * 7.1 + 1.7) * 0.15;
+      return 0.35 + 1.9 * n * n * n + 0.3 * smoothstep(1.4, 0.0, p.y);
+    }
+
+    vec3 skyL(vec3 d) {
+      vec3 zen = uSky * vec3(0.72, 0.84, 1.12), hor = uSky * 1.2;
+      vec3 c = d.y > 0.0 ? mix(hor, zen, smoothstep(0.0, 0.7, d.y)) : uSky * vec3(0.42, 0.40, 0.37);
+      c += uE * 0.035 * pow(max(dot(d, uL), 0.0), 48.0);
+      return c;
+    }
+    vec3 sunDir() {
+      vec3 a = abs(uL.y) < 0.9 ? vec3(0, 1, 0) : vec3(1, 0, 0);
+      vec3 b1 = normalize(cross(uL, a)), b2 = cross(uL, b1);
+      float r = SUNR * sqrt(rnd()), ph = 2.0 * PI * rnd();
+      return normalize(uL + (b1 * cos(ph) + b2 * sin(ph)) * r);
+    }
+    // 窓（外側の開口）を面光源としてサンプル
+    vec3 skyNEE(vec3 p, vec3 n, bool isVolume) {
+      vec3 q = vec3(mix(WX0, WX1, rnd()), mix(WY0, WY1, rnd()), ZS - WT);
+      vec3 d = q - p;
+      float d2 = max(dot(d, d), 0.04);
+      d = normalize(d);
+      float cosL = -d.z;
+      float cosS = isVolume ? 1.0 / (4.0 * PI) : max(dot(n, d), 0.0);
+      if (cosL <= 0.0 || cosS <= 0.0) return vec3(0);
+      if (!escapes(p, d)) return vec3(0);
+      float A = (WX1 - WX0) * (WY1 - WY0);
+      return skyL(d) * cosS * cosL * A / d2;
+    }
+    vec3 sunNEE(vec3 p, vec3 n) {
+      if (uE.x + uE.y + uE.z <= 0.0) return vec3(0);
+      vec3 d = sunDir();
+      float c = max(dot(n, d), 0.0);
+      if (c <= 0.0 || !escapes(p, d)) return vec3(0);
+      return uE * c;
+    }
+
+    vec3 albedo(vec3 p, vec3 n, int m) {
+      if (m == 1) return vec3(0.50, 0.48, 0.43) * (0.9 + 0.2 * noise(p * 40.0));
+      if (m == 2) {
+        vec3 w = vec3(0.16, 0.10, 0.065) * (0.8 + 0.4 * noise(p * vec3(60.0, 8.0, 60.0)));
+        return n.y > 0.5 ? mix(w, vec3(0.52, 0.50, 0.46), uCover * 0.8) : w;
+      }
+      if (n.y > 0.5 && p.y < 0.01) {
+        vec2 fuv = vec2((p.x + RX) / (2.0 * RX), (p.z - ZS) / (ZN - ZS));
+        return pow(texture(uFloor, fuv).rgb, vec3(2.2));
+      }
+      if (n.y < -0.5) return vec3(0.40, 0.39, 0.37) * (0.92 + 0.12 * noise(p * 3.0));
+      bool recess = p.z < ZS - 0.001;
+      vec3 plaster = vec3(0.44, 0.41, 0.36);
+      float s = 0.86 + 0.18 * noise(p * 2.3) + 0.06 * noise(p * 23.0) - 0.14 * smoothstep(0.55, 0.8, noise(p * vec3(0.9, 0.35, 0.9) + 3.0));
+      if (!recess && p.y < 0.09) return vec3(0.10, 0.07, 0.05);
+      return plaster * s;
+    }
+
+    vec3 radiance(vec3 ro, vec3 rd) {
+      vec3 L = vec3(0), thr = vec3(1);
+      const float SIGS = 0.32;
+      for (int b = 0; b < 3; b++) {
+        Hit h = trace(ro, rd);
+        if (b == 0) {
+          // 空中の散乱（一次散乱）。チンダル現象
+          float seg = min(h.t, 12.0);
+          float ph = hg(dot(rd, uL), 0.66) * 0.88 + 0.12 / (4.0 * PI);
+          vec3 acc = vec3(0);
+          for (int k = 0; k < 2; k++) {
+            float t = (float(k) + rnd()) * 0.5 * seg;
+            vec3 q = ro + rd * t;
+            float sd = dens(q) * SIGS;
+            vec3 s = vec3(0);
+            if (uE.x + uE.y + uE.z > 0.0) {
+              vec3 d = sunDir();
+              if (escapes(q, d)) s += uE * ph;
+            }
+            s += skyNEE(q, vec3(0), true);
+            acc += s * sd;
+          }
+          L += acc * seg * 0.5;
+        }
+        if (h.esc) {
+          if (b == 0) {
+            L += thr * skyL(rd);
+            if (dot(rd, uL) > cos(SUNR)) L += thr * uE * 900.0;
+          }
+          break;
+        }
+        vec3 p = ro + rd * h.t;
+        vec3 n = h.n;
+        vec3 a = albedo(p, n, h.m);
+        vec3 po = p + n * 1e-3;
+        L += thr * a / PI * (sunNEE(po, n) + skyNEE(po, n, false));
+        thr *= a;
+        // コサイン重み付きで次の方向
+        float r1 = rnd(), r2 = rnd();
+        float phi = 2.0 * PI * r1, sr = sqrt(r2);
+        vec3 t1 = normalize(abs(n.x) > 0.5 ? cross(n, vec3(0, 1, 0)) : cross(n, vec3(1, 0, 0)));
+        vec3 t2 = cross(n, t1);
+        rd = normalize(t1 * cos(phi) * sr + t2 * sin(phi) * sr + n * sqrt(1.0 - r2));
+        ro = po;
+      }
+      return L;
+    }
+
+    void main() {
+      seed = uint(gl_FragCoord.x) * 1973u + uint(gl_FragCoord.y) * 9277u + uFrame * 26699u;
+      seed |= 1u;
+      rnd();
+      vec2 jit = vec2(rnd(), rnd()) - 0.5;
+      vec2 uv = ((gl_FragCoord.xy + jit) * 2.0 - uRes) / uRes.y;
+      vec3 dir = normalize(uCR * uv.x * uTanF + uCU * uv.y * uTanF + uCF);
+      // 薄レンズ：ピントは部屋の中ほど
+      const float FOCUS = 3.6, APER = 0.006;
+      vec3 fp = uCam + dir * (FOCUS / dot(dir, uCF));
+      float lr = APER * sqrt(rnd()), la = 2.0 * PI * rnd();
+      vec3 ro = uCam + (uCR * cos(la) + uCU * sin(la)) * lr;
+      vec3 rd = normalize(fp - ro);
+      vec3 c = radiance(ro, rd);
+      if (any(isnan(c)) || any(isinf(c))) c = vec3(0);
+      c = min(c, vec3(60.0));
+      vec3 prev = texelFetch(uPrev, ivec2(gl_FragCoord.xy), 0).rgb;
+      o = vec4(mix(prev, c, uW), 1.0);
+    }
+  `;
+
+  const FS_SHOW = `#version 300 es
+    precision highp float;
+    uniform sampler2D uAcc;
+    uniform vec2 uRes;
+    uniform float uGrain, uFrameF;
+    out vec4 o;
+    float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
+    vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
+    void main() {
+      vec2 uv = gl_FragCoord.xy / uRes;
+      vec3 c = texture(uAcc, uv).rgb;
+      // 明部のにじみ（ブルーム）とハレーション
+      vec3 b = vec3(0);
+      vec2 asp = vec2(uRes.y / uRes.x, 1.0);
+      for (int r = 0; r < 3; r++) {
+        float rad = r == 0 ? 0.005 : (r == 1 ? 0.016 : 0.045);
+        float wt = r == 0 ? 0.5 : (r == 1 ? 0.3 : 0.2);
+        for (int k = 0; k < 12; k++) {
+          float a = float(k) * 0.5236 + float(r) * 0.9;
+          vec3 s = texture(uAcc, uv + vec2(cos(a), sin(a)) * rad * asp).rgb;
+          b += max(s - 0.9, 0.0) * wt / 12.0;
+        }
+      }
+      c += b * vec3(0.55, 0.42, 0.34);
+      c = aces(c * 0.9);
+      float lum = dot(c, vec3(0.3, 0.59, 0.11));
+      c = mix(c * vec3(0.94, 0.98, 1.05), c * vec3(1.04, 1.0, 0.92), smoothstep(0.15, 0.75, lum));
+      c = pow(c, vec3(1.0 / 2.2));
+      vec2 q = (gl_FragCoord.xy * 2.0 - uRes) / uRes.y;
+      c *= mix(0.62, 1.0, smoothstep(1.6, 0.3, length(q * vec2(0.82, 1.0))));
+      float g = hash(vec3(gl_FragCoord.xy * 1.37, mod(uFrameF, 97.0) + 0.5)) - 0.5;
+      c += g * uGrain * (0.55 + 0.45 * (1.0 - lum));
+      c = c * 0.975 + vec3(0.010, 0.009, 0.007);
+      o = vec4(c, 1.0);
+    }
+  `;
+
+  const VS_MOTE = COMMON + `
+    in vec4 aP;
+    in float aPh;
+    uniform vec3 uCam, uCR, uCU, uCF;
+    uniform float uTanF, uAspect, uTime, uH;
+    out vec3 vC;
+    out float vB;
+    void main() {
+      vec3 v = aP.xyz - uCam;
+      float z = dot(v, uCF);
+      bool lit = z > 0.15 && (uE.x + uE.y + uE.z) > 0.0 && escapes(aP.xyz, uL);
+      if (!lit) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vC = vec3(0); vB = 0.0; return; }
+      gl_Position = vec4(dot(v, uCR) / (z * uTanF * uAspect), dot(v, uCU) / (z * uTanF), 0.0, 1.0);
+      float core = (0.6 + sqrt(aP.w) * 0.22) * uH / 900.0;
+      float coc = abs(z - 3.6) / z * uH * 0.02;
+      float size = max(core, coc);
+      gl_PointSize = size * 2.0 + 1.0;
+      float phase = hg(dot(normalize(v), uL), 0.72);
+      float glint = 0.2 + 0.8 * pow(0.5 + 0.5 * sin(uTime * (0.7 + fract(aPh * 7.1) * 2.4) + aPh), 6.0);
+      vC = uE * phase * glint * 0.09 * (core * core) / (size * size);
+      vB = clamp((coc - core) / (core * 2.0), 0.0, 1.0);
+    }
+  `;
+  const FS_MOTE = `#version 300 es
+    precision mediump float;
+    in vec3 vC;
+    in float vB;
+    out vec4 o;
+    void main() {
+      float d = length(gl_PointCoord - 0.5) * 2.0;
+      float a = mix(exp(-d * d * 5.0), smoothstep(1.0, 0.8, d) * (0.7 + 0.3 * smoothstep(0.5, 0.95, d)), vB);
+      o = vec4(1.0 - exp(-vC * a), 1.0);
+    }
+  `;
+
+  // ================= WebGL2 準備 =================
+  const cv = document.getElementById("room");
+  const fallback = (msg) => { const f = document.getElementById("fallback"); f.textContent = msg; f.hidden = false; };
+  const gl = cv.getContext("webgl2", { antialias: false, alpha: false, preserveDrawingBuffer: false });
+  if (!gl || !gl.getExtension("EXT_color_buffer_float")) { fallback("この端末では描画に必要な機能（WebGL2の浮動小数点バッファ）が使えないため表示できません。"); return; }
+
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  function program(vs, fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const u = {};
+    const count = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < count; i++) { const info = gl.getActiveUniform(p, i); u[info.name] = gl.getUniformLocation(p, info.name); }
+    return { p, u };
+  }
+  let traceP, showP, moteP;
+  try {
+    traceP = program(VS_QUAD, FS_TRACE);
+    showP = program(VS_QUAD, FS_SHOW);
+    moteP = program(VS_MOTE, FS_MOTE);
+  } catch (err) {
+    console.error(err);
+    fallback("描画の準備に失敗しました。別のブラウザで開くと表示できる場合があります。");
+    return;
+  }
+
+  const quadVAO = gl.createVertexArray();
+  gl.bindVertexArray(quadVAO);
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+  for (const P of [traceP, showP]) {
+    const loc = gl.getAttribLocation(P.p, "aPos");
+    if (loc >= 0) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0); }
+  }
+  gl.bindVertexArray(null);
+
+  // ---- カメラ ----
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const fwd = norm(sub(TARGET, CAM));
+  const right = norm(cross(fwd, [0, 1, 0]));
+  const up = cross(right, fwd);
+  let tanF = Math.tan(25 * R);
+
+  // ================= 床のテクスチャ（木＋塵＋跡）=================
+  const PPM = 240;
+  const TW = Math.round(2 * RX * PPM), TH = Math.round((ZN - ZS) * PPM);
+  const mk = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
+  const toTex = (x, z) => [(x + RX) * PPM, (z - ZS) * PPM];
+  function rng(seed) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
+
+  const floorC = mk(TW, TH), dustTex = mk(TW, TH), dustLayer = mk(TW, TH), sceneC = mk(TW, TH);
+  (function buildFloor() {
+    const c = floorC.getContext("2d");
+    const r = rng(7);
+    const board = 0.13 * PPM;
+    c.fillStyle = "#3a2a1e";
+    c.fillRect(0, 0, TW, TH);
+    for (let x = -board * r(); x < TW; x += board) {
+      c.fillStyle = `hsl(${22 + r() * 8}, ${30 + r() * 12}%, ${17 + r() * 9}%)`;
+      c.fillRect(x, 0, board - 1, TH);
+      c.strokeStyle = "rgba(0,0,0,0.16)";
+      c.lineWidth = 1;
+      for (let k = 0; k < 10; k++) {
+        const gx = x + r() * board, amp = r() * 3, fq = 0.004 + r() * 0.01;
+        c.beginPath();
+        c.moveTo(gx, 0);
+        for (let y = 0; y <= TH; y += 16) c.lineTo(gx + Math.sin(y * fq + k) * amp, y);
+        c.stroke();
+      }
+      let y = -r() * 1.8 * PPM;
+      while (y < TH) {
+        y += (1.2 + r() * 1.4) * PPM;
+        c.fillStyle = "rgba(0,0,0,0.45)";
+        c.fillRect(x, y, board - 1, 1.5);
+      }
+      c.fillStyle = "rgba(0,0,0,0.55)";
+      c.fillRect(x + board - 1.5, 0, 1.5, TH);
+    }
+  })();
+  (function buildDustTex() {
+    const c = dustTex.getContext("2d");
+    c.fillStyle = "#bdb6aa";
+    c.fillRect(0, 0, TW, TH);
+    const img = c.getImageData(0, 0, TW, TH);
+    const d = img.data, r = rng(11);
+    for (let i = 0; i < d.length; i += 4) {
+      const n = (r() - 0.5) * 44;
+      d[i] += n; d[i + 1] += n; d[i + 2] += n * 0.9;
+    }
+    c.putImageData(img, 0, 0);
+    for (let i = 0; i < TW * TH / 2500; i++) {
+      c.fillStyle = `rgba(222,215,203,${0.1 + r() * 0.2})`;
+      c.beginPath();
+      c.arc(r() * TW, r() * TH, 0.4 + r() * 1.4, 0, Math.PI * 2);
+      c.fill();
+    }
+  })();
+
+  const floorTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, floorTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+
+  let traces = [], current = null, myTrace = null, dbTraces = null, floorDirty = true;
+
+  function visibleTraces(now) {
+    const all = myTrace && !traces.some((t) => t.t === myTrace.t) ? traces.concat([myTrace]) : traces;
+    return all.filter((tr) => now - tr.t < fadeDays(tr.t) * DAY).sort((a, b) => a.t - b.t);
+  }
+  function strokePath(c, pts) {
+    c.beginPath();
+    for (let i = 0; i < pts.length; i += 2) {
+      const [px, py] = toTex(pts[i], pts[i + 1]);
+      if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+    }
+    if (pts.length === 2) { const [px, py] = toTex(pts[0], pts[1]); c.lineTo(px + 0.1, py); }
+    c.stroke();
+  }
+  const DUST_ALPHA = 0.55;
+  function rebuildFloor(now) {
+    const c = dustLayer.getContext("2d");
+    c.globalCompositeOperation = "source-over";
+    c.globalAlpha = 1;
+    c.clearRect(0, 0, TW, TH);
+    const Cs = cover(massAt((now - EPOCH) / DAY));
+    c.globalAlpha = Cs * DUST_ALPHA;
+    c.drawImage(dustTex, 0, 0);
+    const pattern = c.createPattern(dustTex, "no-repeat");
+    c.lineCap = "round";
+    c.lineJoin = "round";
+    const w = FINGER * PPM;
+    const wipe = (pts, strength) => {
+      c.globalCompositeOperation = "destination-out";
+      c.strokeStyle = "#000";
+      c.globalAlpha = 0.35 * strength;
+      c.lineWidth = w * 1.8;
+      strokePath(c, pts);
+      c.globalAlpha = 1;
+      c.lineWidth = w;
+      strokePath(c, pts);
+    };
+    for (const tr of visibleTraces(now)) {
+      const Ct = cover(massAt((now - tr.t) / DAY));
+      wipe(tr.pts, Math.max(0, 1 - Ct / Cs));
+      c.globalCompositeOperation = "source-over";
+      c.globalAlpha = Ct * DUST_ALPHA;
+      c.strokeStyle = pattern;
+      c.lineWidth = w;
+      strokePath(c, tr.pts);
+    }
+    if (current && current.pts.length) wipe(current.pts, 1);
+    c.globalCompositeOperation = "source-over";
+    c.globalAlpha = 1;
+    const s = sceneC.getContext("2d");
+    s.drawImage(floorC, 0, 0);
+    s.drawImage(dustLayer, 0, 0);
+    gl.bindTexture(gl.TEXTURE_2D, floorTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, sceneC);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    return Cs;
+  }
+  let coverNow = cover(massAt((Date.now() - EPOCH) / DAY));
+
+  function sanitize(d) {
+    if (!d || typeof d.t !== "number" || !Array.isArray(d.pts)) return null;
+    const pts = d.pts.slice(0, 800).filter((v) => typeof v === "number" && isFinite(v) && Math.abs(v) < 10);
+    if (pts.length < 2 || pts.length % 2) return null;
+    if (d.t > Date.now() + DAY || d.t < EPOCH) return null;
+    return { t: d.t, pts };
+  }
+
+  // ================= 塵の粒 =================
+  const AIR_MU = 1.81e-5, RHO = 1000, G = 9.81;
+  const NM = 900;
+  const mData = new Float32Array(NM * 4), mPh = new Float32Array(NM);
+  const mVs = new Float32Array(NM), mLife = new Float32Array(NM);
+  const mr = rng(23);
+  let light = lighting(Date.now());
+
+  function inBeam(x, y, z, L) {
+    if (L[2] > -0.01) return false;
+    const t = (ZS - WT - z) / L[2];
+    const qx = x + L[0] * t, qy = y + L[1] * t;
+    return qx > WIN.x0 + 0.05 && qx < WIN.x1 - 0.05 && qy > WIN.y0 + 0.06 && qy < WIN.y1 - 0.05;
+  }
+  function spawn(i, fresh) {
+    let x, y, z;
+    for (let k = 0; k < 24; k++) {
+      x = (mr() * 2 - 1) * RX * 0.95;
+      y = mr() * RH * 0.95;
+      z = ZS + 0.05 + mr() * (CAM[2] - ZS - 0.3);
+      if (!light.lit || inBeam(x, y, z, light.L)) break;
+    }
+    const d = Math.exp(mr() * Math.log(40)); // 1〜40 µm
+    mData[i * 4] = x; mData[i * 4 + 1] = y; mData[i * 4 + 2] = z; mData[i * 4 + 3] = d;
+    mVs[i] = (RHO - 1.2) * G * (d * 1e-6) ** 2 / (18 * AIR_MU);
+    mPh[i] = mr() * 100;
+    mLife[i] = 30 + mr() * 90 - (fresh ? mr() * 60 : 0);
+  }
+  for (let i = 0; i < NM; i++) spawn(i, true);
+  function flow(x, y, z, t) {
+    const a = 0.02;
+    return [
+      a * Math.sin(1.1 * y + 0.19 * t) + 0.6 * a * Math.sin(0.8 * z - 0.13 * t),
+      0.5 * a * Math.sin(1.3 * x + 0.9 * z + 0.07 * t),
+      a * Math.cos(1.2 * x - 0.15 * t) + 0.6 * a * Math.sin(0.9 * y + 0.11 * t),
+    ];
+  }
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function stepMotes(dt, t) {
+    if (reduceMotion) return;
+    for (let i = 0; i < NM; i++) {
+      const o = i * 4;
+      const [u, v, w] = flow(mData[o], mData[o + 1], mData[o + 2], t);
+      mData[o] += u * dt; mData[o + 1] += (v - mVs[i]) * dt; mData[o + 2] += w * dt;
+      mLife[i] -= dt;
+      if (mLife[i] < 0 || mData[o + 1] < 0 || Math.abs(mData[o]) > RX || mData[o + 2] < ZS || mData[o + 2] > ZN) spawn(i, false);
+    }
+  }
+  const moteVAO = gl.createVertexArray();
+  gl.bindVertexArray(moteVAO);
+  const mBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, mBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, mData, gl.DYNAMIC_DRAW);
+  const aP = gl.getAttribLocation(moteP.p, "aP");
+  gl.enableVertexAttribArray(aP);
+  gl.vertexAttribPointer(aP, 4, gl.FLOAT, false, 0, 0);
+  const phBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, phBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, mPh, gl.STATIC_DRAW);
+  const aPh = gl.getAttribLocation(moteP.p, "aPh");
+  gl.enableVertexAttribArray(aPh);
+  gl.vertexAttribPointer(aPh, 1, gl.FLOAT, false, 0, 0);
+  gl.bindVertexArray(null);
+
+  // ================= 蓄積バッファ =================
+  let W = 0, H = 0, scale = 1, acc = [], fbo = [], ping = 0, samples = 0;
+  const MAXN = 220;
+  function makeTarget() {
+    const t = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, t);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, W, H, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const f = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, f);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, t, 0);
+    gl.clearColor(0, 0, 0, 1);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return [t, f];
+  }
+  function resize() {
+    const cssW = innerWidth, cssH = innerHeight;
+    // 画素数の上限（重さの調整）
+    let s = scale * Math.min(window.devicePixelRatio || 1, 1.25);
+    const maxPx = 1.3e6 * scale * scale;
+    if (cssW * cssH * s * s > maxPx) s = Math.sqrt(maxPx / (cssW * cssH));
+    W = Math.max(2, Math.round(cssW * s));
+    H = Math.max(2, Math.round(cssH * s));
+    cv.width = W; cv.height = H;
+    for (const t of acc) gl.deleteTexture(t);
+    for (const f of fbo) gl.deleteFramebuffer(f);
+    acc = []; fbo = [];
+    for (let i = 0; i < 2; i++) { const [t, f] = makeTarget(); acc.push(t); fbo.push(f); }
+    samples = 0;
+    const aspect = W / H;
+    tanF = aspect >= 1 ? Math.tan(25 * R) : Math.tan(34 * R) / aspect;
+    tanF = Math.min(tanF, Math.tan(42 * R));
+  }
+  let rt;
+  addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(resize, 150); });
+  resize();
+
+  // ================= 描画ループ =================
+  let frameNo = 0, last = performance.now(), lastLight = 0, slowFrames = 0;
+  function setCam(u) {
+    gl.uniform3fv(u.uCam, CAM);
+    gl.uniform3fv(u.uCR, right);
+    gl.uniform3fv(u.uCU, up);
+    gl.uniform3fv(u.uCF, fwd);
+    gl.uniform3fv(u.uL, light.L);
+    gl.uniform3fv(u.uE, light.E);
+    gl.uniform3fv(u.uSky, light.sky);
+    gl.uniform1f(u.uTanF, tanF);
+  }
+  function frame(tp) {
+    const dtMs = tp - last;
+    last = tp;
+    const dt = Math.min(0.05, dtMs / 1000);
+    // 遅い端末では解像度を下げる
+    if (frameNo > 30 && scale > 0.5) {
+      slowFrames = dtMs > 70 ? slowFrames + 1 : Math.max(0, slowFrames - 1);
+      if (slowFrames > 20) { scale *= 0.75; slowFrames = 0; resize(); }
+    }
+    const now = Date.now();
+    if (now - lastLight > 30000) {
+      light = lighting(now);
+      lastLight = now;
+      floorDirty = true;
+      updateMeta(now);
+    }
+    if (floorDirty) { coverNow = rebuildFloor(now); floorDirty = false; }
+    const t = (now / 1000) % 100000;
+    stepMotes(dt, t);
+
+    // 1) パストレース 1 サンプル → 蓄積
+    const src = ping, dst = 1 - ping;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[dst]);
+    gl.viewport(0, 0, W, H);
+    gl.disable(gl.BLEND);
+    gl.useProgram(traceP.p);
+    const u = traceP.u;
+    setCam(u);
+    gl.uniform2f(u.uRes, W, H);
+    gl.uniform1f(u.uTime, t);
+    gl.uniform1ui(u.uFrame, frameNo);
+    gl.uniform1f(u.uCover, coverNow);
+    gl.uniform1f(u.uW, 1 / Math.min(samples + 1, MAXN));
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, acc[src]);
+    gl.uniform1i(u.uPrev, 0);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, floorTex);
+    gl.uniform1i(u.uFloor, 1);
+    gl.bindVertexArray(quadVAO);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    samples++;
+    ping = dst;
+
+    // 2) 表示（ブルーム・トーン・粒子）
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, W, H);
+    gl.useProgram(showP.p);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, acc[dst]);
+    gl.uniform1i(showP.u.uAcc, 0);
+    gl.uniform2f(showP.u.uRes, W, H);
+    gl.uniform1f(showP.u.uGrain, light.grain);
+    gl.uniform1f(showP.u.uFrameF, frameNo % 997);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+    // 3) 塵の粒（光の中だけ）
+    if (light.lit) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.useProgram(moteP.p);
+      setCam(moteP.u);
+      gl.uniform1f(moteP.u.uAspect, W / H);
+      gl.uniform1f(moteP.u.uTime, t);
+      gl.uniform1f(moteP.u.uH, H);
+      gl.bindVertexArray(moteVAO);
+      gl.bindBuffer(gl.ARRAY_BUFFER, mBuf);
+      gl.bufferSubData(gl.ARRAY_BUFFER, 0, mData);
+      gl.drawArrays(gl.POINTS, 0, NM);
+    }
+    gl.bindVertexArray(null);
+    frameNo++;
+    requestAnimationFrame(frame);
+  }
+
+  // ================= 表示 =================
+  const metaEl = document.getElementById("meta");
+  const msgEl = document.getElementById("message");
+  const pad = (n) => String(n).padStart(2, "0");
+  const jst = (ms) => new Date(ms + 9 * 3600000);
+  const fmtDate = (ms) => { const d = jst(ms); return `${d.getUTCFullYear()}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())}`; };
+  const fmtTime = (ms) => { const d = jst(ms); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
+  function updateMeta(now) {
+    const days = (now - EPOCH) / DAY;
+    const years = Math.floor(days / 365.2425);
+    let lightLine;
+    if (light.lit && light.kind === "sun") {
+      lightLine = `日差し 高度 ${(light.sun.alt / R).toFixed(1)}° 方位 ${(light.sun.az / R).toFixed(1)}°`;
+    } else if (light.lit && light.kind === "moon") {
+      lightLine = `月明かり 高度 ${(light.moon.alt / R).toFixed(1)}° 輝面 ${Math.round(light.moon.frac * 100)}%`;
+    } else {
+      const nx = nextLight(now);
+      lightLine = nx ? `いま窓に光は差していない 次は ${fmtDate(nx).slice(5).replace(".", "/")} ${fmtTime(nx)}ごろ` : "いま窓に光は差していない";
+    }
+    metaEl.innerHTML =
+      `東京 南の窓 ${fmtDate(now)} ${fmtTime(now)}<br>${lightLine}<br>` +
+      `閉ざされて ${years}年 床の塵 ${massAt(days).toFixed(0)} g/m² 跡 ${visibleTraces(now).length}`;
+  }
+  function showResult(tr) {
+    const days = fadeDays(tr.t);
+    const d = jst(tr.t + days * DAY);
+    msgEl.innerHTML =
+      `あなたの跡は約${(days / 365.2425).toFixed(1)}年後、${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月ごろに塵に埋もれて見えなくなります。` +
+      `<small id="saveState">${dbTraces ? "保存中…" : "この環境では跡を共有できないため、この画面の中だけに残ります。"}</small>`;
+  }
+
+  // ================= 入力：画面の点 → 床の点 =================
+  function floorPoint(e) {
+    const rect = cv.getBoundingClientRect();
+    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+    const ux = (2 * cx - rect.width) / rect.height, uy = (rect.height - 2 * cy) / rect.height;
+    const rd = [0, 1, 2].map((k) => right[k] * ux * tanF + up[k] * uy * tanF + fwd[k]);
+    if (rd[1] >= -1e-4) return null;
+    const t = -CAM[1] / rd[1];
+    const x = CAM[0] + rd[0] * t, z = CAM[2] + rd[2] * t;
+    if (Math.abs(x) > RX || z < ZS || z > ZN) return null;
+    return [x, z];
+  }
+  cv.addEventListener("pointerdown", (e) => {
+    if (myTrace) return;
+    const p = floorPoint(e);
+    if (!p) return;
+    cv.setPointerCapture(e.pointerId);
+    current = { pts: p.slice() };
+    floorDirty = true;
+  });
+  cv.addEventListener("pointermove", (e) => {
+    if (!current) return;
+    const p = floorPoint(e);
+    if (!p) return;
+    const n = current.pts.length;
+    if (Math.hypot(p[0] - current.pts[n - 2], p[1] - current.pts[n - 1]) < 0.006 || n >= 800) return;
+    current.pts.push(p[0], p[1]);
+    floorDirty = true;
+    samples = Math.min(samples, 12);
+  });
+  const finish = async () => {
+    if (!current) return;
+    const tr = { t: Date.now(), pts: current.pts.map((v) => Math.round(v * 10000) / 10000) };
+    current = null;
+    myTrace = tr;
+    cv.classList.add("done");
+    floorDirty = true;
+    samples = Math.min(samples, 12);
+    updateMeta(Date.now());
+    showResult(tr);
+    if (!dbTraces) return;
+    const st = () => document.getElementById("saveState");
+    try {
+      await dbTraces.add({ t: tr.t, pts: tr.pts });
+      if (st()) st().textContent = "跡は保存されました。次にこの部屋を開いた人にも見えます。";
+    } catch (err) {
+      if (st()) st().textContent = err && err.code === "quota_exceeded"
+        ? "床が跡でいっぱいのため保存できませんでした。この画面の中だけに残ります。"
+        : "保存できませんでした。この画面の中だけに残ります。";
+    }
+  };
+  cv.addEventListener("pointerup", finish);
+  cv.addEventListener("pointercancel", finish);
+
+  const notes = document.getElementById("notes");
+  document.getElementById("openNotes").addEventListener("click", () => { notes.hidden = false; });
+  document.getElementById("close").addEventListener("click", () => { notes.hidden = true; });
+  addEventListener("keydown", (e) => { if (e.key === "Escape") notes.hidden = true; });
+
+  updateMeta(Date.now());
+  lastLight = Date.now();
+  requestAnimationFrame(frame);
+
+  if (window.claude && typeof window.claude.use === "function") {
+    window.claude.use("db").then((db) => {
+      if (!db) return;
+      dbTraces = db.collection("traces");
+      dbTraces.orderBy("t", "desc").limit(1000).onSnapshot((snap) => {
+        traces = snap.docs.map((d) => sanitize(d.data())).filter(Boolean).reverse();
+        floorDirty = true;
+        samples = Math.min(samples, 12);
+        updateMeta(Date.now());
+      }, () => {});
+    }).catch(() => {});
+  }
+})();
+</script>
+
+</body>
+</html>
