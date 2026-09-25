@@ -5,16 +5,17 @@
 <style>
   :root {
     color-scheme: dark;
-    --ground: #0b0c0f;
-    --ink: #e9e4da;
-    --ink-dim: #9c978d;
-    --ink-faint: #6b675f;
-    --line: rgba(233, 228, 218, 0.14);
-    --panel: rgba(12, 13, 16, 0.86);
+    --ground: #07080a;
+    --ink: #ebe5da;
+    --ink-dim: #a39d92;
+    --ink-faint: #6f6a62;
+    --line: rgba(235, 229, 218, 0.14);
+    --panel: rgba(8, 9, 11, 0.88);
     --sun: #f2d7a6;
     --mincho: "Shippori Mincho", "Hiragino Mincho ProN", "Yu Mincho", serif;
     --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
   }
+  [hidden] { display: none !important; }
   html, body { height: 100%; }
   body {
     margin: 0;
@@ -32,6 +33,7 @@
     touch-action: none;
     cursor: crosshair;
   }
+  #room.done { cursor: default; }
   .hud {
     position: fixed;
     left: 16px;
@@ -39,50 +41,50 @@
     pointer-events: none;
     display: flex;
     justify-content: space-between;
-    align-items: flex-end;
     gap: 16px;
+    text-shadow: 0 1px 10px rgba(0, 0, 0, 0.9);
   }
   .hud.top { top: calc(16px + env(safe-area-inset-top, 0px)); align-items: flex-start; }
-  .hud.bottom { bottom: calc(16px + env(safe-area-inset-bottom, 0px)); }
+  .hud.bottom { bottom: calc(18px + env(safe-area-inset-bottom, 0px)); align-items: flex-end; }
   h1 {
     margin: 0;
-    font-weight: 600;
-    font-size: 18px;
-    letter-spacing: 0.4em;
+    font-weight: 400;
+    font-size: 15px;
+    letter-spacing: 0.5em;
+    color: var(--ink);
   }
   .meta {
-    margin-top: 8px;
+    margin-top: 10px;
     font-family: var(--mono);
-    font-size: 11px;
-    line-height: 1.7;
+    font-size: 10.5px;
+    line-height: 1.8;
     color: var(--ink-dim);
     font-variant-numeric: tabular-nums;
   }
-  .meta b { font-weight: 400; color: var(--ink); }
   .message {
-    font-size: 14px;
-    line-height: 1.8;
-    max-width: 38em;
+    font-size: 13px;
+    line-height: 1.9;
+    max-width: 36em;
     text-wrap: pretty;
     color: var(--ink);
-    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+    opacity: 0.9;
   }
   .message small {
     display: block;
     font-family: var(--mono);
-    font-size: 11px;
+    font-size: 10.5px;
     color: var(--ink-dim);
   }
   button.info {
     pointer-events: auto;
     appearance: none;
     border: 1px solid var(--line);
-    background: transparent;
+    background: rgba(0, 0, 0, 0.2);
     color: var(--ink-dim);
-    font-family: var(--mono);
-    font-size: 11px;
-    letter-spacing: 0.08em;
-    padding: 6px 10px;
+    font-family: var(--mincho);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    padding: 6px 10px 6px 12px;
     border-radius: 2px;
     cursor: pointer;
     flex-shrink: 0;
@@ -92,35 +94,34 @@
     position: fixed;
     inset: 0;
     background: var(--panel);
-    backdrop-filter: blur(6px);
+    backdrop-filter: blur(8px);
     overflow-y: auto;
     padding-inline: 16px;
-    padding-block: calc(56px + env(safe-area-inset-top, 0px)) 48px;
+    padding-block: calc(60px + env(safe-area-inset-top, 0px)) 48px;
   }
-  #notes .inner { max-width: 640px; margin: 0 auto; }
-  #notes h2 { font-size: 16px; font-weight: 600; letter-spacing: 0.2em; margin: 0 0 16px; }
-  #notes p { font-size: 13px; line-height: 1.9; color: var(--ink-dim); margin: 0 0 16px; }
+  #notes .inner { max-width: 660px; margin: 0 auto; }
+  #notes h2 { font-size: 15px; font-weight: 400; letter-spacing: 0.4em; margin: 0 0 18px; }
+  #notes p { font-size: 13px; line-height: 1.95; color: var(--ink-dim); margin: 0 0 16px; }
   .tablewrap { overflow-x: auto; margin: 0 0 24px; }
   table { border-collapse: collapse; width: 100%; font-size: 12px; }
-  th, td { text-align: left; padding: 8px 10px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
-  th { color: var(--ink-faint); font-weight: 400; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; }
+  th, td { text-align: left; padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--ink-faint); font-weight: 400; font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em; }
   td.v { font-family: var(--mono); white-space: nowrap; color: var(--ink); font-variant-numeric: tabular-nums; }
-  td.s { color: var(--ink-dim); }
-  .tag { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 2px; color: var(--ink-dim); white-space: nowrap; }
+  td.s { color: var(--ink-dim); line-height: 1.7; }
+  .tag { font-family: var(--mono); font-size: 10px; padding: 1px 5px; border: 1px solid var(--line); border-radius: 2px; white-space: nowrap; }
   .tag.assume { color: var(--sun); border-color: rgba(242, 215, 166, 0.35); }
   #close { position: fixed; top: calc(16px + env(safe-area-inset-top, 0px)); right: 16px; }
-  @media (max-width: 520px) {
-    .hud.bottom { flex-direction: column; align-items: flex-start; }
-    .message { font-size: 13px; }
-  }
+  #fallback { position: fixed; inset: 0; display: grid; place-items: center; padding-inline: 16px; color: var(--ink-dim); font-size: 13px; }
+  @media (max-width: 520px) { .message { font-size: 12.5px; } }
 </style>
 
-<canvas id="room" aria-label="窓から光が差す、塵の積もった床。なぞると跡が残る"></canvas>
+<canvas id="room" aria-label="窓から差す光の筋の中で塵が漂う部屋。床をなぞると跡が残る"></canvas>
+<div id="fallback" hidden>この端末ではWebGLが使えないため表示できません。</div>
 
 <div class="hud top">
   <div>
     <h1>塵の床</h1>
-    <div class="meta" id="meta">東京・南向きの窓<br>計算中…</div>
+    <div class="meta" id="meta"></div>
   </div>
   <button class="info" id="openNotes" type="button">しくみ</button>
 </div>
@@ -133,24 +134,25 @@
   <button class="info" id="close" type="button">閉じる</button>
   <div class="inner">
     <h2>しくみ</h2>
-    <p>この部屋は1926年9月25日から誰も入っていない、という設定です。床の塵の量、窓から差す光の位置、跡が埋もれるまでの時間は、すべて現在時刻から計算しています。訪れた人が残した跡は保存され、次に開いた人にも見えます。</p>
+    <p>1926年9月25日から誰も入っていない部屋、という設定です。窓から差す光の向き、床に積もった塵の量、跡が埋もれるまでの時間は、開いた時点の時刻から計算しています。訪れた人が残した跡は保存され、次に開いた人にも見えます。</p>
     <div class="tablewrap">
       <table>
         <thead><tr><th>項目</th><th>値</th><th>根拠</th></tr></thead>
         <tbody>
-          <tr><td>場所・窓</td><td class="v">35.68°N 139.77°E</td><td class="s">東京。窓は南向き、幅1.2m、床上0.8〜2.0m <span class="tag assume">設定</span></td></tr>
-          <tr><td>太陽の位置</td><td class="v">実時刻</td><td class="s">低精度の太陽位置式（誤差は0.1°程度の見込み）。天気は反映していません</td></tr>
-          <tr><td>塵の堆積速度</td><td class="v">10 mg/m²/日</td><td class="s"><span class="tag assume">仮定</span> 室内の実測値は換気・人の出入り・場所で大きく変わるため要検証</td></tr>
-          <tr><td>一層分の塵</td><td class="v">6.7 g/m²</td><td class="s">直径10µm・密度1.0g/cm³の粒子が床を隙間なく一層覆う量</td></tr>
-          <tr><td>床の見え方</td><td class="v">1 − e<sup>−m/6.7</sup></td><td class="s">粒子がランダムに落ちるときの被覆率（ポアソン過程）</td></tr>
-          <tr><td>跡が見えなくなる</td><td class="v">差 &lt; 2%</td><td class="s"><span class="tag assume">仮定</span> 跡の内側と外側の被覆率の差が2%を下回った時点</td></tr>
-          <tr><td>指でなぞった跡</td><td class="v">幅 16mm</td><td class="s">なぞった部分の塵はすべて取り除かれるとみなす <span class="tag assume">仮定</span></td></tr>
+          <tr><td>場所・窓</td><td class="v">35.68°N 139.77°E</td><td class="s">東京。南向きの窓、幅1.2m、床上0.8〜2.1m <span class="tag assume">設定</span></td></tr>
+          <tr><td>太陽</td><td class="v">実時刻</td><td class="s">低精度の太陽位置式（誤差0.1°程度の見込み）。高度が低いほど大気を長く通るため、光は赤くなる</td></tr>
+          <tr><td>月</td><td class="v">実時刻</td><td class="s">低精度の月位置式（誤差1°程度の見込み）。明るさは満ち欠けの割合に比例させている</td></tr>
+          <tr><td>夜の見え方</td><td class="v">露出補正</td><td class="s">月光は日光の数十万分の一なので、長時間露光のカメラで見たように明るさを上げている。粒子ノイズが増えるのはそのため</td></tr>
+          <tr><td>光の筋</td><td class="v">前方散乱</td><td class="s">塵の粒は光を進行方向へ強く散らす（ミー散乱）。窓の方を向いたときに筋がいちばん明るく見える</td></tr>
           <tr><td>塵の沈降</td><td class="v">v = (ρ−ρ<sub>air</sub>)gd²/18μ</td><td class="s">ストークスの式。直径10µmで約3mm/秒、1µmで約0.03mm/秒。宙を漂う動きの大半は空気の流れ</td></tr>
-          <tr><td>光の筋の境界</td><td class="v">約1cm/m</td><td class="s">太陽の視直径0.53°による半影。この画面ではほぼ鋭い縁になる</td></tr>
+          <tr><td>塵の堆積速度</td><td class="v">10 mg/m²/日</td><td class="s"><span class="tag assume">仮定</span> 室内の実測値は換気・人の出入り・場所で大きく変わる。要検証</td></tr>
+          <tr><td>床の見え方</td><td class="v">1 − e<sup>−m/6.7</sup></td><td class="s">粒子がランダムに落ちるときの被覆率（ポアソン過程）。6.7 g/m²は直径10µmの粒が床を一層覆う量</td></tr>
+          <tr><td>跡が見えなくなる</td><td class="v">差 &lt; 2%</td><td class="s"><span class="tag assume">仮定</span> 跡の内と外の被覆率の差が2%を下回った時点</td></tr>
+          <tr><td>指の跡</td><td class="v">幅 16mm</td><td class="s">なぞった部分の塵はすべて取り除かれるとみなす <span class="tag assume">仮定</span></td></tr>
         </tbody>
       </table>
     </div>
-    <p>画面上の粒は、実際の大きさでは目に見えないため拡大して描いています。粒の動く速さと光の当たり方は計算どおりです。</p>
+    <p>光の筋の中に見える粒は、実際の大きさでは目に見えないため拡大して描いています。手前や奥の粒がぼけて見えるのは、ピントを部屋の中ほどに合わせたカメラを想定しているためです。天気は反映していません。</p>
   </div>
 </section>
 
@@ -158,43 +160,32 @@
 (() => {
   "use strict";
 
-  // ---- 設定 ----
+  // ================= 物理と設定 =================
   const LAT = 35.68, LON = 139.77;
   const EPOCH = Date.parse("1926-09-25T00:00:00+09:00");
-  const RATE = 0.010;        // g/m²/day（仮定）
-  const M0 = 6.7;            // g/m²：一層分
-  const THRESH = 0.02;       // 見えなくなる被覆率差
-  const DUST_ALPHA = 0.5;    // 被覆率1のときの塵の不透明度
-  const FINGER = 0.016;      // m
-  const FLOOR_W = 3.0;       // 画面の横幅が表す床の幅（m）
-  const WIN = { w: 1.2, z0: 0.8, z1: 2.0, frame: 0.04 };
-  const DAY = 86400000;
-  const R = Math.PI / 180;
+  const RATE = 0.010, M0 = 6.7, THRESH = 0.02;
+  const DAY = 86400000, R = Math.PI / 180;
+  const FINGER = 0.016;
+  // 部屋（m）。y が上、-z が南（窓の壁）、+x が西。
+  const RX = 2.1, RH = 2.7, ZS = -3.2, ZN = 3.6;
+  const WIN = { x0: -1.0, x1: 0.2, y0: 0.8, y1: 2.1, f: 0.035 };
+  const CAM = [1.25, 1.35, 2.9], TARGET = [-0.15, 0.85, -3.2];
 
   const cover = (m) => 1 - Math.exp(-m / M0);
   const massAt = (days) => RATE * Math.max(0, days);
-
-  // 跡が見えなくなるまでの日数（描いた時点の床の塵量から数値的に解く）
   function fadeDays(tDrawn) {
     const base = (tDrawn - EPOCH) / DAY;
     let lo = 0, hi = 365.25 * 500;
-    for (let i = 0; i < 60; i++) {
+    for (let i = 0; i < 50; i++) {
       const mid = (lo + hi) / 2;
-      const diff = cover(massAt(base + mid)) - cover(massAt(mid));
-      if (diff >= THRESH) lo = mid; else hi = mid;
+      if (cover(massAt(base + mid)) - cover(massAt(mid)) >= THRESH) lo = mid; else hi = mid;
     }
     return hi;
   }
 
-  // ---- 太陽位置 ----
-  function sunPos(date) {
-    const n = date.getTime() / DAY + 2440587.5 - 2451545.0;
-    const L = (280.460 + 0.9856474 * n) % 360;
-    const g = (357.528 + 0.9856003 * n) * R;
-    const lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * R;
-    const eps = (23.439 - 0.0000004 * n) * R;
-    const ra = Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam));
-    const dec = Math.asin(Math.sin(eps) * Math.sin(lam));
+  // ---- 天体の位置 ----
+  const jdn = (ms) => ms / DAY + 2440587.5 - 2451545.0;
+  function altAz(ra, dec, n) {
     const gmst = (18.697374558 + 24.06570982441908 * n) % 24;
     const H = (gmst * 15 + LON) * R - ra;
     const phi = LAT * R;
@@ -203,379 +194,624 @@
       Math.sin(dec) * Math.cos(phi) - Math.cos(dec) * Math.sin(phi) * Math.cos(H));
     return { alt, az: (az + 2 * Math.PI) % (2 * Math.PI) };
   }
+  function sunPos(ms) {
+    const n = jdn(ms);
+    const L = (280.460 + 0.9856474 * n) % 360;
+    const g = (357.528 + 0.9856003 * n) * R;
+    const lam = (L + 1.915 * Math.sin(g) + 0.020 * Math.sin(2 * g)) * R;
+    const eps = (23.439 - 0.0000004 * n) * R;
+    const ra = Math.atan2(Math.cos(eps) * Math.sin(lam), Math.cos(lam));
+    const dec = Math.asin(Math.sin(eps) * Math.sin(lam));
+    return Object.assign(altAz(ra, dec, n), { lam });
+  }
+  function moonPos(ms, sunLam) {
+    const n = jdn(ms);
+    const L = (218.316 + 13.176396 * n) * R;
+    const M = (134.963 + 13.064993 * n) * R;
+    const F = (93.272 + 13.229350 * n) * R;
+    const lon = L + 6.289 * R * Math.sin(M);
+    const lat = 5.128 * R * Math.sin(F);
+    const eps = 23.439 * R;
+    const ra = Math.atan2(Math.sin(lon) * Math.cos(eps) - Math.tan(lat) * Math.sin(eps), Math.cos(lon));
+    const dec = Math.asin(Math.sin(lat) * Math.cos(eps) + Math.cos(lat) * Math.sin(eps) * Math.sin(lon));
+    const elong = Math.acos(Math.cos(lat) * Math.cos(lon - sunLam));
+    return Object.assign(altAz(ra, dec, n), { frac: (1 - Math.cos(elong)) / 2 });
+  }
+  // 天体へ向かう単位ベクトル（部屋の座標）。南を向くと東は左（-x）。
+  const dirOf = (b) => [-Math.sin(b.az) * Math.cos(b.alt), Math.sin(b.alt), Math.cos(b.az) * Math.cos(b.alt)];
+  const entersWindow = (b) => b.alt > 0.5 * R && dirOf(b)[2] < -0.03;
 
-  // 上から見た床。画面上端が南の壁（窓）。北が下なので東は画面の左。
-  // 光の水平方向：dx = sin(az), dy = −cos(az)
-  function beamGeometry(sun) {
-    if (sun.alt <= 0.5 * R) return null;
-    const dx = Math.sin(sun.az), dy = -Math.cos(sun.az);
-    if (dy <= 0.02) return null;               // 窓（南向き）に光が入らない
-    const t = 1 / Math.tan(sun.alt);
-    return { dx, dy, t, alt: sun.alt };
+  // 大気の透過（Kasten–Young の大気路程）
+  function sunColor(alt) {
+    const h = alt / R;
+    const m = 1 / (Math.sin(alt) + 0.50572 * Math.pow(h + 6.07995, -1.6364));
+    const k = [0.085, 0.16, 0.33];
+    return k.map((kk) => Math.exp(-kk * m));
   }
 
-  // ---- キャンバス ----
+  function lighting(ms) {
+    const sun = sunPos(ms);
+    const moon = moonPos(ms, sun.lam);
+    const dayness = Math.min(1, Math.max(0, (sun.alt / R + 6) / 16));
+    let body = null, col = [0, 0, 0], kind = "none";
+    if (sun.alt > -1 * R) {
+      body = sun; kind = "sun";
+      const c = sunColor(Math.max(sun.alt, 0.2 * R));
+      col = c.map((v) => v * 3.2);
+    } else if (moon.alt > 0) {
+      body = moon; kind = "moon";
+      const f = 0.25 + 0.75 * moon.frac;
+      col = [0.55 * f * 2.6, 0.68 * f * 2.6, 0.95 * f * 2.6];
+    }
+    const L = body ? dirOf(body) : [0, 0.5, -0.8];
+    if (!body || !entersWindow(body)) col = [0, 0, 0];
+    const skyDay = [2.1, 2.15, 2.25], skyNight = [0.05, 0.07, 0.14];
+    const sky = skyDay.map((d, i) => skyNight[i] + (d - skyNight[i]) * dayness);
+    if (kind === "moon") for (let i = 0; i < 3; i++) sky[i] += 0.08 * moon.frac;
+    const amb = sky.map((s, i) => s * 0.006 + col[i] * 0.022);
+    return { sun, moon, kind, body, L, col, sky, amb, grain: 0.035 + 0.03 * (1 - dayness), lit: col[0] > 0 };
+  }
+
+  function nextLight(ms) {
+    for (let t = ms + 5 * 60000; t < ms + 3 * DAY; t += 5 * 60000) {
+      if (entersWindow(sunPos(t))) return t;
+    }
+    return null;
+  }
+
+  // ================= WebGL =================
   const cv = document.getElementById("room");
-  const ctx = cv.getContext("2d");
-  let W = 0, H = 0, dpr = 1, S = 1;           // S: px / m
-  let floorC, dustTex, dustLayer, sceneC;
-  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const gl = cv.getContext("webgl", { antialias: false, premultipliedAlpha: false, preserveDrawingBuffer: false });
+  if (!gl) { document.getElementById("fallback").hidden = false; return; }
 
+  const COMMON = `
+    precision highp float;
+    const float RX = ${RX.toFixed(3)}, RH = ${RH.toFixed(3)}, ZS = ${ZS.toFixed(3)}, ZN = ${ZN.toFixed(3)};
+    const float WX0 = ${WIN.x0.toFixed(3)}, WX1 = ${WIN.x1.toFixed(3)}, WY0 = ${WIN.y0.toFixed(3)}, WY1 = ${WIN.y1.toFixed(3)}, WF = ${WIN.f.toFixed(3)};
+    uniform vec3 uL;
+    float rectMask(vec2 q, float e) {
+      return smoothstep(WX0 - e, WX0 + e, q.x) * (1.0 - smoothstep(WX1 - e, WX1 + e, q.x))
+           * smoothstep(WY0 - e, WY0 + e, q.y) * (1.0 - smoothstep(WY1 - e, WY1 + e, q.y));
+    }
+    float winMask(vec2 q) {
+      float e = 0.005;
+      float m = rectMask(q, e);
+      float fr = WF * 0.5;
+      m *= smoothstep(fr - e, fr + e, abs(q.x - (WX0 + WX1) * 0.5));
+      m *= smoothstep(fr - e, fr + e, abs(q.y - (WY0 + WY1) * 0.5));
+      return m;
+    }
+    float vis(vec3 p) {
+      if (uL.z > -0.01) return 0.0;
+      float t = (ZS - p.z) / uL.z;
+      return winMask((p + uL * t).xy);
+    }
+    float hg(float c, float g) {
+      float g2 = g * g;
+      return (1.0 - g2) / (12.566 * pow(1.0 + g2 - 2.0 * g * c, 1.5));
+    }
+    float hash(vec3 p) {
+      p = fract(p * 0.3183099 + 0.1);
+      p *= 17.0;
+      return fract(p.x * p.y * p.z * (p.x + p.y + p.z));
+    }
+  `;
+
+  const VS_QUAD = `attribute vec2 aPos; void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
+
+  const FS_ROOM = COMMON + `
+    uniform vec2 uRes;
+    uniform float uTime, uFrame, uTanF, uGrain;
+    uniform vec3 uCam, uLCol, uSky, uAmb;
+    uniform mat3 uRot;
+    uniform sampler2D uFloor;
+
+    float noise(vec3 x) {
+      vec3 i = floor(x), f = fract(x);
+      f = f * f * (3.0 - 2.0 * f);
+      return mix(mix(mix(hash(i), hash(i + vec3(1,0,0)), f.x), mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                 mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x), mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+    }
+    // 空気中の塵の濃さ：ゆっくり流れるむら
+    float dens(vec3 p) {
+      vec3 q = p * 1.35 + vec3(uTime * 0.011, -uTime * 0.006, uTime * 0.017);
+      float n = noise(q) * 0.62 + noise(q * 2.9 + 7.3) * 0.38;
+      return 0.25 + 1.5 * n * n * n + 0.25 * smoothstep(1.6, 0.0, p.y);
+    }
+
+    void main() {
+      vec2 uv = (gl_FragCoord.xy * 2.0 - uRes) / uRes.y;
+      vec3 rd = normalize(uRot * vec3(uv * uTanF, -1.0));
+      vec3 ro = uCam;
+
+      float tx = rd.x > 0.0 ? (RX - ro.x) / rd.x : (-RX - ro.x) / min(rd.x, -1e-5);
+      float ty = rd.y > 0.0 ? (RH - ro.y) / rd.y : (0.0 - ro.y) / min(rd.y, -1e-5);
+      float tz = rd.z > 0.0 ? (ZN - ro.z) / rd.z : (ZS - ro.z) / min(rd.z, -1e-5);
+      float tHit = min(tx, min(ty, tz));
+      vec3 p = ro + rd * tHit;
+      vec3 n = tHit == tx ? vec3(-sign(rd.x), 0, 0) : (tHit == ty ? vec3(0, -sign(rd.y), 0) : vec3(0, 0, -sign(rd.z)));
+
+      // ---- 面 ----
+      vec3 albedo = vec3(0.36, 0.34, 0.31);
+      vec3 emit = vec3(0.0);
+      if (n.y > 0.5) {
+        vec2 fuv = vec2((p.x + RX) / (2.0 * RX), (p.z - ZS) / (ZN - ZS));
+        albedo = pow(texture2D(uFloor, fuv).rgb, vec3(2.2));
+      } else if (n.y < -0.5) {
+        albedo = vec3(0.30, 0.29, 0.27);
+      } else if (n.z > 0.5) {
+        float glass = winMask(p.xy);
+        float frame = rectMask(p.xy, 0.004) - glass;
+        albedo = mix(vec3(0.34, 0.32, 0.29), vec3(0.05, 0.04, 0.035), clamp(frame, 0.0, 1.0));
+        albedo *= 1.0 - rectMask(p.xy, 0.004) * glass;
+        emit = uSky * glass * (0.9 + 0.1 * smoothstep(WY0, WY1, p.y));
+        // 窓枠の外側に少しだけ見える壁の厚み
+        float sill = smoothstep(0.02, 0.0, abs(p.y - WY0 + 0.01)) * step(WX0, p.x) * step(p.x, WX1);
+        albedo += vec3(0.08) * sill;
+        vec2 dq = max(vec2(WX0 - p.x, WY0 - p.y), vec2(p.x - WX1, p.y - WY1));
+        float dr = length(max(dq, 0.0));
+        emit += uSky * 0.07 * exp(-dr * 9.0) * (1.0 - glass);
+      }
+      float direct = vis(p + n * 0.001) * max(0.0, dot(n, uL));
+      // 窓からの空の光：窓の中心からの距離で弱まる面光源の近似
+      vec3 wc = vec3((WX0 + WX1) * 0.5, (WY0 + WY1) * 0.5, ZS);
+      vec3 toW = wc - p;
+      float dw = length(toW);
+      float wf = max(0.0, dot(n, toW / dw)) * max(0.0, -toW.z / dw) * 0.32 / (1.0 + dw * dw * 0.8);
+      // 隅の暗がり
+      float ao = smoothstep(0.0, 0.9, min(min(RX - abs(p.x), p.y + (n.y > 0.5 ? 9.0 : 0.0)), min(RH - p.y, p.z - ZS + (n.z > 0.5 ? 9.0 : 0.0))));
+      ao = 0.45 + 0.55 * ao;
+      vec3 col = albedo * (uLCol * direct + uAmb * ao + uSky * wf) + emit;
+
+      // ---- 空中の光（チンダル現象）----
+      const int N = 72;
+      float dt = tHit / float(N);
+      float j = hash(vec3(gl_FragCoord.xy, mod(uFrame, 64.0)));
+      float acc = 0.0;
+      for (int i = 0; i < N; i++) {
+        vec3 q = ro + rd * ((float(i) + j) * dt);
+        float v = vis(q);
+        if (v > 0.001) acc += dens(q) * v;
+      }
+      float c = dot(rd, uL);
+      float phase = hg(c, 0.62) * 0.8 + 0.06;
+      col += uLCol * acc * dt * phase * 2.4;
+      col += uSky * 0.0006 * tHit;
+
+      // ---- 仕上げ（フィルム調）----
+      col = 1.0 - exp(-col * 1.15);
+      float lum = dot(col, vec3(0.3, 0.59, 0.11));
+      col = mix(col * vec3(0.93, 0.97, 1.05), col * vec3(1.05, 1.0, 0.9), smoothstep(0.1, 0.7, lum));
+      col = pow(col, vec3(0.92, 0.96, 1.02));
+      float vig = smoothstep(1.55, 0.25, length(uv * vec2(0.85, 1.0)));
+      col *= mix(0.55, 1.0, vig);
+      col = pow(max(col, 0.0), vec3(1.0 / 2.2));
+      float gr = hash(vec3(gl_FragCoord.xy * 1.37, mod(uFrame, 97.0) + 0.5)) - 0.5;
+      col += gr * uGrain * (0.6 + 0.4 * (1.0 - col.g));
+      col = col * 0.97 + vec3(0.012, 0.010, 0.008);
+      gl_FragColor = vec4(col, 1.0);
+    }
+  `;
+
+  const VS_MOTE = COMMON + `
+    attribute vec4 aP;
+    attribute float aPh;
+    uniform vec3 uCam, uLCol;
+    uniform mat3 uInv;
+    uniform float uTanF, uAspect, uTime, uH, uFocus;
+    varying vec3 vC;
+    varying float vB;
+    void main() {
+      vec3 v = uInv * (aP.xyz - uCam);
+      float z = -v.z;
+      float lit = vis(aP.xyz);
+      if (z < 0.15 || lit < 0.01) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vC = vec3(0.0); vB = 0.0; return; }
+      gl_Position = vec4(v.x / (z * uTanF * uAspect), v.y / (z * uTanF), 0.0, 1.0);
+      float core = (0.7 + sqrt(aP.w) * 0.28) * uH / 900.0;
+      float coc = abs(z - uFocus) / z * uH * 0.022;
+      float size = max(core, coc);
+      gl_PointSize = size * 2.0 + 1.0;
+      vec3 rd = normalize(aP.xyz - uCam);
+      float phase = hg(dot(rd, uL), 0.72);
+      float glint = 0.25 + 0.75 * pow(0.5 + 0.5 * sin(uTime * (0.8 + fract(aPh * 7.1) * 2.6) + aPh), 5.0);
+      vC = uLCol * lit * phase * glint * 0.9 * (core * core) / (size * size);
+      vB = clamp((coc - core) / (core * 2.0), 0.0, 1.0);
+    }
+  `;
+  const FS_MOTE = `
+    precision mediump float;
+    varying vec3 vC;
+    varying float vB;
+    void main() {
+      float d = length(gl_PointCoord - 0.5) * 2.0;
+      float g = exp(-d * d * 5.0);
+      float disc = smoothstep(1.0, 0.78, d) * (0.75 + 0.25 * smoothstep(0.5, 0.95, d));
+      float a = mix(g, disc, vB);
+      vec3 c = vC * a;
+      gl_FragColor = vec4(1.0 - exp(-c), 1.0);
+    }
+  `;
+
+  function compile(type, src) {
+    const s = gl.createShader(type);
+    gl.shaderSource(s, src);
+    gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(s));
+    return s;
+  }
+  function program(vs, fs) {
+    const p = gl.createProgram();
+    gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
+    gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+    gl.linkProgram(p);
+    if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const u = {};
+    const count = gl.getProgramParameter(p, gl.ACTIVE_UNIFORMS);
+    for (let i = 0; i < count; i++) { const info = gl.getActiveUniform(p, i); u[info.name] = gl.getUniformLocation(p, info.name); }
+    return { p, u };
+  }
+  let roomP, moteP;
+  try {
+    roomP = program(VS_QUAD, FS_ROOM);
+    moteP = program(VS_MOTE, FS_MOTE);
+  } catch (err) {
+    console.error(err);
+    document.getElementById("fallback").hidden = false;
+    return;
+  }
+
+  const quad = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
+
+  // ---- カメラ ----
+  const sub = (a, b) => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+  const norm = (a) => { const l = Math.hypot(a[0], a[1], a[2]); return [a[0] / l, a[1] / l, a[2] / l]; };
+  const cross = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+  const fwd = norm(sub(TARGET, CAM));
+  const right = norm(cross(fwd, [0, 1, 0]));
+  const up = cross(right, fwd);
+  const ROT = new Float32Array([...right, ...up, -fwd[0], -fwd[1], -fwd[2]]);
+  const INV = new Float32Array([right[0], up[0], -fwd[0], right[1], up[1], -fwd[1], right[2], up[2], -fwd[2]]);
+  let tanF = Math.tan(25 * R);
+
+  // ================= 床のテクスチャ（木＋塵＋跡）=================
+  const PPM = 240;
+  const TW = Math.round(2 * RX * PPM), TH = Math.round((ZN - ZS) * PPM);
   const mk = (w, h) => { const c = document.createElement("canvas"); c.width = w; c.height = h; return c; };
-  const toPx = (x, y) => [(x + FLOOR_W / 2) * S, y * S];   // x: 窓中心からの距離(m), y: 壁からの距離(m)
-  const toM = (px, py) => [px / S - FLOOR_W / 2, py / S];
-
-  // 決定論的な乱数（床の模様が毎回同じになるように）
+  const toTex = (x, z) => [(x + RX) * PPM, (z - ZS) * PPM];
   function rng(seed) { return () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }; }
 
-  function buildFloor() {
-    floorC = mk(W, H);
+  const floorC = mk(TW, TH), dustTex = mk(TW, TH), dustLayer = mk(TW, TH), sceneC = mk(TW, TH);
+  (function buildFloor() {
     const c = floorC.getContext("2d");
     const r = rng(7);
-    const board = 0.12 * S;
-    c.fillStyle = "#2a1e16";
-    c.fillRect(0, 0, W, H);
-    for (let x = -board * r(); x < W; x += board) {
-      const tone = 34 + r() * 16;
-      c.fillStyle = `hsl(${24 + r() * 8}, ${28 + r() * 10}%, ${tone * 0.42}%)`;
-      c.fillRect(x, 0, board - 1, H);
-      c.strokeStyle = "rgba(0,0,0,0.12)";
+    const board = 0.13 * PPM;
+    c.fillStyle = "#3a2a1e";
+    c.fillRect(0, 0, TW, TH);
+    for (let x = -board * r(); x < TW; x += board) {
+      c.fillStyle = `hsl(${22 + r() * 8}, ${30 + r() * 12}%, ${17 + r() * 9}%)`;
+      c.fillRect(x, 0, board - 1, TH);
+      c.strokeStyle = "rgba(0,0,0,0.16)";
       c.lineWidth = 1;
-      for (let k = 0; k < 9; k++) {
-        const gx = x + r() * board;
+      for (let k = 0; k < 10; k++) {
+        const gx = x + r() * board, amp = r() * 3, fq = 0.004 + r() * 0.01;
         c.beginPath();
         c.moveTo(gx, 0);
-        for (let y = 0; y <= H; y += 24) c.lineTo(gx + Math.sin(y * 0.01 + k) * 2 * r(), y);
+        for (let y = 0; y <= TH; y += 16) c.lineTo(gx + Math.sin(y * fq + k) * amp, y);
         c.stroke();
       }
-      // 板の継ぎ目
-      let y = -r() * 1.8 * S;
-      while (y < H) {
-        y += (1.2 + r() * 1.2) * S;
-        c.fillStyle = "rgba(0,0,0,0.35)";
+      let y = -r() * 1.8 * PPM;
+      while (y < TH) {
+        y += (1.2 + r() * 1.4) * PPM;
+        c.fillStyle = "rgba(0,0,0,0.45)";
         c.fillRect(x, y, board - 1, 1.5);
       }
-      c.fillStyle = "rgba(0,0,0,0.5)";
-      c.fillRect(x + board - 1, 0, 1, H);
+      c.fillStyle = "rgba(0,0,0,0.55)";
+      c.fillRect(x + board - 1.5, 0, 1.5, TH);
     }
-  }
-
-  function buildDustTex() {
-    dustTex = mk(W, H);
+  })();
+  (function buildDustTex() {
     const c = dustTex.getContext("2d");
-    c.fillStyle = "#b9b2a6";
-    c.fillRect(0, 0, W, H);
-    const img = c.getImageData(0, 0, W, H);
-    const d = img.data;
-    const r = rng(11);
+    c.fillStyle = "#bdb6aa";
+    c.fillRect(0, 0, TW, TH);
+    const img = c.getImageData(0, 0, TW, TH);
+    const d = img.data, r = rng(11);
     for (let i = 0; i < d.length; i += 4) {
-      const n = (r() - 0.5) * 38;
+      const n = (r() - 0.5) * 44;
       d[i] += n; d[i + 1] += n; d[i + 2] += n * 0.9;
     }
     c.putImageData(img, 0, 0);
-    // 綿埃の固まり
-    for (let i = 0; i < W * H / 9000; i++) {
-      c.fillStyle = `rgba(215,208,196,${0.08 + r() * 0.12})`;
+    for (let i = 0; i < TW * TH / 2500; i++) {
+      c.fillStyle = `rgba(222,215,203,${0.1 + r() * 0.2})`;
       c.beginPath();
-      c.arc(r() * W, r() * H, 0.5 + r() * 1.6 * dpr, 0, Math.PI * 2);
+      c.arc(r() * TW, r() * TH, 0.4 + r() * 1.4, 0, Math.PI * 2);
       c.fill();
     }
-  }
+  })();
 
-  function strokePath(c, pts) {
-    c.beginPath();
-    for (let i = 0; i < pts.length; i += 2) {
-      const [px, py] = toPx(pts[i], pts[i + 1]);
-      if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
-    }
-    if (pts.length === 2) { const [px, py] = toPx(pts[0], pts[1]); c.lineTo(px + 0.1, py); }
-    c.stroke();
-  }
+  const floorTex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, floorTex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
 
-  // 塵の層：床全体の被覆率で塗り、跡を古い順に「拭き取り → 経過分の塵を戻す」
-  function buildDust(now) {
-    dustLayer = dustLayer || mk(W, H);
-    const c = dustLayer.getContext("2d");
-    c.setTransform(1, 0, 0, 1, 0, 0);
-    c.clearRect(0, 0, W, H);
-    const Cs = cover(massAt((now - EPOCH) / DAY));
-    c.globalCompositeOperation = "source-over";
-    c.globalAlpha = Cs * DUST_ALPHA;
-    c.drawImage(dustTex, 0, 0);
-    const pattern = c.createPattern(dustTex, "no-repeat");
-    c.lineCap = "round";
-    c.lineJoin = "round";
-    const list = visibleTraces(now);
-    for (const tr of list) {
-      const Ct = cover(massAt((now - tr.t) / DAY));
-      const w = FINGER * S;
-      // 指の縁：押しのけた塵が少し薄くなる
-      c.globalCompositeOperation = "destination-out";
-      c.globalAlpha = 0.35 * Math.max(0, 1 - Ct / Cs);
-      c.strokeStyle = "#000";
-      c.lineWidth = w * 1.7;
-      strokePath(c, tr.pts);
-      c.globalAlpha = 1;
-      c.lineWidth = w;
-      strokePath(c, tr.pts);
-      c.globalCompositeOperation = "source-over";
-      c.globalAlpha = Ct * DUST_ALPHA;
-      c.strokeStyle = pattern;
-      strokePath(c, tr.pts);
-    }
-    c.globalAlpha = 1;
-    c.globalCompositeOperation = "source-over";
-    if (current && current.pts.length) {
-      c.globalCompositeOperation = "destination-out";
-      c.strokeStyle = "#000";
-      c.lineWidth = FINGER * S * 1.7;
-      c.globalAlpha = 0.35;
-      strokePath(c, current.pts);
-      c.globalAlpha = 1;
-      c.lineWidth = FINGER * S;
-      strokePath(c, current.pts);
-      c.globalCompositeOperation = "source-over";
-    }
-    sceneC = sceneC || mk(W, H);
-    const s = sceneC.getContext("2d");
-    s.clearRect(0, 0, W, H);
-    s.drawImage(floorC, 0, 0);
-    s.drawImage(dustLayer, 0, 0);
-  }
-
-  // ---- 跡のデータ ----
-  let traces = [];          // {t, pts:[x,y,...]}（古い順）
-  let current = null;       // 描いている最中の跡
-  let myTrace = null;       // この訪問で残した跡
-  let dbTraces = null;      // db のコレクション参照
+  let traces = [], current = null, myTrace = null, dbTraces = null, floorDirty = true;
 
   function visibleTraces(now) {
     const all = myTrace && !traces.some((t) => t.t === myTrace.t) ? traces.concat([myTrace]) : traces;
     return all.filter((tr) => now - tr.t < fadeDays(tr.t) * DAY).sort((a, b) => a.t - b.t);
   }
+  function strokePath(c, pts) {
+    c.beginPath();
+    for (let i = 0; i < pts.length; i += 2) {
+      const [px, py] = toTex(pts[i], pts[i + 1]);
+      if (i === 0) c.moveTo(px, py); else c.lineTo(px, py);
+    }
+    if (pts.length === 2) { const [px, py] = toTex(pts[0], pts[1]); c.lineTo(px + 0.1, py); }
+    c.stroke();
+  }
+  const DUST_ALPHA = 0.55;
+  function rebuildFloor(now) {
+    const c = dustLayer.getContext("2d");
+    c.globalCompositeOperation = "source-over";
+    c.globalAlpha = 1;
+    c.clearRect(0, 0, TW, TH);
+    const Cs = cover(massAt((now - EPOCH) / DAY));
+    c.globalAlpha = Cs * DUST_ALPHA;
+    c.drawImage(dustTex, 0, 0);
+    const pattern = c.createPattern(dustTex, "no-repeat");
+    c.lineCap = "round";
+    c.lineJoin = "round";
+    const w = FINGER * PPM;
+    const wipe = (pts, strength) => {
+      c.globalCompositeOperation = "destination-out";
+      c.strokeStyle = "#000";
+      c.globalAlpha = 0.35 * strength;
+      c.lineWidth = w * 1.8;
+      strokePath(c, pts);
+      c.globalAlpha = 1;
+      c.lineWidth = w;
+      strokePath(c, pts);
+    };
+    for (const tr of visibleTraces(now)) {
+      const Ct = cover(massAt((now - tr.t) / DAY));
+      wipe(tr.pts, Math.max(0, 1 - Ct / Cs));
+      c.globalCompositeOperation = "source-over";
+      c.globalAlpha = Ct * DUST_ALPHA;
+      c.strokeStyle = pattern;
+      c.lineWidth = w;
+      strokePath(c, tr.pts);
+    }
+    if (current && current.pts.length) wipe(current.pts, 1);
+    c.globalCompositeOperation = "source-over";
+    c.globalAlpha = 1;
+    const s = sceneC.getContext("2d");
+    s.drawImage(floorC, 0, 0);
+    s.drawImage(dustLayer, 0, 0);
+    gl.bindTexture(gl.TEXTURE_2D, floorTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGB, gl.RGB, gl.UNSIGNED_BYTE, sceneC);
+  }
 
   function sanitize(d) {
     if (!d || typeof d.t !== "number" || !Array.isArray(d.pts)) return null;
-    const pts = d.pts.slice(0, 800).filter((v) => typeof v === "number" && isFinite(v) && Math.abs(v) < 20);
+    const pts = d.pts.slice(0, 800).filter((v) => typeof v === "number" && isFinite(v) && Math.abs(v) < 10);
     if (pts.length < 2 || pts.length % 2) return null;
     if (d.t > Date.now() + DAY || d.t < EPOCH) return null;
     return { t: d.t, pts };
   }
 
-  // ---- 塵の粒 ----
+  // ================= 塵の粒 =================
   const AIR_MU = 1.81e-5, RHO = 1000, G = 9.81;
-  let motes = [];
-  function stokes(d) { return (RHO - 1.2) * G * d * d / (18 * AIR_MU); } // m/s
-  function spawnMote(m, r, anywhere) {
-    const D = H / S;
-    m.x = (r() - 0.5) * FLOOR_W;
-    m.y = r() * D;
-    m.z = anywhere ? r() * 2.4 : 2.4;
-    // 直径：1〜40µm（大きい粒ほど少ない）
-    m.d = 1e-6 * Math.exp(Math.log(1) + r() * Math.log(40));
-    m.vs = stokes(m.d);
-    m.ph = r() * Math.PI * 2;
-    m.tw = 0.6 + r() * 2.4;
-    return m;
+  const NM = 900;
+  const mData = new Float32Array(NM * 4), mPh = new Float32Array(NM);
+  const mVs = new Float32Array(NM), mLife = new Float32Array(NM);
+  const mr = rng(23);
+  let light = lighting(Date.now());
+
+  function visJS(x, y, z, L) {
+    if (L[2] > -0.01) return false;
+    const t = (ZS - z) / L[2];
+    const qx = x + L[0] * t, qy = y + L[1] * t;
+    return qx > WIN.x0 && qx < WIN.x1 && qy > WIN.y0 && qy < WIN.y1;
   }
-  function buildMotes() {
-    const r = rng(23);
-    const n = Math.round(Math.min(420, 90 * FLOOR_W * (H / S)));
-    motes = Array.from({ length: n }, () => spawnMote({}, r, true));
-    motes.rng = rng(99);
+  function spawn(i, fresh) {
+    // 見える粒だけを扱う：光の筋の中に置く（筋がないときは部屋全体）
+    let x, y, z;
+    for (let k = 0; k < 24; k++) {
+      x = (mr() * 2 - 1) * RX * 0.95;
+      y = mr() * RH * 0.95;
+      z = ZS + 0.05 + mr() * (CAM[2] - ZS - 0.3);
+      if (!light.lit || visJS(x, y, z, light.L)) break;
+    }
+    const d = Math.exp(mr() * Math.log(40)); // 1〜40 µm
+    mData[i * 4] = x; mData[i * 4 + 1] = y; mData[i * 4 + 2] = z; mData[i * 4 + 3] = d;
+    mVs[i] = (RHO - 1.2) * G * (d * 1e-6) ** 2 / (18 * AIR_MU);
+    mPh[i] = mr() * 100;
+    mLife[i] = 30 + mr() * 90 - (fresh ? mr() * 60 : 0);
   }
-  // 空気のゆっくりした対流（数cm/秒）
+  for (let i = 0; i < NM; i++) spawn(i, true);
   function flow(x, y, z, t) {
-    const a = 0.018, k = 1.3;
+    const a = 0.02;
     return [
-      a * Math.sin(k * y + 0.21 * t) + 0.6 * a * Math.sin(0.7 * z - 0.13 * t),
-      a * Math.cos(k * x - 0.17 * t) + 0.6 * a * Math.sin(0.9 * z + 0.11 * t),
-      0.5 * a * Math.sin(k * x + 0.9 * y + 0.07 * t),
+      a * Math.sin(1.1 * y + 0.19 * t) + 0.6 * a * Math.sin(0.8 * z - 0.13 * t),
+      0.5 * a * Math.sin(1.3 * x + 0.9 * z + 0.07 * t),
+      a * Math.cos(1.2 * x - 0.15 * t) + 0.6 * a * Math.sin(0.9 * y + 0.11 * t),
     ];
   }
-  // 点が光の中にあるか：光線を窓までさかのぼる
-  function lit(x, y, z, bg) {
-    if (!bg) return false;
-    const s = y / bg.dy;
-    const zw = z + s * Math.tan(bg.alt);
-    const xw = x - bg.dx * s;
-    return zw > WIN.z0 && zw < WIN.z1 && Math.abs(xw) < WIN.w / 2;
-  }
-
-  // ---- 光の筋 ----
-  function panes() {
-    const f = WIN.frame, cx = [-WIN.w / 2, 0, WIN.w / 2], zm = (WIN.z0 + WIN.z1) / 2;
-    const zs = [WIN.z0, zm, WIN.z1];
-    const out = [];
-    for (let i = 0; i < 2; i++) for (let j = 0; j < 2; j++) {
-      out.push({ x0: cx[i] + f / 2, x1: cx[i + 1] - f / 2, z0: zs[j] + f / 2, z1: zs[j + 1] - f / 2 });
+  const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  function stepMotes(dt, t) {
+    if (reduceMotion) return;
+    for (let i = 0; i < NM; i++) {
+      const o = i * 4;
+      const [u, v, w] = flow(mData[o], mData[o + 1], mData[o + 2], t);
+      mData[o] += u * dt; mData[o + 1] += (v - mVs[i]) * dt; mData[o + 2] += w * dt;
+      mLife[i] -= dt;
+      if (mLife[i] < 0 || mData[o + 1] < 0 || Math.abs(mData[o]) > RX || mData[o + 2] < ZS || mData[o + 2] > ZN) spawn(i, false);
     }
-    return out;
   }
-  const PANES = panes();
-  function paneOnFloor(p, bg) {
-    const hit = (x, z) => toPx(x + bg.dx * z * bg.t, bg.dy * z * bg.t);
-    return [hit(p.x0, p.z0), hit(p.x1, p.z0), hit(p.x1, p.z1), hit(p.x0, p.z1)];
+  const mBuf = gl.createBuffer(), phBuf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, phBuf);
+  gl.bufferData(gl.ARRAY_BUFFER, mPh, gl.STATIC_DRAW);
+
+  // ================= 描画ループ =================
+  let W = 0, H = 0, cssW = 0, cssH = 0;
+  function resize() {
+    cssW = innerWidth; cssH = innerHeight;
+    const scale = Math.min(window.devicePixelRatio || 1, 1.5) * 0.7;
+    W = Math.max(2, Math.round(cssW * scale));
+    H = Math.max(2, Math.round(cssH * scale));
+    cv.width = W; cv.height = H;
+    const aspect = W / H;
+    // 横長では縦の画角50°、縦長では窓が収まるよう横の画角を確保
+    tanF = aspect >= 1 ? Math.tan(25 * R) : Math.tan(34 * R) / aspect;
+    tanF = Math.min(tanF, Math.tan(42 * R));
   }
+  addEventListener("resize", resize);
+  resize();
 
-  // ---- 描画 ----
-  let sun = sunPos(new Date()), bg = beamGeometry(sun);
-  let lastDust = 0, last = performance.now();
-
-  function ambientLevel() {
-    const s = Math.sin(sun.alt);
-    return Math.max(0.2, Math.min(0.58, 0.2 + s * 0.9));
-  }
-
-  function frame(tNow) {
-    const dt = Math.min(0.05, (tNow - last) / 1000);
-    last = tNow;
+  let frameNo = 0, last = performance.now(), lastLight = 0;
+  function frame(tp) {
+    const dt = Math.min(0.05, (tp - last) / 1000);
+    last = tp;
     const now = Date.now();
-    if (now - lastDust > 60000) {
-      sun = sunPos(new Date());
-      bg = beamGeometry(sun);
-      buildDust(now);
-      lastDust = now;
+    if (now - lastLight > 30000) {
+      light = lighting(now);
+      lastLight = now;
+      floorDirty = true;
       updateMeta(now);
     }
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 1;
-    ctx.drawImage(sceneC, 0, 0);
-    // 暗さ
-    const amb = ambientLevel();
-    ctx.fillStyle = sun.alt > 0 ? "rgb(10,11,14)" : "rgb(6,8,14)";
-    ctx.globalAlpha = 1 - amb;
-    ctx.fillRect(0, 0, W, H);
-    ctx.globalAlpha = 1;
+    if (floorDirty) { rebuildFloor(now); floorDirty = false; }
+    const t = now / 1000 % 100000;
+    stepMotes(dt, t);
 
-    if (bg) {
-      const strength = Math.min(1, Math.sin(bg.alt) * 4);
-      // 空中の光の筋（チンダル現象）：窓から床の光までをうっすら
-      ctx.save();
-      ctx.globalCompositeOperation = "lighter";
-      for (const p of PANES) {
-        const q = paneOnFloor(p, bg);
-        const a = toPx(p.x0, 0), b = toPx(p.x1, 0);
-        const grad = ctx.createLinearGradient(0, 0, 0, Math.max(q[2][1], 1));
-        grad.addColorStop(0, `rgba(242,215,166,${0.022 * strength})`);
-        grad.addColorStop(1, `rgba(242,215,166,${0.006 * strength})`);
-        ctx.fillStyle = grad;
-        ctx.beginPath();
-        ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
-        ctx.lineTo(q[2][0], q[2][1]); ctx.lineTo(q[3][0], q[3][1]);
-        ctx.closePath();
-        ctx.fill();
-      }
-      ctx.restore();
-      // 床の日だまり：明るいままの床を窓の形に切り抜いて重ねる
-      ctx.save();
-      ctx.beginPath();
-      for (const p of PANES) {
-        const q = paneOnFloor(p, bg);
-        ctx.moveTo(q[0][0], q[0][1]);
-        for (let i = 1; i < 4; i++) ctx.lineTo(q[i][0], q[i][1]);
-        ctx.closePath();
-      }
-      ctx.clip();
-      ctx.globalAlpha = 0.92 * strength;
-      ctx.drawImage(sceneC, 0, 0);
-      ctx.globalCompositeOperation = "soft-light";
-      ctx.fillStyle = `rgba(255,214,150,${0.55 * strength})`;
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalCompositeOperation = "lighter";
-      ctx.globalAlpha = 0.08 * strength;
-      ctx.fillStyle = "#f2d7a6";
-      ctx.fillRect(0, 0, W, H);
-      ctx.restore();
-    }
+    gl.viewport(0, 0, W, H);
+    gl.disable(gl.BLEND);
+    gl.useProgram(roomP.p);
+    const u = roomP.u;
+    gl.bindBuffer(gl.ARRAY_BUFFER, quad);
+    const aPos = gl.getAttribLocation(roomP.p, "aPos");
+    gl.enableVertexAttribArray(aPos);
+    gl.vertexAttribPointer(aPos, 2, gl.FLOAT, false, 0, 0);
+    gl.uniform2f(u.uRes, W, H);
+    gl.uniform1f(u.uTime, t);
+    gl.uniform1f(u.uFrame, frameNo);
+    gl.uniform1f(u.uTanF, tanF);
+    gl.uniform1f(u.uGrain, light.grain);
+    gl.uniform3fv(u.uCam, CAM);
+    gl.uniform3fv(u.uL, light.L);
+    gl.uniform3fv(u.uLCol, light.col);
+    gl.uniform3fv(u.uSky, light.sky);
+    gl.uniform3fv(u.uAmb, light.amb);
+    gl.uniformMatrix3fv(u.uRot, false, ROT);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, floorTex);
+    gl.uniform1i(u.uFloor, 0);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    gl.disableVertexAttribArray(aPos);
 
-    // 塵の粒
-    const t = now / 1000;
-    const r = motes.rng;
-    ctx.save();
-    ctx.globalCompositeOperation = "lighter";
-    for (const m of motes) {
-      if (!reduceMotion) {
-        const [u, v, w] = flow(m.x, m.y, m.z, t);
-        m.x += u * dt; m.y += v * dt; m.z += (w - m.vs) * dt;
-        if (m.z < 0 || m.y < 0 || m.y > H / S || Math.abs(m.x) > FLOOR_W / 2) spawnMote(m, r, m.z >= 0);
-      }
-      const inBeam = lit(m.x, m.y, m.z, bg);
-      if (!inBeam) continue;
-      const [px, py] = toPx(m.x, m.y);
-      // 粒の向きで反射がまたたく
-      const glint = 0.35 + 0.65 * Math.pow(0.5 + 0.5 * Math.sin(t * m.tw + m.ph), 3);
-      const size = (0.5 + Math.sqrt(m.d * 1e6) * 0.28) * dpr;
-      ctx.globalAlpha = Math.min(1, glint * 0.9);
-      ctx.fillStyle = "#fff1d8";
-      ctx.beginPath();
-      ctx.arc(px, py - m.z * 0.04 * S, size, 0, Math.PI * 2);
-      ctx.fill();
+    if (light.lit) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      gl.useProgram(moteP.p);
+      const v = moteP.u;
+      gl.bindBuffer(gl.ARRAY_BUFFER, mBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, mData, gl.DYNAMIC_DRAW);
+      const aP = gl.getAttribLocation(moteP.p, "aP");
+      gl.enableVertexAttribArray(aP);
+      gl.vertexAttribPointer(aP, 4, gl.FLOAT, false, 0, 0);
+      gl.bindBuffer(gl.ARRAY_BUFFER, phBuf);
+      const aPh = gl.getAttribLocation(moteP.p, "aPh");
+      gl.enableVertexAttribArray(aPh);
+      gl.vertexAttribPointer(aPh, 1, gl.FLOAT, false, 0, 0);
+      gl.uniform3fv(v.uCam, CAM);
+      gl.uniform3fv(v.uL, light.L);
+      gl.uniform3fv(v.uLCol, light.col);
+      gl.uniformMatrix3fv(v.uInv, false, INV);
+      gl.uniform1f(v.uTanF, tanF);
+      gl.uniform1f(v.uAspect, W / H);
+      gl.uniform1f(v.uTime, t);
+      gl.uniform1f(v.uH, H);
+      gl.uniform1f(v.uFocus, 3.2);
+      gl.drawArrays(gl.POINTS, 0, NM);
+      gl.disableVertexAttribArray(aP);
+      gl.disableVertexAttribArray(aPh);
     }
-    ctx.restore();
+    frameNo++;
     requestAnimationFrame(frame);
   }
 
-  // ---- 表示 ----
+  // ================= 表示 =================
   const metaEl = document.getElementById("meta");
   const msgEl = document.getElementById("message");
   const pad = (n) => String(n).padStart(2, "0");
-  function fmtDate(ms) {
-    const d = new Date(ms + 9 * 3600000);
-    return `${d.getUTCFullYear()}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())}`;
-  }
+  const jst = (ms) => new Date(ms + 9 * 3600000);
+  const fmtDate = (ms) => { const d = jst(ms); return `${d.getUTCFullYear()}.${pad(d.getUTCMonth() + 1)}.${pad(d.getUTCDate())}`; };
+  const fmtTime = (ms) => { const d = jst(ms); return `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`; };
   function updateMeta(now) {
-    const d = new Date(now + 9 * 3600000);
     const days = (now - EPOCH) / DAY;
     const years = Math.floor(days / 365.2425);
-    const rem = Math.floor(days - years * 365.2425);
-    const alt = sun.alt / R, az = sun.az / R;
+    let lightLine;
+    if (light.lit && light.kind === "sun") {
+      lightLine = `日差し 高度 ${(light.sun.alt / R).toFixed(1)}° 方位 ${(light.sun.az / R).toFixed(1)}°`;
+    } else if (light.lit && light.kind === "moon") {
+      lightLine = `月明かり 高度 ${(light.moon.alt / R).toFixed(1)}° 輝面 ${Math.round(light.moon.frac * 100)}%`;
+    } else {
+      const nx = nextLight(now);
+      lightLine = nx ? `いま窓に光は差していない 次は ${fmtDate(nx).slice(5).replace(".", "/")} ${fmtTime(nx)}ごろ` : "いま窓に光は差していない";
+    }
     const count = visibleTraces(now).length;
     metaEl.innerHTML =
-      `東京・南向きの窓 ${fmtDate(now)} ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}<br>` +
-      `太陽 高度 <b>${alt.toFixed(1)}°</b> 方位 <b>${az.toFixed(1)}°</b>${bg ? "" : "（窓に光は入っていない）"}<br>` +
-      `閉ざされて <b>${years}年${rem}日</b> 床の塵 <b>${massAt(days).toFixed(0)} g/m²</b><br>` +
-      `見えている跡 <b>${count}</b>`;
+      `東京 南の窓 ${fmtDate(now)} ${fmtTime(now)}<br>${lightLine}<br>` +
+      `閉ざされて ${years}年 床の塵 ${massAt(days).toFixed(0)} g/m² 跡 ${count}`;
   }
-
   function showResult(tr) {
     const days = fadeDays(tr.t);
-    const years = days / 365.2425;
     const until = tr.t + days * DAY;
+    const d = jst(until);
     msgEl.innerHTML =
-      `あなたの跡は約${years.toFixed(1)}年後、${fmtDate(until).slice(0, 7).replace(".", "年")}月ごろに塵に埋もれて見えなくなります。` +
+      `あなたの跡は約${(days / 365.2425).toFixed(1)}年後、${d.getUTCFullYear()}年${d.getUTCMonth() + 1}月ごろに塵に埋もれて見えなくなります。` +
       `<small id="saveState">${dbTraces ? "保存中…" : "この環境では跡を共有できないため、この画面の中だけに残ります。"}</small>`;
   }
 
-  // ---- 入力 ----
-  function pointerM(e) {
+  // ================= 入力：画面の点 → 床の点 =================
+  function floorPoint(e) {
     const rect = cv.getBoundingClientRect();
-    return toM((e.clientX - rect.left) * dpr, (e.clientY - rect.top) * dpr);
+    const cx = e.clientX - rect.left, cy = e.clientY - rect.top;
+    const ux = (2 * cx - rect.width) / rect.height, uy = (rect.height - 2 * cy) / rect.height;
+    const lx = ux * tanF, ly = uy * tanF;
+    const rd = [0, 1, 2].map((k) => right[k] * lx + up[k] * ly + fwd[k]);
+    if (rd[1] >= -1e-4) return null;
+    const t = -CAM[1] / rd[1];
+    const x = CAM[0] + rd[0] * t, z = CAM[2] + rd[2] * t;
+    if (Math.abs(x) > RX || z < ZS || z > ZN) return null;
+    return [x, z];
   }
   cv.addEventListener("pointerdown", (e) => {
     if (myTrace) return;
+    const p = floorPoint(e);
+    if (!p) return;
     cv.setPointerCapture(e.pointerId);
-    const [x, y] = pointerM(e);
-    current = { t: Date.now(), pts: [x, y] };
-    buildDust(Date.now());
+    current = { pts: p.slice() };
+    floorDirty = true;
   });
   cv.addEventListener("pointermove", (e) => {
     if (!current) return;
-    const [x, y] = pointerM(e);
+    const p = floorPoint(e);
+    if (!p) return;
     const n = current.pts.length;
-    const lx = current.pts[n - 2], ly = current.pts[n - 1];
-    if (Math.hypot(x - lx, y - ly) < 0.006 || n >= 800) return;
-    current.pts.push(x, y);
-    buildDust(Date.now());
+    if (Math.hypot(p[0] - current.pts[n - 2], p[1] - current.pts[n - 1]) < 0.006 || n >= 800) return;
+    current.pts.push(p[0], p[1]);
+    floorDirty = true;
   });
   const finish = async () => {
     if (!current) return;
     const tr = { t: Date.now(), pts: current.pts.map((v) => Math.round(v * 10000) / 10000) };
     current = null;
     myTrace = tr;
-    cv.style.cursor = "default";
-    buildDust(Date.now());
+    cv.classList.add("done");
+    floorDirty = true;
     updateMeta(Date.now());
     showResult(tr);
     if (!dbTraces) return;
@@ -584,8 +820,7 @@
       await dbTraces.add({ t: tr.t, pts: tr.pts });
       if (st()) st().textContent = "跡は保存されました。次にこの部屋を開いた人にも見えます。";
     } catch (err) {
-      const code = err && err.code;
-      if (st()) st().textContent = code === "quota_exceeded"
+      if (st()) st().textContent = err && err.code === "quota_exceeded"
         ? "床が跡でいっぱいのため保存できませんでした。この画面の中だけに残ります。"
         : "保存できませんでした。この画面の中だけに残ります。";
     }
@@ -598,34 +833,17 @@
   document.getElementById("close").addEventListener("click", () => { notes.hidden = true; });
   addEventListener("keydown", (e) => { if (e.key === "Escape") notes.hidden = true; });
 
-  // ---- 初期化 ----
-  function resize() {
-    dpr = Math.min(2, window.devicePixelRatio || 1);
-    W = Math.round(innerWidth * dpr);
-    H = Math.round(innerHeight * dpr);
-    cv.width = W; cv.height = H;
-    S = W / FLOOR_W;
-    dustLayer = null; sceneC = null;
-    buildFloor();
-    buildDustTex();
-    buildMotes();
-    buildDust(Date.now());
-  }
-  let rt;
-  addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(resize, 150); });
-  resize();
   updateMeta(Date.now());
-  lastDust = Date.now();
+  lastLight = Date.now();
   requestAnimationFrame(frame);
 
-  // 共有された跡を読み込む
   if (window.claude && typeof window.claude.use === "function") {
     window.claude.use("db").then((db) => {
       if (!db) return;
       dbTraces = db.collection("traces");
       dbTraces.orderBy("t", "desc").limit(1000).onSnapshot((snap) => {
         traces = snap.docs.map((d) => sanitize(d.data())).filter(Boolean).reverse();
-        buildDust(Date.now());
+        floorDirty = true;
         updateMeta(Date.now());
       }, () => {});
     }).catch(() => {});
