@@ -1,0 +1,121 @@
+// Keeps the eye out of buildings by shortening the target->eye ray. Mirrors the
+// height rules of the building shader closely enough for a camera.
+import type { BoxRec } from '../world/settlement';
+import type { CottageInstance } from '../world/cottage';
+import { smoothstep } from '../util/rand';
+
+interface Solid {
+  /** big enough to stand between the eye and what it looks at */
+  blocks: boolean;
+  x: number; z: number; c: number; s: number; hx: number; hz: number; y: number;
+  birth: number; death: number;
+  h0: number; h1: number; h2: number; g1: number; g2s: number; g2e: number; collapse: number; seed: number;
+}
+
+const CELL = 60;
+
+export class Collider {
+  private grid = new Map<number, Solid[]>();
+
+  constructor(boxes: BoxRec[], cottages: CottageInstance[], trees: { x: number; y: number; z: number; size: number; birth: number; death: number; kind: number }[] = []) {
+    const add = (o: Solid) => {
+      const r = Math.hypot(o.hx, o.hz);
+      for (let i = Math.floor((o.x - r) / CELL); i <= Math.floor((o.x + r) / CELL); i++) {
+        for (let j = Math.floor((o.z - r) / CELL); j <= Math.floor((o.z + r) / CELL); j++) {
+          const k = i * 100003 + j;
+          let l = this.grid.get(k);
+          if (!l) this.grid.set(k, (l = []));
+          l.push(o);
+        }
+      }
+    };
+    for (const b of boxes) {
+      add({
+        blocks: true,
+        x: b.x, z: b.z, c: Math.cos(b.rot), s: Math.sin(b.rot), hx: b.sx / 2 + 0.6, hz: b.sz / 2 + 0.6, y: b.y,
+        birth: b.birth, death: b.death, h0: b.h0, h1: b.h1, h2: b.h2, g1: b.grow1, g2s: b.g2s, g2e: b.g2e, collapse: b.collapse, seed: b.seed,
+      });
+    }
+    for (const c of cottages) {
+      const h = 5.5 * c.scale;
+      add({
+        blocks: false,
+        x: c.x, z: c.z, c: Math.cos(c.rot), s: Math.sin(c.rot), hx: 3.5 * c.scale, hz: 3 * c.scale, y: c.y,
+        birth: c.birth, death: c.death, h0: h, h1: h, h2: h, g1: 0, g2s: 9e9, g2e: 9e9, collapse: 9e9, seed: 0,
+      });
+    }
+    // trees: only their crowns, as a box the eye stays out of (hedges are low enough to ignore)
+    for (const t of trees) {
+      if (t.kind === 3) continue;
+      const r = t.size * 0.35;
+      add({
+        blocks: false,
+        x: t.x, z: t.z, c: 1, s: 0, hx: r, hz: r, y: t.y,
+        birth: t.birth, death: t.death, h0: t.size, h1: t.size, h2: t.size, g1: 0, g2s: 9e9, g2e: 9e9, collapse: 9e9, seed: 0,
+      });
+    }
+  }
+
+  private height(o: Solid, year: number): number {
+    let h = o.h0 + (o.h1 - o.h0) * smoothstep(o.birth, Math.max(o.g1, o.birth + 0.01), year) + (o.h2 - o.h1) * smoothstep(o.g2s, o.g2e, year);
+    h = Math.max(3.2, Math.round(h / 3.2) * 3.2);
+    // same two stages as the building shader: shear to a shell, later a fall to rubble
+    const failDur = 3 + glslHash11(o.seed * 17.3) * 9;
+    const shellH = Math.max(1, Math.round((h / 3.2) * (0.12 + glslHash11(o.seed * 23.1) * 0.55))) * 3.2;
+    const fall = o.collapse + failDur + 50 + Math.pow(glslHash11(o.seed * 41.7), 3) * 900;
+    const c1 = smoothstep(o.collapse, o.collapse + failDur, year);
+    const c2 = smoothstep(fall, fall + failDur * 0.6, year);
+    const rubbleH = Math.min(h * 0.18, 4 + o.seed * 8);
+    return Math.max(1.5, h + (shellH - h) * c1 + (rubbleH - shellH) * c2);
+  }
+
+  private inside(x: number, y: number, z: number, year: number, blockersOnly = false): boolean {
+    const l = this.grid.get(Math.floor(x / CELL) * 100003 + Math.floor(z / CELL));
+    if (!l) return false;
+    for (const o of l) {
+      if (year < o.birth || year >= o.death) continue;
+      if (blockersOnly && !o.blocks) continue;
+      const dx = x - o.x, dz = z - o.z;
+      const lx = dx * o.c - dz * o.s, lz = dx * o.s + dz * o.c;
+      if (Math.abs(lx) > o.hx || Math.abs(lz) > o.hz) continue;
+      if (y < o.y + this.height(o, year) + 1) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Fraction of the target->eye segment the eye may use. Close in, the eye stops
+   * at the first wall so the look point stays visible among towers; far out only
+   * the eye itself must be outside, so high views over the city stay possible.
+   */
+  clip(fx: number, fy: number, fz: number, tx: number, ty: number, tz: number, year: number): number {
+    const len = Math.hypot(tx - fx, ty - fy, tz - fz);
+    const steps = Math.min(240, Math.ceil(len / 1.5));
+    const at = (t: number, blockersOnly = false) => this.inside(fx + (tx - fx) * t, fy + (ty - fy) * t, fz + (tz - fz) * t, year, blockersOnly);
+    if (len < 350) {
+      // a look point inside a building (panned there) must not trap the eye
+      let wasOutside = false;
+      for (let i = 1; i <= steps; i++) {
+        const hit = at(i / steps, true);
+        if (hit && wasOutside) return Math.max(0, (i - 1) / steps);
+        if (!hit) wasOutside = true;
+      }
+      // small things (a house, a tree) never hide the view; only keep the eye out of them
+      if (!at(1)) return 1;
+      for (let i = steps - 1; i >= 1; i--) if (!at(i / steps)) return i / steps;
+      return 1;
+    }
+    if (!at(1)) return 1;
+    for (let i = steps - 1; i >= 1; i--) if (!at(i / steps)) return i / steps;
+    return 0;
+  }
+}
+
+/** JS twin of hash11 in render/glsl.ts, so camera and shader agree. */
+function glslHash11(p: number): number {
+  const fr = (x: number) => x - Math.floor(x);
+  p = fr(p * 0.1031);
+  p *= p + 33.33;
+  p *= p + p;
+  return fr(p);
+}
