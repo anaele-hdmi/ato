@@ -773,7 +773,27 @@
   }
 
   // ================= GLSL =================
-  const COMMON = `#version 300 es
+  // 形（窓枠・椅子・シダ・キノコ）は描画プログラムに定数として埋め込む。形が変わったらプログラムを作り直す
+  const gv = (v) => `vec3(${v.map((x) => (+x).toFixed(4)).join(",")})`;
+  function sceneGLSL(sc) {
+    const bx = sc.boxes.length ? sc.boxes : [[[1e5, 1e5, 1e5], [1e5, 1e5, 1e5], 0]];
+    let g = `const int NB = ${bx.length};
+    const vec3 BMIN[NB] = vec3[NB](${bx.map((b) => gv(b[0])).join(",")});
+    const vec3 BMAX[NB] = vec3[NB](${bx.map((b) => gv(b[1])).join(",")});
+    const int BMAT[NB] = int[NB](${bx.map((b) => b[2]).join(",")});
+`;
+    if (sc.ferns.length) g += `#define HAS_FERN 1
+    const int NF = ${sc.ferns.length};
+    const vec4 FERN[NF] = vec4[NF](${sc.ferns.map((f) => `vec4(${f[0].toFixed(4)},0.0,${f[1].toFixed(4)},${f[2].toFixed(4)})`).join(",")});
+    const float FROT[NF] = float[NF](${sc.ferns.map((f) => f[3].toFixed(4)).join(",")});
+`;
+    if (sc.mush.length) g += `#define HAS_MUSH 1
+    const int NMU = ${sc.mush.length};
+    const vec4 MUSH[NMU] = vec4[NMU](${sc.mush.map((m) => `vec4(${m.map((x) => x.toFixed(4)).join(",")})`).join(",")});
+`;
+    return g;
+  }
+  const makeCommon = (sc) => `#version 300 es
     precision highp float;
     precision highp int;
     const float RX = ${RX.toFixed(3)}, RH = ${RH.toFixed(3)}, ZS = ${ZS.toFixed(3)}, ZN = ${ZN.toFixed(3)}, WT = ${WT.toFixed(3)};
@@ -783,11 +803,7 @@
     const float PI = 3.14159265;
     const float SUNR = 0.00465;
     uniform vec3 uL, uE, uSky;
-    uniform vec3 uBMin[MAXB], uBMax[MAXB];
-    uniform int uBMat[MAXB];
-    uniform vec4 uFern[MAXF];
-    uniform float uFernRot[MAXF];
-    uniform vec4 uMush[MAXM];
+${sceneGLSL(sc)}
 
     vec3 safeInv(vec3 d) { return 1.0 / mix(d, vec3(1e-7), lessThan(abs(d), vec3(1e-7))); }
     float boxT(vec3 ro, vec3 inv, vec3 bmin, vec3 bmax, out vec3 n) {
@@ -862,17 +878,18 @@
       Hit h;
       h.t = shellT(ro, rd, inv, h.n, h.esc);
       h.m = 0;
-      for (int i = 0; i < MAXB; i++) {
+      for (int i = 0; i < NB; i++) {
         vec3 n;
-        float t = boxT(ro, inv, uBMin[i], uBMax[i], n);
-        if (t < h.t) { h.t = t; h.n = n; h.m = uBMat[i]; h.esc = false; }
+        float t = boxT(ro, inv, BMIN[i], BMAX[i], n);
+        if (t < h.t) { h.t = t; h.n = n; h.m = BMAT[i]; h.esc = false; }
       }
-      for (int i = 0; i < MAXF; i++) {
-        vec4 f = uFern[i];
+#ifdef HAS_FERN
+      for (int i = 0; i < NF; i++) {
+        vec4 f = FERN[i];
         float L = f.w;
         if (!aabb(ro, inv, f.xyz - vec3(L * 0.8, 0.0, L * 0.8), f.xyz + vec3(L * 0.8, L * 0.85, L * 0.8), h.t)) continue;
         for (int k = 0; k < 6; k++) {
-          float th = uFernRot[i] + float(k) * 1.0472 + 0.3 * sin(float(k) * 3.1 + uFernRot[i]);
+          float th = FROT[i] + float(k) * 1.0472 + 0.3 * sin(float(k) * 3.1 + FROT[i]);
           vec3 hz = vec3(cos(th), 0.0, sin(th)), b = vec3(-sin(th), 0.0, cos(th));
           float e = 1.05 - 0.12 * float(k % 3);
           vec3 a1 = normalize(hz * cos(e) + vec3(0, sin(e), 0));
@@ -885,8 +902,10 @@
           if (t < h.t) { h.t = t; h.n = n; h.m = 3; h.esc = false; }
         }
       }
-      for (int i = 0; i < MAXM; i++) {
-        vec4 s = uMush[i];
+#endif
+#ifdef HAS_MUSH
+      for (int i = 0; i < NMU; i++) {
+        vec4 s = MUSH[i];
         vec3 oc = ro - s.xyz;
         float b = dot(oc, rd), c = dot(oc, oc) - s.w * s.w;
         float d = b * b - c;
@@ -900,6 +919,7 @@
         h.t = t; h.n = normalize(p - s.xyz); h.m = 4; h.esc = false;
         if (dot(h.n, rd) > 0.0) h.n = -h.n;
       }
+#endif
       return h;
     }
     bool escapes(vec3 ro, vec3 rd) { return trace(ro, rd).esc; }
@@ -912,7 +932,7 @@
   const VS_QUAD = `#version 300 es
     in vec2 aPos; void main(){ gl_Position = vec4(aPos, 0.0, 1.0); }`;
 
-  const FS_TRACE = COMMON + `
+  const FS_TRACE_BODY = `
     uniform vec2 uRes;
     uniform float uTime, uW, uTanF, uHum, uCover;
     uniform uint uFrame;
@@ -1120,7 +1140,7 @@
     }
   `;
 
-  const VS_MOTE = COMMON + `
+  const VS_MOTE_BODY = `
     in vec4 aP;
     in float aPh;
     uniform vec3 uCam, uCR, uCU, uCF;
@@ -1172,6 +1192,9 @@
     const p = gl.createProgram();
     gl.attachShader(p, compile(gl.VERTEX_SHADER, vs));
     gl.attachShader(p, compile(gl.FRAGMENT_SHADER, fs));
+    gl.bindAttribLocation(p, 0, "aPos");
+    gl.bindAttribLocation(p, 0, "aP");
+    gl.bindAttribLocation(p, 1, "aPh");
     gl.linkProgram(p);
     if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
     const u = {};
@@ -1182,13 +1205,23 @@
     }
     return { p, u };
   }
+  function currentScene() {
+    const boxes = S ? sceneBoxes() : [[[WIN.x0 - 0.07, WIN.y0 - 0.035, ZS - 0.09], [WIN.x1 + 0.07, WIN.y0 + 0.001, ZS + 0.05], 1]];
+    const ferns = S ? S.ferns.filter((f) => f.stage >= 1).slice(0, MAXF).map((f) => [f.x, f.z, 0.12 + Math.round(f.size * 20) / 20 * 0.62, f.rot]) : [];
+    const mush = S ? S.mush.slice(0, MAXM).map((m) => [m.x, m.y + m.r * 0.35, m.z, m.r]) : [];
+    const r4 = (v) => Math.round(v * 1e4) / 1e4;
+    return { boxes: boxes.slice(0, MAXB).map(([a, b, m]) => [a.map(r4), b.map(r4), m]), ferns: ferns.map((f) => f.map(r4)), mush: mush.map((m) => m.map(r4)) };
+  }
+  let sceneKey = "";
   let traceP, showP, moteP, compileMs = 0;
   try {
     const tc = performance.now();
-    traceP = program(VS_QUAD, FS_TRACE);
+    const sc0 = currentScene();
+    traceP = program(VS_QUAD, makeCommon(sc0) + FS_TRACE_BODY);
     compileMs = performance.now() - tc;
     showP = program(VS_QUAD, FS_SHOW);
-    moteP = program(VS_MOTE, FS_MOTE);
+    moteP = program(makeCommon(sc0) + VS_MOTE_BODY, FS_MOTE);
+    sceneKey = JSON.stringify(sc0);
   } catch (err) {
     console.error(err);
     fallback("描画の準備に失敗しました。別のブラウザで開くと表示できる場合があります。");
@@ -1198,10 +1231,8 @@
   gl.bindVertexArray(quadVAO);
   gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
   gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 1, -1, -1, 1, 1, 1]), gl.STATIC_DRAW);
-  for (const P of [traceP, showP]) {
-    const loc = gl.getAttribLocation(P.p, "aPos");
-    if (loc >= 0) { gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0); }
-  }
+  gl.enableVertexAttribArray(0);
+  gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
   gl.bindVertexArray(null);
 
   // カメラ
@@ -1296,28 +1327,22 @@
     }
   }
 
-  // 箱・シダ・キノコのユニフォーム
-  const bMin = new Float32Array(MAXB * 3), bMax = new Float32Array(MAXB * 3), bMat = new Int32Array(MAXB);
-  const fernU = new Float32Array(MAXF * 4), fernRot = new Float32Array(MAXF), mushU = new Float32Array(MAXM * 4);
-  let nB = 0, nF = 0, nM = 0, sceneKey = "";
+  // 形が変わったら描画プログラムを作り直す（最短0.25秒おき）
+  let rebuildPending = false, lastBuild = 0;
   function updateScene() {
-    const boxes = sceneBoxes();
-    nB = Math.min(MAXB, boxes.length);
-    bMin.fill(1e5); bMax.fill(1e5); bMat.fill(0);
-    for (let i = 0; i < nB; i++) { bMin.set(boxes[i][0], i * 3); bMax.set(boxes[i][1], i * 3); bMat[i] = boxes[i][2]; }
-    const fs = S.ferns.filter((f) => f.stage >= 1);
-    nF = Math.min(MAXF, fs.length);
-    for (let i = 0; i < MAXF; i++) fernU.set([1e5, 1e5, 1e5, 0], i * 4);
-    for (let i = 0; i < nF; i++) { fernU.set([fs[i].x, 0, fs[i].z, 0.12 + fs[i].size * 0.62], i * 4); fernRot[i] = fs[i].rot; }
-    nM = Math.min(MAXM, S.mush.length);
-    for (let i = 0; i < MAXM; i++) mushU.set([1e5, 1e5, 1e5, 0], i * 4);
-    for (let i = 0; i < nM; i++) { const m = S.mush[i]; mushU.set([m.x, m.y + m.r * 0.35, m.z, m.r], i * 4); }
-    const key = JSON.stringify([nB, S.windowOpen, S.chair, fs.map((f) => [f.x, Math.round(f.size * 50)]), S.mush.map((m) => m.born)]);
-    if (key !== sceneKey) { sceneKey = key; samples = Math.min(samples, 24); }
+    const key = JSON.stringify(currentScene());
+    if (key !== sceneKey) { sceneKey = key; rebuildPending = true; }
   }
-  function setScene(u) {
-    gl.uniform3fv(u.uBMin, bMin); gl.uniform3fv(u.uBMax, bMax); gl.uniform1iv(u.uBMat, bMat);
-    gl.uniform4fv(u.uFern, fernU); gl.uniform1fv(u.uFernRot, fernRot); gl.uniform4fv(u.uMush, mushU);
+  function rebuildPrograms() {
+    const sc = JSON.parse(sceneKey);
+    try {
+      const t = program(VS_QUAD, makeCommon(sc) + FS_TRACE_BODY);
+      const m = program(makeCommon(sc) + VS_MOTE_BODY, FS_MOTE);
+      gl.deleteProgram(traceP.p); gl.deleteProgram(moteP.p);
+      traceP = t; moteP = m;
+      samples = Math.min(samples, 24);
+    } catch (e) { lastErr = "shader: " + (e && e.message); }
+    rebuildPending = false;
   }
 
   // ================= 塵と胞子の粒 =================
@@ -1438,13 +1463,16 @@
   }
   // 蓄積バッファの生の値を16点読み、NaN・真っ黒を調べる
   function probe() {
-    const buf = new Float32Array(4);
+    const half = (h) => { const e = (h >> 10) & 31, m = h & 1023, sg = h >> 15 ? -1 : 1; return e === 31 ? (m ? NaN : sg * Infinity) : e === 0 ? sg * m * 2 ** -24 : sg * (1 + m / 1024) * 2 ** (e - 15); };
     let nan = 0, sum = 0, n = 0;
     try {
       gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[ping]);
+      const type = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_TYPE), fmt = gl.getParameter(gl.IMPLEMENTATION_COLOR_READ_FORMAT);
+      const useHalf = type === gl.HALF_FLOAT && fmt === gl.RGBA;
+      const buf = useHalf ? new Uint16Array(4) : new Float32Array(4);
       for (let k = 0; k < 16; k++) {
-        gl.readPixels(Math.floor(W * (0.1 + 0.8 * ((k % 4) / 3))), Math.floor(H * (0.1 + 0.8 * (Math.floor(k / 4) / 3))), 1, 1, gl.RGBA, gl.FLOAT, buf);
-        for (let c = 0; c < 3; c++) { if (!isFinite(buf[c])) nan++; else sum += buf[c]; }
+        gl.readPixels(Math.floor(W * (0.1 + 0.8 * ((k % 4) / 3))), Math.floor(H * (0.1 + 0.8 * (Math.floor(k / 4) / 3))), 1, 1, gl.RGBA, useHalf ? gl.HALF_FLOAT : gl.FLOAT, buf);
+        for (let c = 0; c < 3; c++) { const v = useHalf ? half(buf[c]) : buf[c]; if (!isFinite(v)) nan++; else sum += v; }
         n += 3;
       }
     } catch (e) { /* 読めない環境 */ }
@@ -1731,6 +1759,7 @@
     const t = (Date.now() / 1000) % 100000;
     light = lighting(S ? S.tau : Date.now());
     if (S && (boxesDirty)) { updateScene(); boxesDirty = false; }
+    if (rebuildPending && tp - lastBuild > 250) { rebuildPrograms(); lastBuild = tp; }
     if (texDirty) { uploadGrowth(); texDirty = false; }
     stepMotes(dt, t);
     if (tp - lastMeta > 500) { updateMeta(); lastMeta = tp; }
@@ -1742,7 +1771,6 @@
     gl.useProgram(traceP.p);
     const u = traceP.u;
     setCam(u);
-    setScene(u);
     gl.uniform2f(u.uRes, W, H);
     gl.uniform1f(u.uTime, t);
     gl.uniform1ui(u.uFrame, frameNo);
@@ -1754,16 +1782,7 @@
     bind(0, acc[src], "uPrev"); bind(1, floorTex, "uFloor");
     bind(2, surfs[0].tex, "uGF"); bind(3, surfs[1].tex, "uGS"); bind(4, surfs[2].tex, "uGE"); bind(5, surfs[3].tex, "uGW");
     gl.bindVertexArray(quadVAO);
-    // 1回の描画命令が長くならないよう、画面を帯に分けて描く（GPUのリセット対策）
-    const strips = Math.max(1, Math.ceil(W * H / (SAFE ? 60000 : 120000)));
-    const sh = Math.ceil(H / strips);
-    gl.enable(gl.SCISSOR_TEST);
-    for (let k = 0; k < strips; k++) {
-      gl.scissor(0, k * sh, W, sh);
-      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
-      if (strips > 1) gl.flush();
-    }
-    gl.disable(gl.SCISSOR_TEST);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     samples++;
     ping = dst;
 
@@ -1789,7 +1808,6 @@
       gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(moteP.p);
       setCam(moteP.u);
-      setScene(moteP.u);
       gl.uniform1f(moteP.u.uAspect, W / H);
       gl.uniform1f(moteP.u.uTime, t);
       gl.uniform1f(moteP.u.uH, H);
