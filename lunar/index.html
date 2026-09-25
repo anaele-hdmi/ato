@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
-<title>ツキノワ</title>
+<title>ルナ・ループ</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Dela+Gothic+One&family=Zen+Kaku+Gothic+New:wght@500;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -88,6 +88,10 @@
   .ib svg { width: 16px; height: 16px; stroke: var(--ink); fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 
   .bottom { bottom: 0; padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px)); display: flex; flex-direction: column; gap: 6px; }
+  #views { align-self: center; display: flex; align-items: center; gap: 2px; padding: 3px; border-radius: 99px; }
+  #views .vl { font-size: 10px; color: var(--ink3); padding: 0 6px 0 8px; letter-spacing: .1em; }
+  #views button { height: 32px; min-width: 52px; padding: 0 10px; border-radius: 99px; font-family: var(--pop); font-size: 12.5px; color: var(--ink2); }
+  #views button[aria-pressed="true"] { background: var(--sky); color: #04192a; box-shadow: 0 0 14px rgba(95,196,255,.45); }
   #meter { padding: 6px 10px 8px; }
   .mhead { display: flex; justify-content: space-between; align-items: baseline; font-size: 11px; color: var(--ink2); margin-bottom: 5px; gap: 8px; }
   .mhead b { font-family: var(--mono); font-weight: 500; font-size: 12px; color: var(--ink); white-space: nowrap; }
@@ -102,6 +106,11 @@
 
   .row { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; }
   .lcol { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; }
+  #fuelChip { display: grid; grid-template-columns: auto auto auto; align-items: baseline; gap: 0 5px; padding: 5px 9px 7px; border-radius: 11px; font-size: 10px; color: var(--ink2); }
+  #fuelChip b { font-family: var(--mono); font-weight: 500; font-size: 13px; color: var(--ink); font-variant-numeric: tabular-nums; }
+  #fuelChip i { grid-column: 1 / -1; height: 3px; margin-top: 4px; border-radius: 99px; background: rgba(246,241,232,.12); overflow: hidden; }
+  #fuelChip i span { display: block; height: 100%; background: linear-gradient(90deg, var(--coral), var(--sun)); transform-origin: left; }
+  #fuelChip.low b { color: var(--rose); }
   #skipBtn { height: 38px; padding: 0 14px; border-radius: 12px; background: var(--ink); color: var(--void); font-family: var(--pop); font-size: 13px; white-space: nowrap; }
   #skipBtn:disabled { opacity: .35; }
   .warp { display: flex; align-items: center; border-radius: 12px; }
@@ -129,17 +138,32 @@
   #corr button.on { background: var(--sky); color: #04192a; }
   #corr .t { grid-column: 1 / -1; font-size: 9px; text-align: center; color: var(--ink3); letter-spacing: .08em; }
 
-  #pad { flex: 1; min-width: 0; max-width: 250px; padding: 6px; border-radius: 14px; display: flex; flex-direction: column; gap: 5px; }
+  #pad { flex: 1; min-width: 0; max-width: 260px; padding: 6px; border-radius: 14px; display: flex; flex-direction: column; gap: 5px; }
   #padArea {
-    position: relative; height: 64px; border-radius: 10px; touch-action: none;
+    position: relative; height: 96px; border-radius: 10px; touch-action: none; cursor: grab;
     background:
       linear-gradient(rgba(246,241,232,.07) 1px, transparent 1px) 0 0/100% 12px,
       linear-gradient(90deg, rgba(246,241,232,.07) 1px, transparent 1px) 0 0/12px 100%,
       rgba(0,0,0,.25);
     overflow: hidden;
   }
-  #padArea .knob { position: absolute; left: 50%; top: 50%; width: 24px; height: 24px; margin: -12px 0 0 -12px; border-radius: 50%; background: var(--sun); box-shadow: 0 0 14px var(--sun); }
-  #padArea .ax { position: absolute; font-size: 9px; color: var(--ink3); }
+  #padArea .knob {
+    position: absolute; left: 50%; top: 50%; width: 38px; height: 38px; margin: -19px 0 0 -19px; border-radius: 50%;
+    background: radial-gradient(circle at 35% 30%, #fff3c8, var(--sun) 55%, #d9a23a); border: 2px solid rgba(255,255,255,.8);
+    box-shadow: 0 4px 14px rgba(0,0,0,.45), 0 0 16px rgba(255,211,122,.6);
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: grab; will-change: transform;
+  }
+  #padArea .knob i { display: block; width: 14px; height: 2px; border-radius: 2px; background: rgba(60,38,4,.55); }
+  #padArea .knob.idle { animation: tug 1.6s ease-in-out infinite; }
+  @keyframes tug { 0%, 100% { translate: 0 0; } 40% { translate: 0 -9px; } 60% { translate: 0 -9px; } }
+  #padArea .anchor { position: absolute; left: 50%; top: 50%; width: 8px; height: 8px; margin: -4px 0 0 -4px; border-radius: 50%; background: rgba(246,241,232,.5); }
+  #padArea .rubber { position: absolute; inset: 0; width: 100%; height: 100%; }
+  #padArea .rubber line { stroke: var(--sun); stroke-width: 3; stroke-linecap: round; stroke-dasharray: 2 5; opacity: .8; }
+  #padArea .ax { position: absolute; font-size: 9px; color: var(--ink3); white-space: nowrap; }
+  #padArea .ax.up { top: 3px; left: 50%; transform: translateX(-50%); }
+  #padArea .ax.dn { bottom: 3px; left: 50%; transform: translateX(-50%); }
+  #padArea .ax.lf { left: 5px; top: 50%; transform: translateY(-50%); }
+  #padArea .ax.rt { right: 5px; top: 50%; transform: translateY(-50%); }
   #padVals { display: flex; justify-content: space-between; gap: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--ink2); }
   #padVals b { color: var(--ink); font-weight: 500; }
   #execBtn { height: 34px; border-radius: 10px; background: var(--sun); color: #231704; font-family: var(--pop); font-size: 13px; }
@@ -159,11 +183,13 @@
   .logo { font-family: var(--pop); font-size: 40px; line-height: 1; letter-spacing: .04em; margin: 0; background: linear-gradient(100deg, var(--sun), var(--coral) 60%, var(--rose)); -webkit-background-clip: text; background-clip: text; color: transparent; }
   .sheet h2 { font-family: var(--pop); font-weight: 400; font-size: 22px; margin: 0 0 6px; }
   .sheet p { font-size: 13.5px; line-height: 1.7; color: var(--ink2); margin: 8px 0; }
-  .sheet .sub { font-family: var(--mono); font-size: 11px; color: var(--ink3); letter-spacing: .08em; margin-top: 6px; }
+  .sheet .sub { font-family: var(--mono); font-size: 11px; color: var(--ink3); letter-spacing: .08em; margin: 14px 0 6px; }
   .opts { display: grid; gap: 8px; margin-top: 14px; }
   .opt { text-align: left; padding: 12px 14px; border-radius: 15px; background: rgba(246,241,232,.07); border: 1px solid var(--line); }
   .opt b { font-family: var(--pop); font-weight: 400; font-size: 15px; display: block; }
   .opt span { font-size: 12px; color: var(--ink2); }
+  .opt .tag { display: inline-block; margin: 2px 0 4px; padding: 1px 7px; border-radius: 99px; font-size: 10px; font-weight: 700; background: rgba(99,240,191,.18); color: var(--mint); }
+  .opt .tag.adv { background: rgba(255,92,138,.16); color: var(--rose); }
   .opt[aria-pressed="true"] { border-color: var(--sun); background: rgba(255,211,122,.12); }
   .seg { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
   .go { margin-top: 16px; width: 100%; height: 52px; border-radius: 16px; background: var(--coral); color: #2a0d05; font-family: var(--pop); font-size: 18px; }
@@ -185,7 +211,7 @@
 
 <div class="hud top">
   <section id="obj" class="card" aria-live="polite">
-    <button id="objHead" aria-expanded="false"><span class="pill step" id="stepPill">1/5</span><span id="objTitle">月へ向けて加速</span><span class="pill" id="modePill">A</span><span class="chev">▼</span></button>
+    <button id="objHead" aria-expanded="false"><span class="pill step" id="stepPill">1/5</span><span id="objTitle">月へ向けて加速</span><span class="pill" id="modePill" role="button" aria-label="操作モードを変える">A</span><span class="chev">▼</span></button>
     <div id="next"><span id="nextTxt"></span><span id="cue"></span></div>
     <div id="more" hidden>
       <p id="objHint"></p>
@@ -194,19 +220,22 @@
     <div id="fuelLine"><span id="fuelBar"></span></div>
   </section>
   <div class="iconcol">
-    <button class="ib" id="viewBtn" aria-label="視点を切り替える">地球</button>
     <button class="ib" id="muteBtn" aria-label="音のオンオフ"><svg viewBox="0 0 24 24"><path d="M4 9h4l5-4v14l-5-4H4z"/><path id="muteWave" d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12"/></svg></button>
     <button class="ib" id="menuBtn" aria-label="メニュー"><svg viewBox="0 0 24 24"><path d="M5 7h14M5 12h14M5 17h14"/></svg></button>
   </div>
 </div>
 
 <div class="hud bottom">
+  <nav id="views" class="card" aria-label="視点">
+    <span class="vl">視点</span><button data-f="all">全体</button><button data-f="earth" aria-pressed="true">地球</button><button data-f="ship">船</button><button data-f="moon">月</button>
+  </nav>
   <section id="meter" class="card">
     <div class="mhead"><span id="mLabel">予測 近月点高度</span><b id="mValue">—</b></div>
     <div class="track"><div class="fill" id="mFill"></div><div class="band" id="mBand"></div><div class="needle" id="mNeedle"></div></div>
   </section>
   <div class="row">
     <div class="lcol">
+      <div id="fuelChip" class="card"><span>燃料 Δv</span><b id="fuelTxt">5,500</b><span>m/s</span><i><span id="fuelBar2"></span></i></div>
       <button id="skipBtn">▶▶ 次へ</button>
       <div class="warp card">
         <button id="wDown" aria-label="時間を遅く">−</button>
@@ -216,7 +245,12 @@
     </div>
     <button id="burnBtn">噴射<small>長押し</small></button>
     <section id="pad" class="card" hidden>
-      <div id="padArea"><span class="ax" style="left:6px;top:4px">↑ Δv多く</span><span class="ax" style="right:6px;bottom:4px">→ 遅く点火</span><div class="knob" id="knob"></div></div>
+      <div id="padArea">
+        <svg class="rubber" aria-hidden="true"><line id="rubber" x1="50%" y1="50%" x2="50%" y2="50%"/></svg>
+        <span class="anchor"></span>
+        <span class="ax up">▲ 噴射量＋</span><span class="ax dn">▼ 噴射量−</span><span class="ax lf">◀ 早く</span><span class="ax rt">遅く ▶</span>
+        <div class="knob idle" id="knob"><i></i><i></i><i></i></div>
+      </div>
       <div id="padVals"><span>Δv <b id="pDv">—</b></span><span>点火 <b id="pT">—</b></span></div>
       <button id="execBtn">この計画で噴射</button>
     </section>
@@ -811,29 +845,42 @@ const moonMat = new THREE.ShaderMaterial({
       }
       return g;
     }
+    float fadeF(float px, float f){ return smoothstep(0.035,0.01,px*f); }
     void main(){
       vec3 p=vObj; vec3 N0=p;
       float px=length(fwidth(p));
-      float m=fbm(p*1.3+5.0,4)+0.25*smoothstep(0.5,-0.7,p.x);
-      float maria=smoothstep(0.12,0.3,m);
+      // Maria: broad, soft-edged basins, mostly on the Earth-facing side.
+      float m=fbm(p*1.05+5.0,5)+0.32*smoothstep(0.35,-0.75,p.x);
+      float maria=smoothstep(0.19,0.3,m);
       float fl=0.0;
-      vec3 g=craters(p,4.0,0.0,fl)*0.5;
-      g+=craters(p,11.0,7.0,fl)*0.5*smoothstep(0.03,0.008,px*11.0);
-      g+=craters(p,29.0,3.0,fl)*0.45*smoothstep(0.03,0.008,px*29.0)*(1.0-maria*0.5);
-      g+=craters(p,80.0,5.0,fl)*0.35*smoothstep(0.03,0.008,px*80.0)*(1.0-maria*0.5);
+      vec3 g=craters(p,2.6,11.0,fl)*0.5;
+      g+=craters(p,6.5,0.0,fl)*0.5;
+      g+=craters(p,16.0,7.0,fl)*0.55*fadeF(px,16.0);
+      g+=craters(p,39.0,3.0,fl)*0.5*fadeF(px,39.0)*(1.0-maria*0.45);
+      g+=craters(p,95.0,5.0,fl)*0.32*fadeF(px,95.0)*(1.0-maria*0.45);
+      g+=craters(p,230.0,9.0,fl)*0.25*fadeF(px,230.0)*(1.0-maria*0.45);
+      // Fine regolith roughness from a noise gradient.
+      float fr=fadeF(px,70.0);
+      if(fr>0.0){ float e=0.004, b0=fbm(p*70.0,3);
+        vec3 gb=vec3(fbm((p+vec3(e,0,0))*70.0,3)-b0, fbm((p+vec3(0,e,0))*70.0,3)-b0, fbm((p+vec3(0,0,e))*70.0,3)-b0)/e;
+        g+=gb*0.0015*fr; }
       vec3 gt=g-N0*dot(g,N0);
-      vec3 N=normalize(N0-gt*0.42);
-      float alb=mix(0.17,0.06,maria)*(0.86+0.28*(0.5+0.5*snoise(p*24.0)))*(1.0+0.12*snoise(p*90.0)*smoothstep(0.02,0.006,px*90.0));
-      vec3 tint=mix(vec3(1.0,0.97,0.93),vec3(0.9,0.92,0.98),maria);
+      vec3 N=normalize(N0-gt*0.4);
+      float hl=0.17+0.012*snoise(p*9.0)+0.012*snoise(p*33.0);
+      float mr=0.068+0.012*snoise(p*5.0+2.0);
+      float alb=mix(hl,mr,maria);
+      alb*=1.0+0.1*snoise(p*140.0)*fadeF(px,140.0);
+      alb+=fl*0.012;
+      vec3 tint=mix(vec3(1.0,0.975,0.94),mix(vec3(0.88,0.9,0.96),vec3(0.96,0.9,0.84),0.5+0.5*snoise(p*3.0)),maria);
       vec3 L=normalize(vL), V=normalize(vV);
       float mu0=max(dot(N,L),0.0), mu=max(dot(N0,V),0.05);
-      float ls=mu0/(mu0+mu)*2.0*smoothstep(-0.03,0.04,dot(N0,L));
-      vec3 col=alb*tint*ls*1.7;
+      float ls=mu0/(mu0+mu)*2.0*smoothstep(-0.02,0.05,dot(N0,L));
+      vec3 col=alb*tint*ls*1.8;
       col+=alb*vec3(0.3,0.42,0.7)*0.1*max(dot(N,normalize(vE)),0.0);
       gl_FragColor=vec4(col,1.0);
     }`,
 });
-const moon = new THREE.Mesh(new THREE.SphereGeometry(R_MOON, 128, 64), moonMat);
+const moon = new THREE.Mesh(new THREE.SphereGeometry(R_MOON, 192, 96), moonMat);
 scene.add(moon);
 
 // ---------- background: stars + sun ----------
@@ -907,8 +954,8 @@ const flameMat = new THREE.ShaderMaterial({
   uniforms: { uT: { value: 0 }, uCol: { value: new THREE.Color(0.55, 0.8, 1.6) }, uI: { value: 0 } },
   vertexShader: `varying vec2 vUv; varying vec3 vN; varying vec3 vV; void main(){ vUv=uv; vN=normalize(normalMatrix*normal); vec4 mv=modelViewMatrix*vec4(position,1.0); vV=normalize(-mv.xyz); gl_Position=projectionMatrix*mv; }`,
   fragmentShader: `uniform float uT; uniform vec3 uCol; uniform float uI; varying vec2 vUv; varying vec3 vN; varying vec3 vV;
-    void main(){ float f=pow(abs(dot(vN,vV)),1.4); float along=1.0-vUv.y; float fl=0.75+0.25*sin(uT*60.0+along*20.0);
-      vec3 c=uCol*f*pow(along,1.6)*fl*uI*3.0 + vec3(1.0)*pow(along,6.0)*f*uI*2.0; gl_FragColor=vec4(c,1.0); }`,
+    void main(){ float f=pow(abs(dot(vN,vV)),1.4); float along=1.0-vUv.y; float fl=0.9+0.1*sin(uT*9.0+along*6.0);
+      vec3 c=uCol*f*pow(along,1.6)*fl*uI*1.6 + vec3(1.0)*pow(along,6.0)*f*uI*0.8; gl_FragColor=vec4(min(c,vec3(1.6)),1.0); }`,
   transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, side: THREE.DoubleSide,
 });
 const flame = new THREE.Mesh(new THREE.ConeGeometry(0.62, 3.6, 24, 1, true), flameMat);
@@ -1003,16 +1050,26 @@ const moonPos = new THREE.Vector3(), shipPos = new THREE.Vector3(), tmpV = new T
 function focusPos(f, out) { return f === 'earth' ? out.set(0, 0, 0) : f === 'moon' ? out.copy(moonPos) : f === 'all' ? out.copy(moonPos).multiplyScalar(0.5) : out.copy(shipPos); }
 // Distance that fits the Earth–Moon span on this screen, portrait or landscape.
 function fitAll() { const half = moonPos.length() / 2 + 45, t = Math.tan(THREE.MathUtils.degToRad(camera.fov / 2)); return half / (t * Math.min(1, camera.aspect)); }
+// Following the ship, the camera orbits in the ship's local frame (0 = outward from the body it circles),
+// so a fast low pass never swings the camera into the planet.
+function camBase() {
+  if (cam.focus !== 'ship') return 0;
+  const c = dominant(S.s, S.t).moon ? moonPos : tmpC.set(0, 0, 0);
+  return Math.atan2(shipPos.x - c.x, shipPos.z - c.z);
+}
+const tmpC = new THREE.Vector3();
 function setFocus(f, keepDist) {
-  const cur = cam.target.clone();
+  const cur = cam.target.clone(), oldBase = camBase();
   cam.focus = f; focusPos(f, tmpV); cam.off.copy(cur).sub(tmpV);
+  // Keep the on-screen angle continuous when the reference direction changes.
+  cam.az += oldBase - camBase(); cam.base = camBase();
   if (!keepDist) cam.distT = f === 'all' ? fitAll() : DIST[f][2];
-  document.getElementById('viewBtn').textContent = FOCUS_NAME[f];
+  document.querySelectorAll('#views button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.f === f)));
   predDirty = planDirty = true;
 }
 const FOCUS_ORDER = ['all', 'earth', 'ship', 'moon'], FOCUS_NAME = { all: '全体', earth: '地球', ship: '船', moon: '月' };
 function cycleFocus() { setFocus(FOCUS_ORDER[(FOCUS_ORDER.indexOf(cam.focus) + 1) % FOCUS_ORDER.length]); }
-document.getElementById('viewBtn').addEventListener('click', () => { sfx.tick(); cycleFocus(); });
+document.querySelectorAll('#views button').forEach(b => b.addEventListener('click', () => { sfx.tick(); setFocus(b.dataset.f); }));
 {
   const pts = new Map(); let pinch = 0, lastTap = 0;
   canvas.addEventListener('pointerdown', e => { canvas.setPointerCapture(e.pointerId); pts.set(e.pointerId, { x: e.clientX, y: e.clientY }); if (pts.size === 2) pinch = pdist(); audioInit();
@@ -1096,7 +1153,7 @@ const ui = {
   step: $('stepPill'), mode: $('modePill'), title: $('objTitle'), hint: $('objHint'), cue: $('cue'), tele: $('tele'),
   next: $('next'), nextTxt: $('nextTxt'), head: $('objHead'), more: $('more'), skip: $('skipBtn'),
   mLabel: $('mLabel'), mValue: $('mValue'), mBand: $('mBand'), mNeedle: $('mNeedle'), mFill: $('mFill'), meter: $('meter'),
-  fuelBar: $('fuelBar'), wVal: $('wVal'),
+  fuelBar: $('fuelBar'), fuelBar2: $('fuelBar2'), fuelTxt: $('fuelTxt'), fuelChip: $('fuelChip'), wVal: $('wVal'),
   burn: $('burnBtn'), pad: $('pad'), padArea: $('padArea'), knob: $('knob'), pDv: $('pDv'), pT: $('pT'), exec: $('execBtn'), corr: $('corr'),
   toast: $('toast'), slow: $('slowTag'), modal: $('modal'), labels: $('labels'),
 };
@@ -1104,6 +1161,7 @@ let toastTimer = 0;
 function toast(msg, ms = 1800) { ui.toast.textContent = msg; ui.toast.classList.add('show'); clearTimeout(toastTimer); toastTimer = setTimeout(() => ui.toast.classList.remove('show'), ms); }
 
 $('wUp').addEventListener('click', () => { S.warpIdx = Math.min(WARPS.length - 1, S.warpIdx + 1); S.skip = false; sfx.tick(); });
+ui.mode.addEventListener('click', e => { e.stopPropagation(); sfx.tick(); openMenu(); });
 ui.head.addEventListener('click', () => { const open = ui.more.hidden; ui.more.hidden = !open; ui.head.setAttribute('aria-expanded', String(open)); sfx.tick(); });
 // Skip: run at full speed until the next thing that matters; event caps still slow the approach.
 ui.skip.addEventListener('click', () => { audioInit(); const t = nextEvent(); if (t === null) { toast('しばらく何も起きない'); return; } S.skip = true; S.skipT = t; sfx.pop(); });
@@ -1142,6 +1200,7 @@ ui.corr.querySelectorAll('button').forEach(b => {
 
 // Mode B: pull to plan Δv (vertical) and ignition time (horizontal); release keeps the plan; the button executes it.
 S.plan = null;
+let padTouched = false;
 function defaultPlan() {
   const w = windowInfo(); if (!w) return null;
   const dv = S.stage === 'tli' ? DV_NOM.tli : S.stage === 'loi' ? loiNominal() : (w.dv || DV_NOM.tei);
@@ -1150,7 +1209,7 @@ function defaultPlan() {
 }
 {
   let last = null;
-  ui.padArea.addEventListener('pointerdown', e => { e.preventDefault(); audioInit(); if (!S.plan) S.plan = defaultPlan(); if (!S.plan) return; try { ui.padArea.setPointerCapture(e.pointerId); } catch (_) {} last = { x: e.clientX, y: e.clientY, t: performance.now() }; });
+  ui.padArea.addEventListener('pointerdown', e => { padTouched = true; e.preventDefault(); audioInit(); if (!S.plan) S.plan = defaultPlan(); if (!S.plan) return; try { ui.padArea.setPointerCapture(e.pointerId); } catch (_) {} last = { x: e.clientX, y: e.clientY, t: performance.now() }; });
   ui.padArea.addEventListener('pointermove', e => {
     if (!last || !S.plan) return;
     const now = performance.now(), dx = e.clientX - last.x, dy = e.clientY - last.y, dt = Math.max(1, now - last.t);
@@ -1178,21 +1237,21 @@ ui.exec.addEventListener('click', () => {
 function sheet(html) { ui.modal.innerHTML = `<div class="sheet">${html}</div>`; ui.modal.hidden = false; S.paused = true; }
 function closeSheet() { ui.modal.hidden = true; S.paused = false; }
 function modeOpts() {
-  return `<div class="seg" role="group" aria-label="操作モード">
-    <button class="opt" data-mode="A" aria-pressed="${S.mode === 'A'}"><b>A 長押し</b><span>窓で押して、狙いで離す。近づくとスロー</span></button>
-    <button class="opt" data-mode="B" aria-pressed="${S.mode === 'B'}"><b>B 引っ張り</b><span>Δvと点火時刻を引いて決め、自動で噴射</span></button>
+  return `<p class="sub">操作モード</p><div class="seg" role="group" aria-label="操作モード">
+    <button class="opt" data-mode="A" aria-pressed="${S.mode === 'A'}"><b>A 長押し</b><span class="tag">おすすめ</span><span>止まったら押して、緑で離す</span></button>
+    <button class="opt" data-mode="B" aria-pressed="${S.mode === 'B'}"><b>B 引っ張り</b><span class="tag adv">上級</span><span>噴射量と時刻を計画して自動で噴射</span></button>
   </div>`;
 }
 function bindModes() { ui.modal.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { S.mode = b.dataset.mode; sfx.tick(); ui.modal.querySelectorAll('[data-mode]').forEach(x => x.setAttribute('aria-pressed', String(x === b))); applyMode(); })); }
 function openStart() {
-  sheet(`<p class="logo">ツキノワ</p>
-    <p class="sub">LUNAR FREE FLIGHT · 地球 ⇄ 月</p>
+  sheet(`<p class="logo">ルナ・ループ</p>
+    <p class="sub">LUNAR LOOP · 地球 ⇄ 月</p>
     <p>高度200 kmの地球周回から月へ行き、月を回って帰ってくる。噴射は各段階で1回だけ。実際の物理で飛ぶ（表示は見やすく縮めてある）。</p>
     <ol class="howto">
       <li>上の1行が「次にやること」。光っているボタンを使う</li>
       <li>『▶▶ 次へ』で次の場面まで早送り。点火地点では自動で止まる</li>
       <li>噴射中は下のゲージを見る。針が緑に入ったら離す</li>
-      <li>1本指で回転、2本指で拡大縮小、右上のボタンで視点切替</li>
+      <li>1本指で回転、2本指で拡大縮小。視点は下の『全体／地球／船／月』</li>
     </ol>
     ${modeOpts()}
     <button class="go" id="goBtn">はじめる</button>
@@ -1202,11 +1261,14 @@ function openStart() {
   $('stageBtn').addEventListener('click', () => { audioInit(); openStages(); });
 }
 function openMenu() {
+  const m0 = S.mode;
   sheet(`<h2>メニュー</h2>${modeOpts()}
     <button class="go" id="resumeBtn">つづける</button>
+    <button class="ghost" id="restartBtn">このモードで はじめから</button>
     <button class="ghost" id="cpBtn">この段階の最初から</button>
-    <button class="ghost" id="stageBtn">段階を選ぶ</button>
-    <button class="ghost" id="restartBtn">はじめから</button>`);
+    <button class="ghost" id="stageBtn">段階を選ぶ</button>`);
+  // Switching mode mid-flight is allowed; the resume label says so.
+  ui.modal.querySelectorAll('[data-mode]').forEach(b => b.addEventListener('click', () => { $('resumeBtn').textContent = S.mode !== m0 ? 'このモードで つづける' : 'つづける'; }));
   bindModes();
   $('resumeBtn').addEventListener('click', () => { if (!S.started) { load(initialState()); S.started = true; } closeSheet(); });
   $('cpBtn').addEventListener('click', () => { if (S.checkpoint) load(S.checkpoint); else load(initialState()); S.started = true; closeSheet(); });
@@ -1260,8 +1322,8 @@ function openResult(kind) {
   $('stageBtn').addEventListener('click', openStages);
 }
 function applyMode() {
-  ui.mode.textContent = S.mode;
-  S.plan = null; S.auto = null; planDirty = true;
+  ui.mode.textContent = S.mode === 'A' ? 'A 長押し' : 'B 上級';
+  S.plan = null; S.auto = null; planDirty = true; padTouched = false;
 }
 
 // ---------- autopilot: builds the stage presets with the same physics ----------
@@ -1461,7 +1523,7 @@ function setStage(st) {
   if (st === 'loi') { toast('月の重力圏に入った'); sfx.ok(); setFocus('moon'); }
   if (st === 'tei') { toast('月周回軌道に入った！'); sfx.win(); }
   if (st === 'ret') { toast('地球へ帰還中'); sfx.ok(); setFocus('all'); }
-  if (st === 'entry') { toast('再突入！'); sfx.alert(); setFocus('ship'); cam.distT = 2.2; }
+  if (st === 'entry') { toast('再突入！'); sfx.alert(); setFocus('ship'); cam.az = 0.35; cam.el = 0.55; cam.distT = 2.2; }
 }
 function stageLogic() {
   if (S.over) return;
@@ -1641,7 +1703,9 @@ function updateHUD(w) {
       <div>${d.moon ? '近月点' : '近地点'}<b>${fmtKm(el.rp - d.R)}</b></div><div>${d.moon ? '遠月点' : '遠地点'}<b>${el.en < 0 ? fmtKm(el.ra - d.R) : '脱出'}</b></div>
       <div>残りΔv<b>${Math.round(S.fuel * 1000).toLocaleString('ja-JP')}</b></div><div>G<b>${S.g.toFixed(1)}</b></div>`;
   }
-  ui.fuelBar.style.transform = `scaleX(${S.fuel / FUEL0})`;
+  ui.fuelBar.style.transform = ui.fuelBar2.style.transform = `scaleX(${S.fuel / FUEL0})`;
+  ui.fuelTxt.textContent = Math.round(S.fuel * 1000).toLocaleString('ja-JP');
+  ui.fuelChip.classList.toggle('low', S.fuel < 0.3);
   ui.wVal.textContent = S.holding ? '停止中' : S.slow ? 'スロー' : '×' + (w.eff >= 1 ? Math.round(w.eff).toLocaleString('ja-JP') : w.eff.toFixed(2));
   ui.wVal.classList.toggle('cap', w.capped || S.slow || S.holding || S.skip);
 
@@ -1689,7 +1753,11 @@ function updateHUD(w) {
       ui.pT.textContent = (tI >= 0 ? 'あと' : '') + fmtDur(tI) + (p.shift ? ` (${p.shift > 0 ? '+' : '−'}${Math.round(Math.abs(p.shift))}秒)` : '');
       const kx = Math.max(-1, Math.min(1, p.shift / 1800)), ky = Math.max(-1, Math.min(1, p.ddv / (p.dv0 * 0.5)));
       const aw = ui.padArea.clientWidth / 2 - 18, ah = ui.padArea.clientHeight / 2 - 18;
-      ui.knob.style.transform = `translate(${kx * aw}px, ${-Math.sign(ky) * Math.sqrt(Math.abs(ky)) * ah}px)`;
+      const kxp = kx * aw, kyp = -Math.sign(ky) * Math.sqrt(Math.abs(ky)) * ah;
+      ui.knob.style.transform = `translate(${kxp}px, ${kyp}px)`;
+      const rb = document.getElementById('rubber'), cx = ui.padArea.clientWidth / 2, cy = ui.padArea.clientHeight / 2;
+      rb.setAttribute('x2', cx + kxp); rb.setAttribute('y2', cy + kyp);
+      ui.knob.classList.toggle('idle', !padTouched);
     }
     ui.exec.disabled = !!S.auto || !p;
     ui.exec.textContent = S.auto ? (S.auto.firing ? '噴射中…' : '点火待ち…') : 'この計画で噴射';
@@ -1728,7 +1796,11 @@ function frame(now) {
   const planning = S.mode === 'B' && S.plan && !S.auto && mainAvailable();
   if (planDirty && planning) { runPlan(); buildPredLine(plan, planLine, true); }
   if (!planning) planLine.visible = false;
-  predLine.material.opacity = planning ? 0.3 : 1;
+  // The prediction is a planning aid: full strength while deciding or burning, a faint ghost while coasting.
+  const wantLine = planning ? 0.3 : (b || S.holding || mainAvailable() || S.auto) ? 1 : 0.1;
+  predLine.material.opacity += (wantLine - predLine.material.opacity) * (1 - Math.exp(-dtR * 5));
+  predLine.material.linewidth = predLine.material.opacity > 0.5 ? 3.2 : 1.6;
+  trailLine.material.opacity = 0.45;
   if (frameN % 8 === 0) buildTrail();
 
   // Positions.
@@ -1748,10 +1820,13 @@ function frame(now) {
   cam.off.multiplyScalar(Math.exp(-dtR * 3.5));
   focusPos(cam.focus, cam.target).add(cam.off);
   cam.dist += (cam.distT - cam.dist) * (1 - Math.exp(-dtR * 6));
-  camera.position.set(Math.cos(cam.el) * Math.sin(cam.az), Math.sin(cam.el), Math.cos(cam.el) * Math.cos(cam.az)).multiplyScalar(cam.dist).add(cam.target);
-  for (const [c, r] of [[new THREE.Vector3(), R_EARTH], [moonPos, R_MOON]]) {
-    const dv = camera.position.clone().sub(c), L = dv.length();
-    if (L < r * 1.01 + 0.02) camera.position.copy(c).addScaledVector(dv.normalize(), r * 1.01 + 0.02);
+  { let nb = camBase(), d = nb - (cam.base || 0); d = Math.atan2(Math.sin(d), Math.cos(d)); cam.base = (cam.base || 0) + d; }
+  const azE = cam.az + (cam.focus === 'ship' ? cam.base : 0);
+  camera.position.set(Math.cos(cam.el) * Math.sin(azE), Math.sin(cam.el), Math.cos(cam.el) * Math.cos(azE)).multiplyScalar(cam.dist).add(cam.target);
+  // If the view would still dip inside a body, lift it smoothly instead of snapping to the surface.
+  for (const [c, r] of [[tmpC.set(0, 0, 0), R_EARTH], [moonPos, R_MOON]]) {
+    const dv = camera.position.clone().sub(c), L = dv.length(), minL = r * 1.01 + 0.02;
+    if (L < minL) { camera.position.copy(c).addScaledVector(dv.normalize(), minL); cam.el = Math.min(1.5, cam.el + dtR * 0.8); }
   }
   camera.near = Math.min(2, Math.max(0.002, cam.dist * 0.004));
   camera.lookAt(cam.target); camera.updateProjectionMatrix();
@@ -1775,7 +1850,8 @@ function frame(now) {
   flame.scale.set(1, b && b.kind === 'corr' ? 0.4 : 1, 1);
   flame.visible = flameMat.uniforms.uI.value > 0.01;
   plasmaMat.uniforms.uT.value = now / 1000;
-  plasmaMat.uniforms.uI.value = inEntry ? Math.min(1.4, S.g / 5) : 0;
+  // Smoothed so frame-to-frame G changes cannot flash the whole screen through the bloom.
+  plasmaMat.uniforms.uI.value += ((inEntry ? Math.min(1, S.g / 6) : 0) - plasmaMat.uniforms.uI.value) * (1 - Math.exp(-dtR * 3));
   plasma.visible = inEntry && S.g > 0.05;
   // Earth's shadow on the ship (a cylinder behind Earth along the sunlight).
   const sp = new THREE.Vector3(S.s[0], 0, -S.s[1]), along = sp.dot(SUN);
@@ -1798,7 +1874,7 @@ function frame(now) {
   if (wiL) place(label(li++, 'win'), evPos(wiL.x, wiL.y, wiL.mt || wiL.t), '点火');
   const src = S.mode === 'B' && S.plan && !S.auto ? plan : pred;
   const seen = {};
-  for (const e of src.events) {
+  for (const e of (predLine.material.opacity > 0.5 || src === plan ? src.events : [])) {
     if (seen[e.k]) continue; seen[e.k] = 1;
     const txt = { ca: `最接近 ${fmtKm(e.alt)}`, pm: `近月点 ${fmtKm(e.alt)}`, pe: `近地点 ${fmtKm(e.alt)}`, entry: '大気圏突入', splash: '着水', skip: 'スキップ', crash: '衝突！' }[e.k];
     const color = { ca: '#9fb4d8', pm: '#63f0bf', pe: '#ffd37a', entry: '#ff9d6b', splash: '#5fc4ff', skip: '#ff5c8a', crash: '#ff5c8a' }[e.k];
