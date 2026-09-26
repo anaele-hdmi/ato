@@ -19,39 +19,43 @@
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ph); font-family: var(--font); overflow: hidden; }
   body { touch-action: none; user-select: none; -webkit-user-select: none; }
   #scope { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-  /* CRT: 走査線とビネット */
-  #crt { position: fixed; inset: 0; pointer-events: none;
-    background:
-      repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.28) 2px 3px),
-      radial-gradient(ellipse at center, rgba(0,0,0,0) 60%, rgba(0,0,0,.55) 100%);
-    mix-blend-mode: multiply; }
-  .hud { position: fixed; font-size: 20px; line-height: 1.05; text-shadow: 0 0 6px var(--ph); pointer-events: none; }
+  .hud { position: fixed; font-size: 20px; line-height: 1.05; text-shadow: 0 0 2px var(--ph); pointer-events: none; }
   #tl { top: max(10px, env(safe-area-inset-top)); left: 16px; }
   #tr { top: max(10px, env(safe-area-inset-top)); right: 16px; text-align: right; }
   #tl .big { font-size: 28px; letter-spacing: 2px; }
   .dim { color: var(--ph-dim); text-shadow: none; }
   #strips { white-space: pre; }
-  #bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 16px max(10px, env(safe-area-inset-bottom));
+  #bar { padding: 8px 16px max(10px, env(safe-area-inset-bottom));
     display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,0)); }
   button, select, input { font-family: var(--font); font-size: 20px; color: var(--ph); background: #000;
-    border: 1px solid var(--ph-dim); padding: 2px 10px; border-radius: 0; text-shadow: 0 0 5px var(--ph); }
+    border: 1px solid var(--ph-dim); padding: 2px 10px; border-radius: 0; text-shadow: 0 0 2px var(--ph); }
   button:hover, button.on { border-color: var(--ph); box-shadow: 0 0 6px var(--ph-dim) inset; }
   button:focus-visible, select:focus-visible, input:focus-visible { outline: 1px solid var(--ph); outline-offset: 1px; }
   #cmd { flex: 1 1 260px; min-width: 200px; caret-color: var(--ph); }
   #cmd::placeholder { color: var(--ph-faint); }
-  #log { position: fixed; left: 16px; bottom: 64px; font-size: 18px; white-space: pre; pointer-events: none; text-shadow: 0 0 5px var(--ph); }
+  #bottom { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; pointer-events: none; }
+  #bottom > * { pointer-events: auto; }
+  #log { padding: 0 16px 4px; font-size: 18px; white-space: pre-wrap; pointer-events: none !important; text-shadow: 0 0 2px var(--ph); min-height: 1.1em; }
+  #devpanel { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 16px; border-top: 1px dashed var(--ph-faint); }
+  #devpanel[hidden] { display: none; }
+  #devpanel .note { color: var(--ph-dim); font-size: 16px; align-self: center; }
+  #helpbox { position: fixed; inset: 0; background: rgba(0,0,0,.92); padding: max(24px, env(safe-area-inset-top)) 16px 24px; overflow: auto; font-size: 19px; line-height: 1.3; z-index: 10; }
+  #helpbox[hidden] { display: none; }
+  #helpbox h2 { font-weight: normal; font-size: 26px; margin: 0 0 8px; letter-spacing: 2px; }
+  #helpbox table { border-collapse: collapse; margin: 6px 0 14px; }
+  #helpbox td { padding: 1px 14px 1px 0; vertical-align: top; }
+  #helpbox td:first-child { white-space: nowrap; }
   .warn { color: var(--amber); text-shadow: 0 0 6px var(--amber); }
   @media (max-width: 600px) {
     .hud { font-size: 16px; } #tl .big { font-size: 22px; }
     #strips { display: none; }
     button, select, input { font-size: 17px; padding: 2px 6px; }
-    #log { bottom: 104px; font-size: 15px; }
+    #log { font-size: 15px; }
   }
 </style>
 </head>
 <body>
 <canvas id="scope" aria-label="レーダー画面"></canvas>
-<div id="crt"></div>
 
 <div id="tl" class="hud">
   <div class="big">HANEDA APPROACH</div>
@@ -60,19 +64,48 @@
   <div id="stat" class="dim"></div>
 </div>
 <div id="tr" class="hud"><div id="strips"></div></div>
-<div id="log"></div>
+<div id="bottom">
+  <div id="log"></div>
+  <div id="devpanel" hidden>
+    <span class="note">テスト用:</span>
+    <select id="star" aria-label="出現させる STAR"></select>
+    <button id="spawn" title="選んだ STAR の入口に 1 機出す">1機出す</button>
+    <button id="auto" title="設計書の方面比率で 90〜180 秒ごとに自動で出す">自動出現</button>
+  </div>
+  <div id="bar">
+    <button id="help" title="操作説明">?</button>
+    <button id="pause" title="一時停止（Space）">❚❚</button>
+    <button data-ts="1" class="on">x1</button><button data-ts="2">x2</button><button data-ts="4">x4</button><button data-ts="8">x8</button>
+    <button id="lbl" class="on" title="経路点名の表示">FIX</button>
+    <button id="dev" title="テスト用の出現操作を表示">DEV</button>
+    <input id="cmd" placeholder="機体をタップ → L250 A50 S190" autocomplete="off" autocapitalize="characters" spellcheck="false">
+  </div>
+</div>
 
-<div id="bar">
-  <select id="star" aria-label="STAR"></select>
-  <button id="spawn">SPAWN</button>
-  <button id="auto" title="自動で順番に出現させる">AUTO</button>
-  <button id="pause">❚❚</button>
-  <button data-ts="1" class="on">x1</button><button data-ts="2">x2</button><button data-ts="4">x4</button><button data-ts="8">x8</button>
-  <button id="lbl" class="on" title="経路点名の表示">FIX</button>
-  <input id="cmd" placeholder="JAL123 L250 A50 S190 / D ARLON / C 34L" autocomplete="off" autocapitalize="characters" spellcheck="false">
+<div id="helpbox" hidden>
+  <h2>操作（試作 M2 時点）</h2>
+  <table>
+    <tr><td>機体をタップ</td><td>選択。残りの経路が点線で出る</td></tr>
+    <tr><td>ドラッグ / ホイール・ピンチ</td><td>画面の移動 / 拡大縮小</td></tr>
+    <tr><td>DEV</td><td>テスト用の出現操作（1機出す・自動出現）を表示</td></tr>
+    <tr><td>x1〜x8 / Space</td><td>時間の速さ / 一時停止</td></tr>
+  </table>
+  <h2>指示（入力欄、Enter で送信）</h2>
+  <table>
+    <tr><td>L250 / R250 / H250</td><td>左旋回・右旋回・近い側で 磁方位 250°</td></tr>
+    <tr><td>A50</td><td>高度 5,000ft（百 ft 単位）</td></tr>
+    <tr><td>S190</td><td>速度 190kt</td></tr>
+    <tr><td>D ARLON</td><td>経路上の ARLON へ直行</td></tr>
+    <tr><td>STAR</td><td>STAR に戻る（高度指示も解除）</td></tr>
+    <tr><td>C 34L</td><td>ILS 34L 進入許可</td></tr>
+    <tr><td>JAL123 L250 A50</td><td>便名を先頭に付けると、その機体に指示（前方一致可）</td></tr>
+  </table>
+  <p>M2 では全機が自動で進入・着陸します。手動の進入許可・待機・ハンドオフは M3 で追加予定。</p>
+  <p class="dim">画面をタップで閉じる</p>
 </div>
 
 <script src="data/rjtt_north.js"></script>
+<script src="data/coast.js"></script>
 <script src="src/sim.js"></script>
 <script src="src/cmd.js"></script>
 <script src="src/main.js"></script>

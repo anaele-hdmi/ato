@@ -6,8 +6,8 @@
   const ctx = cv.getContext("2d");
   const $ = (id) => document.getElementById(id);
 
-  const C = { ph: "#33ff66", dim: "rgba(51,255,102,0.45)", faint: "rgba(51,255,102,0.18)", amber: "#ffcc33" };
-  const SWEEP_SEC = 4;
+  const C = { coast: "rgba(51,255,102,0.28)", ph: "#33ff66", dim: "rgba(51,255,102,0.45)", faint: "rgba(51,255,102,0.18)", amber: "#ffcc33" };
+  const SWEEP_SEC = 4; // 空港監視レーダーの 1 回転（目標の表示位置はこの周期で更新）
 
   const S = {
     ac: [], sel: null, ts: 1, paused: false, simT: 0, landed: 0, auto: false, nextSpawn: 0,
@@ -94,6 +94,16 @@
   // ---- 描画 ----
   function glow(color, blur) { ctx.strokeStyle = ctx.fillStyle = color; ctx.shadowColor = color; ctx.shadowBlur = blur; }
 
+  // 海岸線（ビデオマップ）: Natural Earth 1:10m
+  const COAST = (window.COAST || []).map((l) => l.map(([la, lo]) => ATC.toXY(la, lo)));
+  function drawCoast() {
+    glow(C.coast, 0); ctx.lineWidth = 1;
+    for (const l of COAST) {
+      ctx.beginPath(); l.forEach((p, i) => (i ? ctx.lineTo(sx(p.x), sy(p.y)) : ctx.moveTo(sx(p.x), sy(p.y)))); ctx.stroke();
+    }
+  }
+
+  const KEY_FIX = new Set(["XAC", "AKSEL", "AROSA", "GODIN", "POLIX", "ARLON", "CREAM", "WEDGE", "EPSON"]);
   function drawMap() {
     // 距離環（ARP 中心、10NM ごと）
     glow(C.faint, 0); ctx.lineWidth = 1;
@@ -128,7 +138,7 @@
       }
     }
     // 滑走路（着陸端と反対側の端を結ぶ）
-    glow(C.ph, 8); ctx.lineWidth = 3;
+    glow(C.ph, 3); ctx.lineWidth = 3;
     for (const [a, b] of [["34L", "16R"], ["34R", "16L"], ["04", "22"], ["05", "23"]]) {
       const p = world.runways[a], q = world.runways[b];
       ctx.beginPath(); ctx.moveTo(sx(p.x), sy(p.y)); ctx.lineTo(sx(q.x), sy(q.y)); ctx.stroke();
@@ -143,21 +153,11 @@
       glow(tt ? C.faint : C.dim, 0);
       if (tt) { ctx.fillRect(X - 1, Y - 1, 2, 2); continue; }
       ctx.beginPath(); ctx.moveTo(X, Y - 4); ctx.lineTo(X + 4, Y + 3); ctx.lineTo(X - 4, Y + 3); ctx.closePath(); ctx.stroke();
-      if (S.showFix) ctx.fillText(id, X + 6, Y + 4);
+      if (S.showFix && (S.view.scale >= 14 || KEY_FIX.has(id))) ctx.fillText(id, X + 6, Y + 4);
     }
   }
 
-  function drawSweep() {
-    const a = (S.sweep / SWEEP_SEC) * Math.PI * 2;
-    const R = Math.hypot(W, H);
-    const X = sx(0), Y = sy(0);
-    for (let i = 0; i < 12; i++) {
-      const aa = a - i * 0.025;
-      ctx.strokeStyle = `rgba(51,255,102,${0.22 * (1 - i / 12)})`; ctx.shadowBlur = 0;
-      ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + R * Math.sin(aa), Y - R * Math.cos(aa)); ctx.stroke();
-    }
-    return a;
-  }
+  function sweepAngle() { return (S.sweep / SWEEP_SEC) * Math.PI * 2; }
 
   function updateBlips(prevA, a) {
     // 掃引が機体の方位を通過したときだけ表示位置を更新（レーダー更新の再現）
@@ -183,7 +183,7 @@
       // 航跡（過去位置）
       ac.hist.forEach((h, i) => { glow(`rgba(51,255,102,${0.5 - i * 0.07})`, 0); ctx.fillRect(sx(h.x) - 1.5, sy(h.y) - 1.5, 3, 3); });
       // 機体シンボルと 1 分後予測線
-      glow(col, 10);
+      glow(col, 3);
       ctx.strokeRect(X - 4, Y - 4, 8, 8);
       const v = (d.spd / 60) * S.view.scale, hr = d.hdg * Math.PI / 180;
       ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + v * Math.sin(hr), Y - v * Math.cos(hr)); ctx.stroke();
@@ -193,7 +193,7 @@
       const l1 = ac.cs + (sel ? " ◀" : "");
       const l2 = `${String(alt).padStart(3, "0")}${arrow === " " ? "" : arrow + String(talt).padStart(3, "0")} ${String(Math.round(d.spd / 10)).padStart(2, "0")}`;
       const l3 = sel ? `${ac.type} ${ac.star} ${ac.rwy}${ac.mode === "LOC" ? " LOC" : ""}` : null;
-      ctx.shadowBlur = 6;
+      ctx.shadowBlur = 2;
       ctx.beginPath(); ctx.moveTo(X + 5, Y - 5); ctx.lineTo(X + 16, Y - 16); ctx.stroke();
       ctx.fillText(l1, X + 18, Y - 26); ctx.fillText(l2, X + 18, Y - 12);
       if (l3) ctx.fillText(l3, X + 18, Y + 2);
@@ -229,12 +229,12 @@
     if (!S.paused) {
       acc += rdt * S.ts;
       while (acc >= 0.25) { simStep(0.25); acc -= 0.25; }
-      S.sweep = (S.sweep + rdt * Math.min(S.ts, 2)) % SWEEP_SEC;
+      S.sweep = (S.sweep + rdt * S.ts) % SWEEP_SEC;
     }
-    // 燐光の残像: 前フレームを薄く残す
-    ctx.shadowBlur = 0; ctx.fillStyle = "rgba(0,0,0,0.35)"; ctx.fillRect(0, 0, W, H);
+    ctx.shadowBlur = 0; ctx.fillStyle = "#000"; ctx.fillRect(0, 0, W, H);
+    drawCoast();
     drawMap();
-    const a = drawSweep();
+    const a = sweepAngle();
     updateBlips(prevA, a);
     drawAircraft();
     drawHud();
@@ -285,6 +285,9 @@
   // ---- ボタン・コマンド ----
   $("spawn").onclick = () => { S.sel = spawn(starSel.value); };
   $("auto").onclick = (e) => { S.auto = !S.auto; e.currentTarget.classList.toggle("on", S.auto); if (S.auto) S.nextSpawn = S.simT; };
+  $("dev").onclick = (e) => { const p = $("devpanel"); p.hidden = !p.hidden; e.currentTarget.classList.toggle("on", !p.hidden); };
+  $("help").onclick = () => { $("helpbox").hidden = !$("helpbox").hidden; };
+  $("helpbox").onclick = () => { $("helpbox").hidden = true; };
   $("pause").onclick = () => { S.paused = !S.paused; };
   $("lbl").onclick = (e) => { S.showFix = !S.showFix; e.currentTarget.classList.toggle("on", S.showFix); };
   document.querySelectorAll("[data-ts]").forEach((b) => (b.onclick = () => {
