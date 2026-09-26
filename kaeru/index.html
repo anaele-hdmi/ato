@@ -805,7 +805,7 @@ ${v.flat ? "#define FLAT 1" : ""}
     const float RX = ${RX.toFixed(3)}, RH = ${RH.toFixed(3)}, ZS = ${ZS.toFixed(3)}, ZN = ${ZN.toFixed(3)}, WT = ${WT.toFixed(3)};
     const float WX0 = ${WIN.x0.toFixed(3)}, WX1 = ${WIN.x1.toFixed(3)}, WY0 = ${WIN.y0.toFixed(3)}, WY1 = ${WIN.y1.toFixed(3)};
     const int MAXB = ${MAXB}, MAXF = ${MAXF}, MAXM = ${MAXM};
-    const int VOLS = ${v.vol ? (SAFE ? 1 : 2) : 0}, MAXBOUNCE = ${v.bounce && !SAFE ? 1 : 0};
+    const int VOLS = ${v.vol ? (SAFE ? 1 : 3) : 0}, MAXBOUNCE = ${v.bounce && !SAFE ? 1 : 0};
     const float PI = 3.14159265;
     const float SUNR = 0.00465;
     uniform vec3 uL, uE, uSky;
@@ -959,7 +959,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
 
   const FS_TRACE_BODY = `
     uniform vec2 uRes;
-    uniform float uTime, uW, uTanF, uHum, uCover;
+    uniform float uTime, uW, uTanF, uHum, uCover, uFocus;
     uniform int uDebug;
     uniform uint uFrame;
     uniform vec3 uCam, uCR, uCU, uCF;
@@ -1028,9 +1028,11 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     }
     // ループの中では自動のぼかし計算（勾配）が使えない環境があるため、距離から明示する
     float gLod = 0.0;
+    float gBump = 0.0;
     float cov(float c, float nz) { return smoothstep(nz - 0.12, nz + 0.12, c * 1.25); }
     vec3 albedo(vec3 p, vec3 n, int m, out float wet) {
       wet = 0.0;
+      gBump = 0.0;
 #ifdef FLAT
       return m == 2 ? vec3(0.16, 0.10, 0.065) : (n.y > 0.5 && p.y < 0.01 ? vec3(0.22, 0.18, 0.14) : vec3(0.40, 0.38, 0.34));
 #endif
@@ -1053,17 +1055,25 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       vec4 g = growth(p, n, sf);
       if (sf >= 0) {
         float n1 = noise(p * 38.0), n2 = noise(p * 71.0 + 3.0), n3 = noise(p * 22.0 + 9.0);
-        a = mix(a, vec3(0.03, 0.04, 0.028) * (0.8 + 0.4 * n2), cov(g.r, n1) * 0.92);
-        vec3 moss = mix(vec3(0.16, 0.36, 0.06), vec3(0.42, 0.52, 0.26), noise(p * 140.0));
-        a = mix(a, moss, cov(g.g, n2));
-        vec3 lv = vec3(0.05, 0.15, 0.04) * (0.75 + 0.5 * noise(p * vec3(28.0, 1.0, 28.0)));
-        a = mix(a, lv, cov(g.b, n3));
+        // 藍藻の膜：黒ではなく、暗い青緑のにじみ
+        a = mix(a, vec3(0.05, 0.085, 0.05) * (0.8 + 0.4 * n2), cov(g.r, n1) * 0.9);
+        // ギンゴケ：緑の株に、乾いた葉先の銀白
+        float cm = cov(g.g, n2), tip = noise(p * 150.0);
+        vec3 moss = mix(vec3(0.17, 0.42, 0.07), vec3(0.62, 0.68, 0.50), smoothstep(0.45, 0.85, tip));
+        a = mix(a, moss, cm);
+        // ゼニゴケ：平たい葉状体。縁が明るく、中央に筋
+        float cl = cov(g.b, n3), lobe = noise(p * vec3(26.0, 26.0, 26.0) + 5.0);
+        vec3 lv = mix(vec3(0.05, 0.19, 0.05), vec3(0.16, 0.36, 0.10), smoothstep(0.35, 0.7, lobe));
+        a = mix(a, lv, cl);
+        gBump = max(cm, cl * 0.5);
         wet = g.a * 2.0;
         a *= mix(1.0, 0.5, clamp(wet * 1.6, 0.0, 1.0));
       }
       return a;
     }
 
+    // 光の筋の奥行き方向のずらし：隣の画素・次のフレームで偏りなく散らす（白色雑音より細かく収束する）
+    float vJit = 0.5;
     vec3 radiance(vec3 ro, vec3 rd) {
       vec3 L = vec3(0), thr = vec3(1);
       const float SIGS = 0.32;
@@ -1075,7 +1085,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
           float ph = hg(dot(rd, uL), 0.66) * 0.88 + 0.12 / (4.0 * PI);
           vec3 acc = vec3(0);
           for (int k = 0; k < VOLS; k++) {
-            float t = (float(k) + rnd()) / float(max(VOLS, 1)) * seg;
+            float t = (float(k) + fract(vJit + float(k) * 0.381966)) / float(max(VOLS, 1)) * seg;
             vec3 q = ro + rd * t;
             float sd = dens(q) * SIGS;
             vec3 s = vec3(0);
@@ -1097,6 +1107,15 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
         gLod = specChain ? log2(max(1.0, h.t * 2.0 * uTanF / uRes.y * 240.0)) : 3.0;
         vec3 a = albedo(p, n, h.m, wet);
         vec3 po = p + n * 1e-3;
+        // コケの株の凹凸：光の当たる面と影の面をつくる（陰影用の法線だけを傾ける）
+        vec3 ns = n;
+        if (gBump > 0.02 && specChain) {
+          vec3 pp = p * 130.0;
+          float h0 = noise(pp);
+          vec3 gr = vec3(noise(pp + vec3(0.35, 0.0, 0.0)), noise(pp + vec3(0.0, 0.35, 0.0)), noise(pp + vec3(0.0, 0.0, 0.35))) - h0;
+          gr -= n * dot(gr, n);
+          ns = normalize(n - gr * 2.2 * gBump);
+        }
         // 水たまり：鏡のような反射
         if (wet > 1.1 && n.y > 0.5) {
           float f = 0.03 + 0.97 * pow(1.0 - max(dot(-rd, n), 0.0), 5.0);
@@ -1104,7 +1123,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
           if (rnd() < f) { rd = reflect(rd, n); ro = po; continue; }
         }
         specChain = false;
-        L += thr * a / PI * (sunNEE(po, n, h.m == 3) + skyNEE(po, n, false));
+        L += thr * a / PI * (sunNEE(po, ns, h.m == 3) + skyNEE(po, ns, false));
         thr *= a;
         float r1 = rnd(), r2 = rnd();
         float phi = 2.0 * PI * r1, sr = sqrt(r2);
@@ -1121,10 +1140,12 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       seed = uint(gl_FragCoord.x) * 1973u + uint(gl_FragCoord.y) * 9277u + uFrame * 26699u;
       seed |= 1u;
       rnd();
+      vJit = fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715))) + float(uFrame % 1024u) * 0.618034);
       vec2 jit = vec2(rnd(), rnd()) - 0.5;
       vec2 uv = ((gl_FragCoord.xy + jit) * 2.0 - uRes) / uRes.y;
       vec3 dir = normalize(uCR * uv.x * uTanF + uCU * uv.y * uTanF + uCF);
-      const float FOCUS = 2.8, APER = 0.006;
+      float FOCUS = max(uFocus, 0.2);
+      const float APER = 0.0038;
       vec3 fp = uCam + dir * (FOCUS / dot(dir, uCF));
       float lr = APER * sqrt(rnd()), la = 2.0 * PI * rnd();
       vec3 ro = uCam + (uCR * cos(la) + uCU * sin(la)) * lr;
@@ -1153,14 +1174,28 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
   const FS_SHOW = `#version 300 es
     precision highp float;
     uniform sampler2D uAcc;
-    uniform vec2 uRes;
+    uniform vec2 uRes, uTex;
     uniform float uGrain, uFrameF, uExposure;
     out vec4 o;
     float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
     vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
     void main() {
       vec2 uv = gl_FragCoord.xy / uRes;
-      vec3 c = textureLod(uAcc, uv, 0.0).rgb;
+      // 3×3の近傍の平均から大きく外れた値（ちらつく粒）ほど弱く混ぜる。輪郭は残る
+      const vec3 LW = vec3(0.2126, 0.7152, 0.0722);
+      vec3 m = vec3(0);
+      for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) m += textureLod(uAcc, uv + vec2(float(i), float(j)) * uTex, 0.0).rgb;
+      m /= 9.0;
+      float ml = dot(m, LW);
+      vec3 cs = vec3(0);
+      float ws = 0.0;
+      for (int j = -1; j <= 1; j++) for (int i = -1; i <= 1; i++) {
+        vec3 v = textureLod(uAcc, uv + vec2(float(i), float(j)) * uTex, 0.0).rgb;
+        float d = (dot(v, LW) - ml) / (ml * 0.6 + 0.003);
+        float w = exp(-d * d) * (i == 0 && j == 0 ? 1.0 : (i == 0 || j == 0 ? 0.6 : 0.36));
+        cs += v * w; ws += w;
+      }
+      vec3 c = cs / max(ws, 1e-4);
       vec3 b = vec3(0);
       vec2 asp = vec2(uRes.y / uRes.x, 1.0);
       for (int r = 0; r < 3; r++) {
@@ -1180,9 +1215,24 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       vec2 q = (gl_FragCoord.xy * 2.0 - uRes) / uRes.y;
       c *= mix(0.62, 1.0, smoothstep(1.6, 0.3, length(q * vec2(0.82, 1.0))));
       float g = hash(vec3(gl_FragCoord.xy * 1.37, mod(uFrameF, 97.0) + 0.5)) - 0.5;
-      c += g * uGrain * 4.0 * lum * (1.0 - lum);
+      c += g * uGrain * 3.0 * lum * (1.0 - lum);
       c = c * 0.975 + vec3(0.010, 0.009, 0.007);
       o = vec4(c, 1.0);
+    }
+  `;
+
+  const FS_LUM = `#version 300 es
+    precision highp float;
+    uniform sampler2D uAcc;
+    out vec4 o;
+    void main() {
+      float s = 0.0;
+      for (int k = 0; k < 4; k++) {
+        vec2 off = vec2(float(k % 2), float(k / 2)) * 0.5 + 0.25;
+        vec3 c = textureLod(uAcc, (floor(gl_FragCoord.xy) + off) / vec2(32.0, 18.0), 0.0).rgb;
+        s += clamp((log2(dot(c, vec3(0.2126, 0.7152, 0.0722)) + 1e-4) + 14.0) / 18.0, 0.0, 1.0);
+      }
+      o = vec4(s * 0.25, 0.0, 0.0, 1.0);
     }
   `;
 
@@ -1190,7 +1240,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     in vec4 aP;
     in float aPh;
     uniform vec3 uCam, uCR, uCU, uCF;
-    uniform float uTanF, uAspect, uTime, uH, uSpore;
+    uniform float uTanF, uAspect, uTime, uH, uSpore, uFocus;
     out vec3 vC;
     out float vB;
     void main() {
@@ -1199,8 +1249,8 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       bool lit = z > 0.15 && (uE.x + uE.y + uE.z) > 0.0 && escapesFast(aP.xyz, uL);
       if (!lit) { gl_Position = vec4(2.0, 2.0, 2.0, 1.0); gl_PointSize = 0.0; vC = vec3(0); vB = 0.0; return; }
       gl_Position = vec4(dot(v, uCR) / (z * uTanF * uAspect), dot(v, uCU) / (z * uTanF), 0.0, 1.0);
-      float core = (0.9 + sqrt(aP.w) * 0.3) * uH / 800.0;
-      float coc = abs(z - 2.8) / z * uH * 0.02;
+      float core = (0.75 + sqrt(aP.w) * 0.25) * uH / 800.0;
+      float coc = abs(z - uFocus) / z * uH * 0.0127;
       float size = max(core, coc);
       gl_PointSize = size * 2.0 + 1.0;
       float phase = hg(dot(normalize(v), uL), 0.72);
@@ -1281,7 +1331,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     return { boxes: boxes.slice(0, MAXB).map(([a, b, m]) => [a.map(r4), b.map(r4), m]), ferns: ferns.map((f) => f.map(r4)), mush: mush.map((m) => m.map(r4)) };
   }
   let sceneKey = "";
-  let traceP, showP, moteP, compileMs = 0;
+  let traceP, showP, moteP, lumP = null, compileMs = 0;
   try {
     const tc = performance.now();
     const sc0 = currentScene();
@@ -1291,6 +1341,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     }
     compileMs = performance.now() - tc;
     showP = program(VS_QUAD, FS_SHOW);
+    try { lumP = program(VS_QUAD, FS_LUM); } catch (e) { lumP = null; }
     try { moteP = program(makeCommon(sc0) + VS_MOTE_BODY, FS_MOTE); } catch (e) { moteP = null; motesOff = true; }
     sceneKey = JSON.stringify(sc0);
   } catch (err) {
@@ -1313,15 +1364,43 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
   // 視点：位置は部屋の中だけ、向きは自由（見上げ・見下ろしは制限）
   const cam = { pos: CAM.slice(), yaw: 0, pitch: 0 };
   let fwd = [0, 0, -1], right = [1, 0, 0], up = [0, 1, 0];
+  let focus = 2.8;
   function setView() {
-    cam.pitch = Math.max(-1.15, Math.min(0.75, cam.pitch));
-    cam.pos[0] = Math.max(-RX + 0.25, Math.min(RX - 0.25, cam.pos[0]));
-    cam.pos[2] = Math.max(ZS + 0.6, Math.min(ZN - 0.25, cam.pos[2]));
+    cam.pitch = Math.max(-1.35, Math.min(1.0, cam.pitch));
+    cam.pos[0] = Math.max(-RX + 0.15, Math.min(RX - 0.15, cam.pos[0]));
+    cam.pos[1] = Math.max(0.08, Math.min(RH - 0.2, cam.pos[1]));
+    cam.pos[2] = Math.max(ZS + 0.15, Math.min(ZN - 0.15, cam.pos[2]));
     const cp = Math.cos(cam.pitch);
     fwd = [Math.sin(cam.yaw) * cp, Math.sin(cam.pitch), -Math.cos(cam.yaw) * cp];
     right = norm(cross(fwd, [0, 1, 0]));
     up = cross(right, fwd);
+    focus = focusDist();
     samples = 0;
+  }
+  // 視線の先の面までの距離（ピントを合わせる）
+  function rayBox(p, d, a, c) {
+    let t0 = 1e-3, t1 = 1e9;
+    for (let k = 0; k < 3; k++) {
+      if (Math.abs(d[k]) < 1e-9) { if (p[k] < a[k] || p[k] > c[k]) return 1e9; continue; }
+      let u = (a[k] - p[k]) / d[k], v = (c[k] - p[k]) / d[k];
+      if (u > v) { const w = u; u = v; v = w; }
+      t0 = Math.max(t0, u); t1 = Math.min(t1, v);
+      if (t0 > t1) return 1e9;
+    }
+    return t0;
+  }
+  function focusDist() {
+    const p = cam.pos, d = fwd, lim = [[-RX, RX], [0, RH], [ZS, ZN]];
+    let best = 8;
+    for (let k = 0; k < 3; k++) {
+      if (Math.abs(d[k]) < 1e-6) continue;
+      for (const w of lim[k]) { const t = (w - p[k]) / d[k]; if (t > 0.02 && t < best) best = t; }
+    }
+    if (S) {
+      try { for (const [a, c] of sceneBoxes()) best = Math.min(best, rayBox(p, d, a, c)); } catch (e) { /* 部屋の準備前 */ }
+      for (const f of S.ferns) if (f.stage >= 1) best = Math.min(best, rayBox(p, d, [f.x - 0.25 * f.size, 0, f.z - 0.25 * f.size], [f.x + 0.25 * f.size, 0.4 * f.size, f.z + 0.25 * f.size]));
+    }
+    return Math.max(0.2, best);
   }
   function resetView() {
     const d = norm(sub(TARGET, CAM));
@@ -1506,7 +1585,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
 
   // ================= 蓄積バッファ =================
   let fbBroken = false;
-  let W = 0, H = 0, scale = startScale(), acc = [], fbo = [], ping = 0, samples = 0;
+  let DW = 0, DH = 0, W = 0, H = 0, scale = startScale(), acc = [], fbo = [], ping = 0, samples = 0;
   function startScale() {
     try { const v = parseFloat(sessionStorage.getItem("kaeru-scale")); if (v > 0.2 && v <= 1) return v; } catch (e) { /* 使えない環境 */ }
     return 0.6;
@@ -1530,7 +1609,11 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     const maxPx = 0.7e6 * scale * scale;
     if (cssW * cssH * s * s > maxPx) s = Math.sqrt(maxPx / (cssW * cssH));
     W = Math.max(2, Math.round(cssW * s)); H = Math.max(2, Math.round(cssH * s));
-    cv.width = W; cv.height = H;
+    // 画面は端末の解像度で描く（仕上げの粒と光る塵が細かくなる）
+    let ds = Math.min(window.devicePixelRatio || 1, 2);
+    if (cssW * cssH * ds * ds > 2.0e6) ds = Math.sqrt(2.0e6 / (cssW * cssH));
+    DW = Math.max(W, Math.round(cssW * ds)); DH = Math.max(H, Math.round(cssH * ds));
+    cv.width = DW; cv.height = DH;
     for (const t of acc) gl.deleteTexture(t);
     for (const f of fbo) gl.deleteFramebuffer(f);
     acc = []; fbo = [];
@@ -1573,6 +1656,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     gl.uniform1f(u.uHum, hum);
     gl.uniform1f(u.uCover, 0.99);
     gl.uniform1f(u.uW, weight);
+    if (u.uFocus) gl.uniform1f(u.uFocus, focus);
     const bind = (unit, tex, name) => { gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, tex); gl.uniform1i(u[name], unit); };
     bind(0, prevTex, "uPrev"); bind(1, floorTex, "uFloor");
     bind(2, surfs[0].tex, "uGF"); bind(3, surfs[1].tex, "uGS"); bind(4, surfs[2].tex, "uGE"); bind(5, surfs[3].tex, "uGW");
@@ -1690,7 +1774,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     return [
       `GPU: ${gpuName()}`,
       `ブラウザ: ${navigator.userAgent}`,
-      `描画サイズ: ${W}×${H}（倍率 ${scale.toFixed(2)}）`,
+      `描画サイズ: ${W}×${H}（倍率 ${scale.toFixed(2)}） 画面: ${DW}×${DH} 露出補正: ${autoGain.toFixed(2)}`,
       `1フレーム: ${avgMs.toFixed(0)}ms 蓄積: ${samples} フレーム: ${frameNo}`,
       `シェーダの準備: ${compileMs.toFixed(0)}ms`,
       `蓄積の値: 平均 ${pr.mean.toFixed(4)} NaN ${pr.nan} GLエラー ${pr.err}`,
@@ -1852,21 +1936,29 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     samples = Math.min(samples, 24);
     if (S.stat.spills === 1) addLog(S.tau, "床に水をこぼした。塵が水を吸って黒ずむ。");
   }
-  // 操作：1本指ドラッグ＝見回す、ピンチ（ホイール）＝前後に歩く、ダブルタップ＝元の視点
+  // 操作：1本指ドラッグ＝見回す、ピンチ（ホイール）＝前後、2本指で動かす（右ドラッグ・Shift+ドラッグ）＝左右・上下
+  // タップ＝そこにあるものの名前、ダブルタップ＝元の視点
   // 道具を選んでいるときのタップ＝水をこぼす、椅子をつかんでドラッグ＝椅子を動かす
   const ptrs = new Map();
   let pinchD = 0, lastTap = 0;
-  function walk(d) {
+  // 前後（視線の水平方向）・左右・上下に動く
+  function move(fw, st, rise) {
     const h = norm([fwd[0], 0, fwd[2]]);
-    cam.pos[0] += h[0] * d; cam.pos[2] += h[2] * d;
+    cam.pos[0] += h[0] * fw + right[0] * st;
+    cam.pos[2] += h[2] * fw + right[2] * st;
+    cam.pos[1] += rise;
     setView();
   }
+  const walk = (d) => move(d, 0, 0);
+  let midX = 0, midY = 0, idTimer = 0;
+  cv.addEventListener("contextmenu", (e) => e.preventDefault());
   cv.addEventListener("pointerdown", (e) => {
     cv.setPointerCapture(e.pointerId);
-    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now() });
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY, t0: performance.now(), pan: e.button === 2 || e.shiftKey });
     if (ptrs.size === 2) {
       const [p1, p2] = [...ptrs.values()];
       pinchD = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+      midX = (p1.x + p2.x) / 2; midY = (p1.y + p2.y) / 2;
       dragChair = false;
       return;
     }
@@ -1880,8 +1972,16 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     if (ptrs.size === 2) {
       const [p1, p2] = [...ptrs.values()];
       const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-      walk((d - pinchD) * 0.006);
-      pinchD = d;
+      const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+      // ピンチ＝前後、2本指のまま動かす＝左右・上下（景色をつかんでずらす向き）
+      const k = 2.0 / Math.max(240, Math.min(innerWidth, innerHeight));
+      move((d - pinchD) * 0.006, -(mx - midX) * k, (my - midY) * k);
+      pinchD = d; midX = mx; midY = my;
+      return;
+    }
+    if (p.pan) {
+      const k = 2.0 / Math.max(240, Math.min(innerWidth, innerHeight));
+      move(0, -dx * k, dy * k);
       return;
     }
     if (dragChair) {
@@ -1910,9 +2010,14 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     }
     const moved = Math.hypot(e.clientX - p.x0, e.clientY - p.y0);
     const now = performance.now();
-    if (e.type === "pointerup" && moved < 10 && now - p.t0 < 400 && ptrs.size === 0) {
+    if (e.type === "pointerup" && moved < 10 && now - p.t0 < 400 && ptrs.size === 0 && !p.pan) {
       if (S && mode === "water") { const q = floorPoint(e); if (q) spill(q[0], q[1]); }
-      else if (now - lastTap < 320) resetView();
+      else if (now - lastTap < 320) { clearTimeout(idTimer); resetView(); }
+      else if (S && !mode) {
+        // 1回だけのタップ：そこに何が生えているかを小さく示す
+        const cx = e.clientX, cy = e.clientY;
+        idTimer = setTimeout(() => identify(cx, cy), 330);
+      }
       lastTap = now;
     }
   }
@@ -1921,12 +2026,94 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
   cv.addEventListener("wheel", (e) => { e.preventDefault(); walk(-e.deltaY * 0.0025); }, { passive: false });
   addEventListener("keydown", (e) => {
     if (e.target.closest && e.target.closest("button")) return;
-    const step = { ArrowLeft: [0, 0.06, 0], ArrowRight: [0, -0.06, 0], ArrowUp: [0.12, 0, 0], ArrowDown: [-0.12, 0, 0], w: [0.12, 0, 0], s: [-0.12, 0, 0], a: [0, 0.06, 0], d: [0, -0.06, 0] }[e.key];
+    // [前後, 左右, 上下, 向き]
+    const step = { ArrowLeft: [0, 0, 0, 0.06], ArrowRight: [0, 0, 0, -0.06], ArrowUp: [0.1, 0, 0, 0], ArrowDown: [-0.1, 0, 0, 0],
+      w: [0.1, 0, 0, 0], s: [-0.1, 0, 0, 0], a: [0, -0.08, 0, 0], d: [0, 0.08, 0, 0], e: [0, 0, 0.06, 0], q: [0, 0, -0.06, 0] }[e.key.length === 1 ? e.key.toLowerCase() : e.key];
     if (!step) return;
-    if (step[0]) walk(step[0]); else { cam.yaw += step[1]; setView(); }
+    cam.yaw += step[3];
+    move(step[0], step[1], step[2]);
   });
+  // タップした場所に何があるか
+  function identify(cx, cy) {
+    const rd = viewRay({ clientX: cx, clientY: cy });
+    const p = cam.pos;
+    let best = 1e9, hit = null;
+    const planes = [[1, 0, "floor"], [0, -RX, "east"], [0, RX, "west"], [2, ZS, "south"]];
+    for (const [k, w, name] of planes) {
+      if (Math.abs(rd[k]) < 1e-6) continue;
+      const t = (w - p[k]) / rd[k];
+      if (t <= 0.02 || t >= best) continue;
+      const q = [p[0] + rd[0] * t, p[1] + rd[1] * t, p[2] + rd[2] * t];
+      if (q[0] < -RX - 1e-3 || q[0] > RX + 1e-3 || q[1] < -1e-3 || q[1] > RH || q[2] < ZS - 1e-3 || q[2] > ZN) continue;
+      best = t; hit = { name, q };
+    }
+    let label = "";
+    const near = (x, y, z, r) => {
+      const v = [x - p[0], y - p[1], z - p[2]], t = v[0] * rd[0] + v[1] * rd[1] + v[2] * rd[2];
+      if (t <= 0 || t > best + 0.05) return false;
+      return Math.hypot(v[0] - rd[0] * t, v[1] - rd[1] * t, v[2] - rd[2] * t) < r;
+    };
+    for (const m of S.mush) if (near(m.x, (m.y || 0) + 0.03, m.z, 0.06)) label = "キノコ";
+    if (!label) for (const f of S.ferns) {
+      if (f.stage >= 1 && near(f.x, 0.15 * f.size, f.z, 0.1 + 0.2 * f.size)) { label = "シダ"; break; }
+      if (f.stage === 0 && near(f.x, 0.01, f.z, 0.05)) { label = "シダの前葉体（胞子から育つ最初の姿）"; break; }
+    }
+    if (!label && hit) {
+      const s = surfs.find((o) => o.name === hit.name), q = hit.q;
+      let u, v;
+      if (s.name === "floor") { u = (q[0] + RX) / FC; v = (q[2] - ZS) / FC; }
+      else if (s.name === "south") { u = (q[0] + RX) / WC; v = q[1] / WC; }
+      else { u = (q[2] - ZS) / WC; v = q[1] / WC; }
+      u = Math.floor(u); v = Math.floor(v);
+      if (u >= 0 && v >= 0 && u < s.nu && v < s.nv) {
+        const i = v * s.nu + u;
+        const c = [["ギンゴケ", s.M[i]], ["ゼニゴケ", s.Lv[i]], ["藍藻の膜", s.B[i]]].filter((x) => x[1] > 0.12).sort((a, b) => b[1] - a[1]);
+        const where = { floor: "床", south: "窓の壁", east: "左の壁", west: "右の壁" }[s.name];
+        label = c.length ? `${c[0][0]}（${where}）` : s.W[i] > 0.3 ? `濡れた塵（${where}）` : `塵（${where}）`;
+      }
+    }
+    if (!label || mode) return;
+    hintEl.hidden = false;
+    hintEl.textContent = label;
+    clearTimeout(identify.t);
+    identify.t = setTimeout(() => { if (!mode) hintEl.hidden = true; }, 2600);
+  }
 
   // ================= ループ =================
+  let autoGain = 1, lumT = null, lumF = null;
+  // 部屋全体の明るさ（対数平均）を32×18に縮めて読み、暗い部屋でも中身が見える露出に寄せる
+  function meterExposure() {
+    if (!lumP) return;
+    if (!lumT) {
+      lumT = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, lumT);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, 32, 18, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      texParams(gl.NEAREST);
+      lumF = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, lumF);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, lumT, 0);
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, lumF);
+    gl.viewport(0, 0, 32, 18);
+    gl.useProgram(lumP.p);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, acc[ping]);
+    gl.uniform1i(lumP.u.uAcc, 0);
+    gl.bindVertexArray(quadVAO);
+    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    const px = new Uint8Array(32 * 18 * 4);
+    gl.readPixels(0, 0, 32, 18, gl.RGBA, gl.UNSIGNED_BYTE, px);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    let s = 0;
+    for (let i = 0; i < 32 * 18; i++) s += px[i * 4] / 255;
+    const logAvg = (s / (32 * 18)) * 18 - 14;
+    const shown = Math.pow(2, logAvg) * 0.9 * light.exposure;
+    // 目標の明るさへ6割だけ寄せる（明暗の差、夜の暗さは残す）
+    const target = Math.max(0.8, Math.min(2.4, Math.pow(0.075 / Math.max(shown, 1e-4), 0.5)));
+    autoGain += (target - autoGain) * 0.25;
+    exposureMeter = { logAvg, shown };
+  }
+  let exposureMeter = null;
   let frameNo = 0, last = performance.now(), avgMs = 30, lastScale = 0, lastDown = 0, catchUp = 0, lastMeta = 0, lost = false, checked = false;
   function setCam(u) {
     gl.uniform3fv(u.uCam, cam.pos); gl.uniform3fv(u.uCR, right); gl.uniform3fv(u.uCU, up); gl.uniform3fv(u.uCF, fwd);
@@ -2000,15 +2187,19 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     samples++;
     ping = dst;
 
+    if (samples > 6 && frameNo % 12 === 0) { try { meterExposure(); } catch (e) { lumP = null; } }
+
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, W, H);
+    gl.viewport(0, 0, DW, DH);
     gl.useProgram(showP.p);
+    gl.bindVertexArray(quadVAO);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, acc[dst]);
     gl.uniform1i(showP.u.uAcc, 0);
-    gl.uniform2f(showP.u.uRes, W, H);
+    gl.uniform2f(showP.u.uRes, DW, DH);
+    gl.uniform2f(showP.u.uTex, 1 / W, 1 / H);
     gl.uniform1f(showP.u.uGrain, light.grain);
-    gl.uniform1f(showP.u.uExposure, light.exposure);
+    gl.uniform1f(showP.u.uExposure, light.exposure * autoGain);
     gl.uniform1f(showP.u.uFrameF, frameNo % 997);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     if (!checked && frameNo === 90) {
@@ -2022,9 +2213,10 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       gl.blendFunc(gl.ONE, gl.ONE);
       gl.useProgram(moteP.p);
       setCam(moteP.u);
-      gl.uniform1f(moteP.u.uAspect, W / H);
+      gl.uniform1f(moteP.u.uAspect, DW / DH);
       gl.uniform1f(moteP.u.uTime, t);
-      gl.uniform1f(moteP.u.uH, H);
+      gl.uniform1f(moteP.u.uH, DH);
+      if (moteP.u.uFocus) gl.uniform1f(moteP.u.uFocus, focus);
       gl.uniform1f(moteP.u.uSpore, sporeLevel);
       gl.bindVertexArray(moteVAO);
       gl.bindBuffer(gl.ARRAY_BUFFER, mBuf);
@@ -2063,9 +2255,17 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       seedSurfaces();
       addLog(S.tau, "閉ざされた部屋。窓の外では、季節がめぐっている。");
       hintEl.hidden = false;
-      hintEl.textContent = "ドラッグで見回す・ピンチで歩く・ダブルタップで戻る";
+      hintEl.textContent = "ドラッグで見回す・ピンチで前後・2本指でずらす・タップで名前・ダブルタップで戻る";
       setTimeout(() => { if (!mode) hintEl.hidden = true; }, 7000);
       save();
+    }
+    // 操作が増えたので、既存の部屋でも一度だけ案内する
+    let seen = false;
+    try { seen = localStorage.getItem("kaeru-help-2") === "1"; localStorage.setItem("kaeru-help-2", "1"); } catch (e) { seen = true; }
+    if (!seen && hintEl.hidden) {
+      hintEl.hidden = false;
+      hintEl.textContent = "ドラッグで見回す・ピンチで前後・2本指でずらす・タップで名前・ダブルタップで戻る";
+      setTimeout(() => { if (!mode) hintEl.hidden = true; }, 8000);
     }
     btnWindow.textContent = S.windowOpen ? "窓を閉める" : "窓を開ける";
     btnWindow.setAttribute("aria-pressed", String(S.windowOpen));
@@ -2074,7 +2274,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     renderLog(); renderBook();
   })();
   if (location.hash === "#debug") {
-    window.__kaeru = { run: (n) => { for (let i = 0; i < n; i++) stepDay(); S.tau = Math.max(S.tau, S.simDay * DAY + 0.5 * 3600000); texDirty = true; boxesDirty = true; }, state: () => S, surfs };
+    window.__kaeru = { run: (n) => { for (let i = 0; i < n; i++) stepDay(); S.tau = Math.max(S.tau, S.simDay * DAY + 0.5 * 3600000); texDirty = true; boxesDirty = true; }, state: () => S, surfs, cam, setView, gain: () => autoGain };
   }
   addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") save(); });
   addEventListener("pagehide", () => { if (S) { try { serialize().then((o) => localStore.save(o)); } catch (e) { /* 保存できない */ } } });
