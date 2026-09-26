@@ -54,6 +54,10 @@
   .row .lab { color: var(--ph-dim); font-size: 16px; min-width: 34px; }
   .row button { padding: 0 8px; flex: none; }
   #bAcc, #bTwr { border-color: var(--amber); color: var(--amber); text-shadow: 0 0 2px var(--amber); }
+  #chips { padding: 4px 16px; background: rgba(0,0,0,.85); }
+  #chips button { font-size: 17px; padding: 0 8px; }
+  #chips button.offer { border-color: var(--amber); color: var(--amber); text-shadow: 0 0 2px var(--amber); }
+  #chips button.twr { opacity: .5; }
   #devpanel { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 16px; border-top: 1px dashed var(--ph-faint); background: #000; }
   #devpanel .note { color: var(--ph-dim); font-size: 16px; align-self: center; }
   #bar { padding: 8px 16px max(10px, env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #000; border-top: 1px solid var(--ph-faint); }
@@ -101,6 +105,7 @@
 
 <div id="bottom">
   <div id="log" aria-live="polite"></div>
+  <div id="chips" class="row" hidden aria-label="担当中の機体"></div>
   <div id="panel" hidden>
     <div id="pHead"></div>
     <div id="pDial">
@@ -129,7 +134,7 @@
     <button data-ts="1" class="on">x1</button><button data-ts="2">x2</button><button data-ts="4">x4</button><button data-ts="8">x8</button>
     <button id="lbl" class="on" title="経路点名の表示">FIX</button>
     <button id="dev" title="テスト用の出現操作">DEV</button>
-    <input id="cmd" placeholder="機体をタップ、または JAL123 L250 A50" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <input id="cmd" placeholder="機体をタップ、または SKY42 L250 A50" autocomplete="off" autocapitalize="characters" spellcheck="false">
   </div>
 </div>
 
@@ -139,18 +144,19 @@
     <p class="dim">あなたは東京アプローチ。北風運用、羽田 34L/34R への到着機を担当する。</p>
     <h2>1 機の流れ</h2>
     <table>
-      <tr><td>① 通信設定</td><td>機体が入口に現れ「TOKYO APP, JAL123, 13000, AKSEL 1A ARRIVAL, INFO C」と呼んでくる（データブロック点滅・CHK）。<b>ACC</b> で応答すると管轄に入る。60 秒以内に応答しないと減点</td></tr>
+      <tr><td>① 通信設定</td><td>機体が入口に現れ「TOKYO APP, SKY42, 13000, AKSEL 1A ARRIVAL, INFO C」と呼んでくる（データブロック点滅・CHK）。機体か、下の琥珀色の <b>▶便名 CHK</b> をタップして選び、<b>ACC</b> で応答すると管轄に入る。60 秒以内に応答しないと減点</td></tr>
       <tr><td>② 順序付け</td><td>機体は STAR を自動で飛ぶ。詰まりそうなら 速度・方位・高度・待機 で間隔を作る</td></tr>
       <tr><td>③ 進入許可</td><td><b>APP 34L / 34R</b>。STAR 上なら公示の進入経路へ、誘導中ならローカライザーに会合する。許可しないまま STAR 終点に着くと公示の待機に入る</td></tr>
       <tr><td>④ タワー移管</td><td>ローカライザーに乗ったら <b>TWR</b>。滑走路 2NM 手前までに移管しないと着陸復行</td></tr>
     </table>
     <h2>指示</h2>
     <table>
+      <tr><td>機体の選択</td><td>機体の記号か便名の文字をタップ、または下の便名の列から選ぶ</td></tr>
       <tr><td>方位</td><td>ダイヤルをドラッグして離す（L / R で旋回方向を指定）　<span class="dim">L250 R250 H250</span></td></tr>
       <tr><td>高度・速度</td><td>ALT / SPD の列から選ぶ（ALT は百 ft 単位）　<span class="dim">A50 S190</span></td></tr>
       <tr><td>直行・待機</td><td>機体を選んだまま経路点をタップ → DCT / HOLD　<span class="dim">D ARLON　HOLD WEDGE</span></td></tr>
       <tr><td>STAR 復帰</td><td>STAR　（前方の最寄りの経路点へ戻る）</td></tr>
-      <tr><td>入力欄</td><td>便名を先頭に付けると選択なしで指示できる　<span class="dim">JAL1 L250 A50 S190</span></td></tr>
+      <tr><td>入力欄</td><td>便名を先頭に付けると選択なしで指示できる　<span class="dim">SKY4 L250 A50 S190</span></td></tr>
     </table>
     <h2>採点</h2>
     <table>

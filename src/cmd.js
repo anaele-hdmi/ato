@@ -1,4 +1,4 @@
-// コマンド解析: "JAL123 L250 A50 S190" / "D ARLON" / "HOLD WEDGE" / "C 34L" / "ACC" / "TWR" / "STAR"
+// コマンド解析: "SKY42 L250 A50 S190" / "D ARLON" / "HOLD WEDGE" / "C 34L" / "ACC" / "TWR" / "STAR"
 (function (g) {
   const ATC = (g.ATC = g.ATC || {});
 

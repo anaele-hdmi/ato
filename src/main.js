@@ -28,7 +28,18 @@
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
     S.view.scale = Math.max(3, Math.min(W, H) / 95);
   }
-  addEventListener("resize", resize);
+  function fitView() {
+    const pts = ["XAC", "AKSEL", "AROSA", "GODIN", "POLIX"].map((id) => world.fixes[id]).concat([{ x: 0, y: 0 }]);
+    const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
+    const x0 = Math.min(...xs) - 4, x1 = Math.max(...xs) + 12, y0 = Math.min(...ys) - 3, y1 = Math.max(...ys) + 3;
+    const top = $("tl").getBoundingClientRect().bottom + 8;
+    const bottom = $("bar").getBoundingClientRect().top - 90; // ログと便名列の分を空けておく
+    const h = Math.max(120, bottom - top);
+    S.view.scale = Math.max(2, Math.min((W - 32) / (x1 - x0), h / (y1 - y0)));
+    S.view.cx = (x0 + x1) / 2;
+    S.view.cy = (y0 + y1) / 2 + ((top + bottom) / 2 - H / 2) / S.view.scale;
+  }
+  addEventListener("resize", () => { resize(); if (!S.userMoved) fitView(); });
   resize();
   const sx = (x) => W / 2 + (x - S.view.cx) * S.view.scale;
   const sy = (y) => H / 2 - (y - S.view.cy) * S.view.scale;
@@ -58,8 +69,13 @@
   const AIRLINES = ["JAL", "ANA", "SKY", "ADO", "SNJ", "SFJ", "APJ", "KAL", "AAR", "CPA", "CAL", "EVA", "UAL", "DAL", "QFA"];
   const TYPES = [["B738", "M"], ["A320", "M"], ["B763", "H"], ["B772", "H"], ["B789", "H"], ["A359", "H"], ["A321", "M"]];
   const rnd = (a) => a[Math.floor(Math.random() * a.length)];
+  // 羽田に関係する過去の事故便の便名は生成しない
+  const EXCLUDED_CS = new Set(["JAL123", "JAL350", "JAL516", "ANA60"]);
   function newCallsign() {
-    for (;;) { const cs = rnd(AIRLINES) + (Math.floor(Math.random() * 990) + 10); if (!S.ac.some((a) => a.cs === cs)) return cs; }
+    for (;;) {
+      const cs = rnd(AIRLINES) + (Math.floor(Math.random() * 990) + 10);
+      if (!EXCLUDED_CS.has(cs) && !S.ac.some((a) => a.cs === cs)) return cs;
+    }
   }
   function spawn(starName) {
     const [type, wake] = rnd(TYPES);
@@ -259,7 +275,24 @@
       const div = document.createElement("div"); div.textContent = l.t; div.className = l.kind || "";
       div.style.opacity = String(Math.max(0.25, 1 - age / 15)); logEl.appendChild(div);
     }
+    renderChips();
     renderPanel();
+  }
+
+  let chipsKey = "";
+  function renderChips() {
+    const list = [...S.ac].sort((a, b) => (a.ctl === "OFFER" ? 0 : 1) - (b.ctl === "OFFER" ? 0 : 1));
+    const key = list.map((a) => a.cs + a.ctl).join(",") + "|" + (S.sel ? S.sel.cs : "");
+    if (key === chipsKey) return; chipsKey = key;
+    const el = $("chips"); el.textContent = "";
+    for (const a of list) {
+      const b = document.createElement("button");
+      b.textContent = a.ctl === "OFFER" ? `▶${a.cs} CHK` : a.cs;
+      b.className = (a.ctl === "OFFER" ? "offer " : "") + (a.ctl === "TWR" ? "twr " : "") + (a === S.sel ? "on" : "");
+      b.onclick = () => select(a);
+      el.appendChild(b);
+    }
+    el.hidden = !list.length;
   }
 
   // ---- 操作パネル（選択中の機体） ----
@@ -278,6 +311,19 @@
     panel.hidden = !ac; $("fixmenu").hidden = true;
     panelKey = "";
     if (ac) $("cmd").placeholder = `${ac.cs}: L250 A50 S190 / D ARLON / HOLD WEDGE / C 34L`;
+    chipsKey = "";
+    if (ac) requestAnimationFrame(() => keepVisible(ac));
+  }
+
+  // 選んだ機体が操作パネルや HUD に隠れないよう画面をずらす
+  function keepVisible(ac) {
+    const top = $("tl").getBoundingClientRect().bottom + 50;
+    const bottom = $("bottom").getBoundingClientRect().top - 30;
+    const Y = sy(ac.y), X = sx(ac.x);
+    if (Y > bottom) S.view.cy -= (Y - bottom + 20) / S.view.scale;
+    else if (Y < top) S.view.cy += (top - Y + 20) / S.view.scale;
+    if (X < 24) S.view.cx -= (24 - X + 20) / S.view.scale;
+    else if (X > W - 150) S.view.cx += (X - (W - 150) + 20) / S.view.scale;
   }
   function issue(line) {
     const r = ATC.runCommand(line, S.ac, S.sel);
@@ -369,22 +415,23 @@
     requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
+  requestAnimationFrame(fitView);
 
   // ---- 入力: パン・ズーム・選択・経路点メニュー ----
   const ptrs = new Map(); let pinch0 = null, moved = false;
-  cv.addEventListener("pointerdown", (e) => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY }); moved = false; });
+  cv.addEventListener("pointerdown", (e) => { cv.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: e.clientX, y0: e.clientY }); moved = false; });
   cv.addEventListener("pointermove", (e) => {
     const p = ptrs.get(e.pointerId); if (!p) return;
     if (ptrs.size === 1) {
       const dx = e.clientX - p.x, dy = e.clientY - p.y;
-      if (Math.abs(dx) + Math.abs(dy) > 3) moved = true;
-      if (moved) { S.view.cx -= dx / S.view.scale; S.view.cy += dy / S.view.scale; }
+      if (Math.hypot(e.clientX - p.x0, e.clientY - p.y0) > 10) moved = true; // 指のわずかなズレはタップ扱い
+      if (moved) { S.view.cx -= dx / S.view.scale; S.view.cy += dy / S.view.scale; S.userMoved = true; }
     }
-    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    ptrs.set(e.pointerId, { x: e.clientX, y: e.clientY, x0: p.x0, y0: p.y0 });
     if (ptrs.size === 2) {
       const [a, b] = [...ptrs.values()], d = Math.hypot(a.x - b.x, a.y - b.y);
       if (pinch0) S.view.scale = Math.max(2, Math.min(80, S.view.scale * d / pinch0));
-      pinch0 = d; moved = true;
+      pinch0 = d; moved = true; S.userMoved = true;
     }
   });
   const up = (e) => {
@@ -401,8 +448,16 @@
 
   function tap(px, py) {
     $("fixmenu").hidden = true;
-    let best = null, bd = 28;
-    for (const a of S.ac) { if (!a.disp) continue; const d = Math.hypot(sx(a.disp.x) - px, sy(a.disp.y) - py); if (d < bd) { bd = d; best = a; } }
+    // 機体記号の周囲 32px、またはデータブロック（便名・高度の文字）の上なら選択
+    let best = null, bd = Infinity;
+    for (const a of S.ac) {
+      if (!a.disp) continue;
+      const X = sx(a.disp.x), Y = sy(a.disp.y);
+      const d = Math.hypot(X - px, Y - py);
+      const onBlock = px >= X + 12 && px <= X + 130 && py >= Y - 44 && py <= Y + 8;
+      const score = d < 32 ? d : onBlock ? 32 + Math.abs(py - (Y - 20)) : Infinity;
+      if (score < bd) { bd = score; best = a; }
+    }
     if (best) return select(best);
     if (!S.sel) return;
     let fx = null; bd = 22;
