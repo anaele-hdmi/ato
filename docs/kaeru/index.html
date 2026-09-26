@@ -548,6 +548,13 @@
       const dose = doseFor(s, bin);
       const isFloor = s === floor;
       const Mprev = s.M.slice(), Lprev = s.Lv.slice();
+      // 場所ごとの育ちやすさ（部屋ごとに固定、0.55〜1.45）：隣り合う格子が同じ日に同じだけ育たないように
+      if (!s.het || s.hetSeed !== S.seed) {
+        s.het = new Float32Array(s.n);
+        for (let k = 0; k < s.n; k++) s.het[k] = 0.55 + 0.9 * (hash2(S.seed ^ 0x2f1d, k * 4 + surfs.indexOf(s)) / 4294967296);
+        s.hetSeed = S.seed;
+      }
+      const het = s.het;
       const nu = s.nu;
       for (let i = 0; i < s.n; i++) {
         if (!s.valid[i]) continue;
@@ -564,16 +571,17 @@
         W = Math.max(0, Math.min(2, W));
         // 近くへ水がにじむ
         const u = i % nu, v = (i / nu) | 0;
+        const hv = het[i];
         // 藍藻の膜
-        if (W > 0.2 && L > 0.008) B += 0.22 * B * (1 - B - 0.25 * M) + 0.008 * W * (isFloor ? 1 : 0.4);
+        if (W > 0.2 && L > 0.008) B += (0.22 * B * (1 - B - 0.25 * M)) * hv + (r() < 0.2 * W * (isFloor ? 1 : 0.4) ? 0.04 : 0);
         else if (B > 0.08) B -= 0.0008;
         // ギンゴケ：足場（藍藻か有機物）と光が要る。乾燥には強い
         const nM = ((u > 0 ? Mprev[i - 1] : 0) + (u < nu - 1 ? Mprev[i + 1] : 0) + (v > 0 ? Mprev[i - nu] : 0) + (v < s.nv - 1 ? Mprev[i + nu] : 0)) / 4;
-        if ((B > 0.25 || s.O[i] > 0.04) && L > 0.04 && W > 0.06) M += 0.035 * M * (1 - M - 0.4 * Lv) + P.M * 0.012 * Math.min(1, W * 2) + nM * 0.012;
+        if ((B > 0.25 || s.O[i] > 0.04) && L > 0.04 && W > 0.06) M += (0.035 * M * (1 - M - 0.4 * Lv) + nM * 0.012 * r() * 2) * hv + (r() < P.M * 0.3 * Math.min(1, W * 2) ? 0.04 : 0);
         if (L < 0.02) M -= 0.003;
         // ゼニゴケ：長く湿った場所
         const nL = ((u > 0 ? Lprev[i - 1] : 0) + (u < nu - 1 ? Lprev[i + 1] : 0) + (v > 0 ? Lprev[i - nu] : 0) + (v < s.nv - 1 ? Lprev[i + nu] : 0)) / 4;
-        if (W > 0.65 && L > 0.03 && (B > 0.2 || s.O[i] > 0.03)) Lv += 0.05 * Lv * (1 - Lv - 0.5 * M) + P.Lv * 0.02 + nL * 0.01;
+        if (W > 0.65 && L > 0.03 && (B > 0.2 || s.O[i] > 0.03)) Lv += (0.05 * Lv * (1 - Lv - 0.5 * M) + nL * 0.01 * r() * 2) * hv + (r() < P.Lv * 0.4 ? 0.05 : 0);
         if (W < 0.25) Lv -= 0.012;
         s.B[i] = Math.max(0, Math.min(1, B));
         s.M[i] = Math.max(0, Math.min(1, M));
@@ -1027,13 +1035,33 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       if (c <= 0.0 || !escapes(p + d * 0.002, d)) return vec3(0);
       return uE * c;
     }
+    // 格子を B-スプラインで補間する（4回の読み取り）。直線補間のひし形・四角が出ない
+    vec4 smoothTex(sampler2D t, vec2 uv) {
+      vec2 sz = vec2(textureSize(t, 0));
+      vec2 x = uv * sz - 0.5, f = fract(x), i0 = floor(x);
+      vec2 w0 = (1.0 - f) * (1.0 - f) * (1.0 - f) / 6.0, w1 = (4.0 - 6.0 * f * f + 3.0 * f * f * f) / 6.0;
+      vec2 w3 = f * f * f / 6.0, w2 = 1.0 - w0 - w1 - w3;
+      vec2 g0 = w0 + w1, g1 = w2 + w3;
+      vec2 h0 = (i0 - 0.5 + w1 / g0) / sz, h1 = (i0 + 1.5 + w3 / g1) / sz;
+      return g0.y * (g0.x * textureLod(t, vec2(h0.x, h0.y), 0.0) + g1.x * textureLod(t, vec2(h1.x, h0.y), 0.0))
+           + g1.y * (g0.x * textureLod(t, vec2(h0.x, h1.y), 0.0) + g1.x * textureLod(t, vec2(h1.x, h1.y), 0.0));
+    }
     vec4 growth(vec3 p, vec3 n, out int surf) {
       surf = -1;
-      if (n.y > 0.5 && p.y < 0.01) { surf = 0; return textureLod(uGF, vec2((p.x + RX) / (2.0 * RX), (p.z - ZS) / (ZN - ZS)), 0.0); }
-      if (n.z > 0.5 && p.z > ZS - 0.001 && p.z < ZS + 0.001) { surf = 1; return textureLod(uGS, vec2((p.x + RX) / (2.0 * RX), p.y / RH), 0.0); }
-      if (n.x > 0.5 && p.x < -RX + 0.001) { surf = 2; return textureLod(uGE, vec2((p.z - ZS) / (ZN - ZS), p.y / RH), 0.0); }
-      if (n.x < -0.5 && p.x > RX - 0.001) { surf = 3; return textureLod(uGW, vec2((p.z - ZS) / (ZN - ZS), p.y / RH), 0.0); }
-      return vec4(0);
+      bool fl = n.y > 0.5 && p.y < 0.01;
+      bool so = n.z > 0.5 && p.z > ZS - 0.001 && p.z < ZS + 0.001;
+      bool ea = n.x > 0.5 && p.x < -RX + 0.001;
+      bool we = n.x < -0.5 && p.x > RX - 0.001;
+      if (!(fl || so || ea || we)) return vec4(0);
+      // 読み取り位置を格子1〜2個ぶん、ゆるやかにゆがめる（群落の縁が不規則になる）
+      float cell = fl ? 0.05 : 0.1;
+      vec3 w = vec3(noise(p * 7.0), noise(p * 7.0 + 17.0), noise(p * 7.0 + 31.0)) - 0.5;
+      w += (vec3(noise(p * 19.0 + 5.0), noise(p * 19.0 + 23.0), noise(p * 19.0 + 41.0)) - 0.5) * 0.5;
+      vec3 q = p + w * cell * 2.4;
+      if (fl) { surf = 0; return smoothTex(uGF, vec2((q.x + RX) / (2.0 * RX), (q.z - ZS) / (ZN - ZS))); }
+      if (so) { surf = 1; return smoothTex(uGS, vec2((q.x + RX) / (2.0 * RX), q.y / RH)); }
+      if (ea) { surf = 2; return smoothTex(uGE, vec2((q.z - ZS) / (ZN - ZS), q.y / RH)); }
+      surf = 3; return smoothTex(uGW, vec2((q.z - ZS) / (ZN - ZS), q.y / RH));
     }
     // ループの中では自動のぼかし計算（勾配）が使えない環境があるため、距離から明示する
     float gLod = 0.0;
@@ -1063,7 +1091,8 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
       int sf;
       vec4 g = growth(p, n, sf);
       if (sf >= 0) {
-        float n1 = noise(p * 38.0), n2 = noise(p * 71.0 + 3.0), n3 = noise(p * 22.0 + 9.0);
+        float nl = noise(p * 11.0 + 2.0);
+        float n1 = mix(noise(p * 38.0), nl, 0.4), n2 = mix(noise(p * 71.0 + 3.0), nl, 0.35), n3 = mix(noise(p * 22.0 + 9.0), nl, 0.3);
         // 藍藻の膜：黒ではなく、暗い青緑のにじみ
         a = mix(a, vec3(0.05, 0.085, 0.05) * (0.8 + 0.4 * n2), cov(g.r, n1) * 0.9);
         // ギンゴケ：緑の株に、乾いた葉先の銀白
