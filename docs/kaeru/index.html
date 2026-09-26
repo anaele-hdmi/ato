@@ -1211,9 +1211,9 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
 
   const FS_SHOW = `#version 300 es
     precision highp float;
-    uniform sampler2D uAcc;
+    uniform sampler2D uAcc, uLum;
     uniform vec2 uRes, uTex;
-    uniform float uGrain, uFrameF, uExposure;
+    uniform float uGrain, uFrameF, uExposure, uLocal;
     out vec4 o;
     float hash(vec3 p) { p = fract(p * 0.3183099 + 0.1); p *= 17.0; return fract(p.x * p.y * p.z * (p.x + p.y + p.z)); }
     vec3 aces(vec3 x) { return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0); }
@@ -1246,12 +1246,20 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
         }
       }
       c += b * vec3(0.55, 0.42, 0.34);
+      // 局所露出：周囲（画面の約1/20の範囲）の明るさが暗い場所ほど持ち上げる。明るい場所は下げない
+      if (uLocal > 0.0) {
+        float la = exp2(textureLod(uLum, uv, 0.0).r * 18.0 - 14.0) * 0.9 * uExposure;
+        float lc = dot(c, LW) * 0.9 * uExposure;
+        float g = clamp(pow(0.14 / max(la, 1e-4), 0.6), 1.0, 1.0 + 5.0 * uLocal);
+        g = mix(g, 1.0, smoothstep(0.25, 1.2, lc));
+        c *= g;
+      }
       c = aces(c * 0.9 * uExposure);
       float lum = dot(c, vec3(0.3, 0.59, 0.11));
       c = mix(c * vec3(0.94, 0.98, 1.05), c * vec3(1.04, 1.0, 0.92), smoothstep(0.15, 0.75, lum));
       c = pow(c, vec3(1.0 / 2.2));
       vec2 q = (gl_FragCoord.xy * 2.0 - uRes) / uRes.y;
-      c *= mix(0.62, 1.0, smoothstep(1.6, 0.3, length(q * vec2(0.82, 1.0))));
+      c *= mix(0.78, 1.0, smoothstep(1.6, 0.3, length(q * vec2(0.82, 1.0))));
       float g = hash(vec3(gl_FragCoord.xy * 1.37, mod(uFrameF, 97.0) + 0.5)) - 0.5;
       c += g * uGrain * 3.0 * lum * (1.0 - lum);
       c = c * 0.975 + vec3(0.010, 0.009, 0.007);
@@ -2120,7 +2128,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
   // ================= ループ =================
   let autoGain = 1, lumT = null, lumF = null;
   // 部屋全体の明るさ（対数平均）を32×18に縮めて読み、暗い部屋でも中身が見える露出に寄せる
-  function meterExposure() {
+  function meterExposure(readBack) {
     if (!lumP) return;
     if (!lumT) {
       lumT = gl.createTexture();
@@ -2139,6 +2147,8 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     gl.uniform1i(lumP.u.uAcc, 0);
     gl.bindVertexArray(quadVAO);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    lumReady = true;
+    if (!readBack) { gl.bindFramebuffer(gl.FRAMEBUFFER, null); return; }
     const px = new Uint8Array(32 * 18 * 4);
     gl.readPixels(0, 0, 32, 18, gl.RGBA, gl.UNSIGNED_BYTE, px);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -2151,7 +2161,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     autoGain += (target - autoGain) * 0.25;
     exposureMeter = { logAvg, shown };
   }
-  let exposureMeter = null;
+  let exposureMeter = null, lumReady = false;
   let frameNo = 0, last = performance.now(), avgMs = 30, lastScale = 0, lastDown = 0, catchUp = 0, lastMeta = 0, lost = false, checked = false;
   function setCam(u) {
     gl.uniform3fv(u.uCam, cam.pos); gl.uniform3fv(u.uCR, right); gl.uniform3fv(u.uCU, up); gl.uniform3fv(u.uCF, fwd);
@@ -2225,7 +2235,7 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     samples++;
     ping = dst;
 
-    if (samples > 6 && frameNo % 12 === 0) { try { meterExposure(); } catch (e) { lumP = null; } }
+    if (samples > 3 && frameNo % 4 === 0) { try { meterExposure(frameNo % 12 === 0); } catch (e) { lumP = null; lumReady = false; } }
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, DW, DH);
@@ -2236,6 +2246,11 @@ ${sceneGLSL(v.plants ? sc : Object.assign({}, sc, { ferns: [], mush: [] }))}
     gl.uniform1i(showP.u.uAcc, 0);
     gl.uniform2f(showP.u.uRes, DW, DH);
     gl.uniform2f(showP.u.uTex, 1 / W, 1 / H);
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, lumReady ? lumT : acc[dst]);
+    gl.uniform1i(showP.u.uLum, 1);
+    gl.uniform1f(showP.u.uLocal, lumReady ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE0);
     gl.uniform1f(showP.u.uGrain, light.grain);
     gl.uniform1f(showP.u.uExposure, light.exposure * autoGain);
     gl.uniform1f(showP.u.uFrameF, frameNo % 997);
