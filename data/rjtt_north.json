@@ -1289,6 +1289,112 @@
    }
   }
  },
+ "holds": {
+  "XAC": {
+   "inboundTrue": 90.3,
+   "inboundMag": 98,
+   "turn": "R",
+   "minAltFt": 5000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "ANZAC": {
+   "inboundTrue": 60.8,
+   "inboundMag": 69,
+   "turn": "L",
+   "minAltFt": 5000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "WEDGE": {
+   "inboundTrue": 292.4,
+   "inboundMag": 300,
+   "turn": "L",
+   "minAltFt": 4000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "ARLON": {
+   "inboundTrue": 1.6,
+   "inboundMag": 9,
+   "turn": "L",
+   "minAltFt": 4000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "KAIHO": {
+   "inboundTrue": 345.5,
+   "inboundMag": 353,
+   "turn": "R",
+   "minAltFt": 4000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "CIVIC": {
+   "inboundTrue": 337.7,
+   "inboundMag": 346,
+   "turn": "R",
+   "minAltFt": 4000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "CREAM": {
+   "inboundTrue": 283.1,
+   "inboundMag": 291,
+   "turn": "R",
+   "minAltFt": 4000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "AKSEL": {
+   "inboundTrue": 31.2,
+   "inboundMag": 39,
+   "turn": "R",
+   "minAltFt": 5000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "AVEEY": {
+   "inboundTrue": 306.1,
+   "inboundMag": 314,
+   "turn": "R",
+   "minAltFt": 5000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "GODIN": {
+   "inboundTrue": 189.2,
+   "inboundMag": 197,
+   "turn": "R",
+   "minAltFt": 8000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "COLOR": {
+   "inboundTrue": 189.1,
+   "inboundMag": 197,
+   "turn": "R",
+   "minAltFt": 8000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "COACH": {
+   "inboundTrue": 177.8,
+   "inboundMag": 186,
+   "turn": "R",
+   "minAltFt": 4000,
+   "legMin": 1.0,
+   "maxKias": 230
+  },
+  "POLIX": {
+   "inboundTrue": 302.3,
+   "inboundMag": 310,
+   "turn": "L",
+   "minAltFt": 11000,
+   "legMin": 1.0,
+   "maxKias": 230
+  }
+ },
  "approaches": {
   "34L": {
    "name": "ILS Z RWY34L",

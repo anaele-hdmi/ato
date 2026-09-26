@@ -19,38 +19,68 @@
   html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ph); font-family: var(--font); overflow: hidden; }
   body { touch-action: none; user-select: none; -webkit-user-select: none; }
   #scope { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
-  .hud { position: fixed; font-size: 20px; line-height: 1.05; text-shadow: 0 0 2px var(--ph); pointer-events: none; }
+  .hud { position: fixed; font-size: 20px; line-height: 1.05; text-shadow: 0 0 2px var(--ph); pointer-events: none; font-variant-numeric: tabular-nums; }
   #tl { top: max(10px, env(safe-area-inset-top)); left: 16px; }
   #tr { top: max(10px, env(safe-area-inset-top)); right: 16px; text-align: right; }
   #tl .big { font-size: 28px; letter-spacing: 2px; }
   .dim { color: var(--ph-dim); text-shadow: none; }
   #strips { white-space: pre; }
-  #bar { padding: 8px 16px max(10px, env(safe-area-inset-bottom));
-    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,0)); }
   button, select, input { font-family: var(--font); font-size: 20px; color: var(--ph); background: #000;
     border: 1px solid var(--ph-dim); padding: 2px 10px; border-radius: 0; text-shadow: 0 0 2px var(--ph); }
+  button { cursor: pointer; }
   button:hover, button.on { border-color: var(--ph); box-shadow: 0 0 6px var(--ph-dim) inset; }
+  button.on { background: var(--ph-faint); }
+  button:disabled { opacity: .35; cursor: default; }
   button:focus-visible, select:focus-visible, input:focus-visible { outline: 1px solid var(--ph); outline-offset: 1px; }
-  #cmd { flex: 1 1 260px; min-width: 200px; caret-color: var(--ph); }
-  #cmd::placeholder { color: var(--ph-faint); }
+  [hidden] { display: none !important; }
+
   #bottom { position: fixed; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; pointer-events: none; }
   #bottom > * { pointer-events: auto; }
-  #log { padding: 0 16px 4px; font-size: 18px; white-space: pre-wrap; pointer-events: none !important; text-shadow: 0 0 2px var(--ph); min-height: 1.1em; }
-  #devpanel { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 16px; border-top: 1px dashed var(--ph-faint); }
-  #devpanel[hidden] { display: none; }
+  #log { padding: 0 16px 4px; font-size: 18px; line-height: 1.1; pointer-events: none !important; text-shadow: 0 0 2px var(--ph); }
+  #log div { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #log .pilot { color: #9dffb8; }
+  #log .atc { color: var(--ph); }
+  #log .warn { color: var(--amber); text-shadow: 0 0 3px var(--amber); }
+  #log .score { color: var(--ph-dim); }
+  #panel { display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; padding: 8px 16px; background: rgba(0,0,0,.88); border-top: 1px solid var(--ph-faint); }
+  #panel.locked .needs-own { opacity: .35; pointer-events: none; }
+  #pHead { grid-column: 1 / -1; font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-variant-numeric: tabular-nums; }
+  #pDial { display: flex; flex-direction: column; align-items: center; gap: 4px; grid-row: span 3; }
+  #dial { width: 112px; height: 112px; touch-action: none; cursor: grab; }
+  .dirs { display: flex; gap: 4px; }
+  .dirs button { padding: 0 8px; font-size: 17px; }
+  .row { display: flex; gap: 4px; overflow-x: auto; scrollbar-width: none; align-items: center; }
+  .row::-webkit-scrollbar { display: none; }
+  .row .lab { color: var(--ph-dim); font-size: 16px; min-width: 34px; }
+  .row button { padding: 0 8px; flex: none; }
+  #bAcc, #bTwr { border-color: var(--amber); color: var(--amber); text-shadow: 0 0 2px var(--amber); }
+  #devpanel { display: flex; flex-wrap: wrap; gap: 8px; padding: 6px 16px; border-top: 1px dashed var(--ph-faint); background: #000; }
   #devpanel .note { color: var(--ph-dim); font-size: 16px; align-self: center; }
-  #helpbox { position: fixed; inset: 0; background: rgba(0,0,0,.92); padding: max(24px, env(safe-area-inset-top)) 16px 24px; overflow: auto; font-size: 19px; line-height: 1.3; z-index: 10; }
-  #helpbox[hidden] { display: none; }
-  #helpbox h2 { font-weight: normal; font-size: 26px; margin: 0 0 8px; letter-spacing: 2px; }
-  #helpbox table { border-collapse: collapse; margin: 6px 0 14px; }
-  #helpbox td { padding: 1px 14px 1px 0; vertical-align: top; }
-  #helpbox td:first-child { white-space: nowrap; }
-  .warn { color: var(--amber); text-shadow: 0 0 6px var(--amber); }
+  #bar { padding: 8px 16px max(10px, env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: #000; border-top: 1px solid var(--ph-faint); }
+  #cmd { flex: 1 1 240px; min-width: 180px; caret-color: var(--ph); }
+  #cmd::placeholder { color: var(--ph-dim); text-shadow: none; }
+
+  #fixmenu { position: fixed; display: flex; gap: 4px; z-index: 5; }
+  #fixmenu button { background: #000; }
+
+  .sheet { position: fixed; inset: 0; background: #000; padding: max(24px, env(safe-area-inset-top)) 16px 32px; overflow: auto; font-size: 19px; line-height: 1.3; z-index: 10; }
+  .sheet .inner { max-width: 760px; }
+  .sheet h1 { font-weight: normal; font-size: 34px; letter-spacing: 3px; margin: 0 0 4px; }
+  .sheet h2 { font-weight: normal; font-size: 24px; letter-spacing: 2px; margin: 18px 0 6px; }
+  .sheet p { margin: 4px 0; }
+  .sheet table { border-collapse: collapse; }
+  .sheet td { padding: 1px 16px 1px 0; vertical-align: top; }
+  .sheet td:first-child { white-space: nowrap; color: #9dffb8; }
+  .sheet .go { margin-top: 18px; font-size: 26px; padding: 4px 24px; border-color: var(--ph); }
+  #overBody { white-space: pre; font-size: 24px; }
+
   @media (max-width: 600px) {
     .hud { font-size: 16px; } #tl .big { font-size: 22px; }
     #strips { display: none; }
     button, select, input { font-size: 17px; padding: 2px 6px; }
     #log { font-size: 15px; }
+    #pHead { font-size: 16px; }
+    #dial { width: 96px; height: 96px; }
   }
 </style>
 </head>
@@ -64,44 +94,82 @@
   <div id="stat" class="dim"></div>
 </div>
 <div id="tr" class="hud"><div id="strips"></div></div>
+
+<div id="fixmenu" hidden>
+  <button data-act="dct">DCT</button><button data-act="hold">HOLD</button>
+</div>
+
 <div id="bottom">
-  <div id="log"></div>
+  <div id="log" aria-live="polite"></div>
+  <div id="panel" hidden>
+    <div id="pHead"></div>
+    <div id="pDial">
+      <canvas id="dial" width="112" height="112" aria-label="方位ダイヤル"></canvas>
+      <div class="dirs needs-own"><button data-dir="-1" title="左旋回で">L</button><button data-dir="0" title="近い側へ">近</button><button data-dir="1" title="右旋回で">R</button></div>
+    </div>
+    <div class="row">
+      <button id="bAcc" title="通信設定（レーダー識別）">ACC 通信設定</button>
+      <button id="bTwr" title="東京タワーへ移管">TWR 移管</button>
+      <button id="b34L">APP 34L</button><button id="b34R">APP 34R</button>
+      <button id="bStar" title="STAR に戻る">STAR</button>
+      <button id="bClose" title="選択解除（Esc）">×</button>
+    </div>
+    <div class="row needs-own" id="altRow"><span class="lab">ALT</span></div>
+    <div class="row needs-own" id="spdRow"><span class="lab">SPD</span></div>
+  </div>
   <div id="devpanel" hidden>
     <span class="note">テスト用:</span>
     <select id="star" aria-label="出現させる STAR"></select>
     <button id="spawn" title="選んだ STAR の入口に 1 機出す">1機出す</button>
-    <button id="auto" title="設計書の方面比率で 90〜180 秒ごとに自動で出す">自動出現</button>
+    <button id="auto" class="on" title="自動出現の入/切">自動出現</button>
   </div>
   <div id="bar">
-    <button id="help" title="操作説明">?</button>
+    <button id="help" title="遊び方">?</button>
     <button id="pause" title="一時停止（Space）">❚❚</button>
     <button data-ts="1" class="on">x1</button><button data-ts="2">x2</button><button data-ts="4">x4</button><button data-ts="8">x8</button>
     <button id="lbl" class="on" title="経路点名の表示">FIX</button>
-    <button id="dev" title="テスト用の出現操作を表示">DEV</button>
-    <input id="cmd" placeholder="機体をタップ → L250 A50 S190" autocomplete="off" autocapitalize="characters" spellcheck="false">
+    <button id="dev" title="テスト用の出現操作">DEV</button>
+    <input id="cmd" placeholder="機体をタップ、または JAL123 L250 A50" autocomplete="off" autocapitalize="characters" spellcheck="false">
   </div>
 </div>
 
-<div id="helpbox" hidden>
-  <h2>操作（試作 M2 時点）</h2>
-  <table>
-    <tr><td>機体をタップ</td><td>選択。残りの経路が点線で出る</td></tr>
-    <tr><td>ドラッグ / ホイール・ピンチ</td><td>画面の移動 / 拡大縮小</td></tr>
-    <tr><td>DEV</td><td>テスト用の出現操作（1機出す・自動出現）を表示</td></tr>
-    <tr><td>x1〜x8 / Space</td><td>時間の速さ / 一時停止</td></tr>
-  </table>
-  <h2>指示（入力欄、Enter で送信）</h2>
-  <table>
-    <tr><td>L250 / R250 / H250</td><td>左旋回・右旋回・近い側で 磁方位 250°</td></tr>
-    <tr><td>A50</td><td>高度 5,000ft（百 ft 単位）</td></tr>
-    <tr><td>S190</td><td>速度 190kt</td></tr>
-    <tr><td>D ARLON</td><td>経路上の ARLON へ直行</td></tr>
-    <tr><td>STAR</td><td>STAR に戻る（高度指示も解除）</td></tr>
-    <tr><td>C 34L</td><td>ILS 34L 進入許可</td></tr>
-    <tr><td>JAL123 L250 A50</td><td>便名を先頭に付けると、その機体に指示（前方一致可）</td></tr>
-  </table>
-  <p>M2 では全機が自動で進入・着陸します。手動の進入許可・待機・ハンドオフは M3 で追加予定。</p>
-  <p class="dim">画面をタップで閉じる</p>
+<div id="helpbox" class="sheet">
+  <div class="inner">
+    <h1>HANEDA APPROACH</h1>
+    <p class="dim">あなたは東京アプローチ。北風運用、羽田 34L/34R への到着機を担当する。</p>
+    <h2>1 機の流れ</h2>
+    <table>
+      <tr><td>① 通信設定</td><td>機体が入口に現れ「TOKYO APP, JAL123, 13000, AKSEL 1A ARRIVAL, INFO C」と呼んでくる（データブロック点滅・CHK）。<b>ACC</b> で応答すると管轄に入る。60 秒以内に応答しないと減点</td></tr>
+      <tr><td>② 順序付け</td><td>機体は STAR を自動で飛ぶ。詰まりそうなら 速度・方位・高度・待機 で間隔を作る</td></tr>
+      <tr><td>③ 進入許可</td><td><b>APP 34L / 34R</b>。STAR 上なら公示の進入経路へ、誘導中ならローカライザーに会合する。許可しないまま STAR 終点に着くと公示の待機に入る</td></tr>
+      <tr><td>④ タワー移管</td><td>ローカライザーに乗ったら <b>TWR</b>。滑走路 2NM 手前までに移管しないと着陸復行</td></tr>
+    </table>
+    <h2>指示</h2>
+    <table>
+      <tr><td>方位</td><td>ダイヤルをドラッグして離す（L / R で旋回方向を指定）　<span class="dim">L250 R250 H250</span></td></tr>
+      <tr><td>高度・速度</td><td>ALT / SPD の列から選ぶ（ALT は百 ft 単位）　<span class="dim">A50 S190</span></td></tr>
+      <tr><td>直行・待機</td><td>機体を選んだまま経路点をタップ → DCT / HOLD　<span class="dim">D ARLON　HOLD WEDGE</span></td></tr>
+      <tr><td>STAR 復帰</td><td>STAR　（前方の最寄りの経路点へ戻る）</td></tr>
+      <tr><td>入力欄</td><td>便名を先頭に付けると選択なしで指示できる　<span class="dim">JAL1 L250 A50 S190</span></td></tr>
+    </table>
+    <h2>採点</h2>
+    <table>
+      <tr><td>着陸</td><td>+100、ただし基準時間からの遅延 1 分ごとに −5</td></tr>
+      <tr><td>減点</td><td>通信設定の遅れ −20 / 着陸復行 −50 / 間隔違反 −200</td></tr>
+      <tr><td>終了</td><td>間隔違反（水平 3NM かつ 垂直 1000ft 未満）が 3 回。34L と 34R に並んで最終進入中の 2 機は対象外</td></tr>
+      <tr><td>警告</td><td>60 秒以内に違反しそうな機体は琥珀色</td></tr>
+    </table>
+    <p class="dim">経路・経路点・待機・進入方式は AIP Japan（2024-10 / 2025-10 発効）準拠。機体性能と運用規則は簡略化。航法用ではない。</p>
+    <button id="start" class="go">開始</button>
+  </div>
+</div>
+
+<div id="over" class="sheet" hidden>
+  <div class="inner">
+    <h1 id="overTitle">終了</h1>
+    <div id="overBody"></div>
+    <button id="restart" class="go">もう一度</button>
+  </div>
 </div>
 
 <script src="data/rjtt_north.js"></script>

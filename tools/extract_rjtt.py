@@ -55,6 +55,21 @@ def parse_star(p):
                                             distNm=[float(x) for x in dd[:n - 1]], description=desc,
                                             effective=eff[0] if eff else None)
 
+def parse_holds(p):
+    """STAR ページ末尾の待機経路表（Waypoint / Inbound Course / Turn / Minimum Altitude）を読む。"""
+    if "Hold" not in p:
+        return {}
+    seg = p[p.rfind("Navigation\nSpecification"):]
+    ids = re.findall(r"^([A-Z]{5}|[A-Z]{3})\s*$", seg, re.M)
+    tc = re.findall(r"^\((\d{3}\.\d)\)\s*$", seg, re.M)
+    mc = re.findall(r"^(\d{3})\s*$", seg, re.M)
+    dirs = re.findall(r"^([RL])\s*$", seg, re.M)
+    mins = re.findall(r"^(\d{4,5})\s*$", seg, re.M)
+    return {ids[i]: dict(inboundTrue=float(tc[i]), inboundMag=int(mc[i]), turn=dirs[i],
+                         minAltFt=int(mins[i]) if i < len(mins) else None, legMin=1.0, maxKias=230)
+            for i in range(len(dirs))}
+
+
 def alt_constraints(desc):
     out = {}
     for m in re.finditer(r"to ([A-Z0-9]{3,5}) at (or above |or below )?(FL\d+|\d+FT)", desc.replace("SALL Y", "SALLY")):
@@ -67,8 +82,10 @@ def alt_constraints(desc):
 
 def main():
     pages = load_text()
-    stars = {}
+    stars, holds = {}, {}
     for p in pages:
+        if "RWY34R/34L" in p and "STANDARD ARRIVAL" in p:
+            holds.update(parse_holds(p))
         r = parse_star(p)
         if r and len(r[1]["fixes"]) >= 3:
             r[1]["altitude"] = alt_constraints(r[1]["description"])
@@ -109,7 +126,7 @@ def main():
     data = dict(
         meta=dict(airport="RJTT", config="north (34L/34R arrivals)", magVar=-7.9,
                   source=AIP_URL, note="AIP Japan RJTT AD2 (STAR EFF 31 OCT 2024 / IAC EFF 2 OCT 2025). Not for navigation."),
-        runways=runways, fixes=dict(sorted(fixes.items())), stars=stars,
+        runways=runways, fixes=dict(sorted(fixes.items())), stars=stars, holds=holds,
         approaches={
             # ILS Z RWY34L: CREAM(IAF)/ARLON(IF) 5000, APOLO(FAF) D15.1 IHA, LOC 111.7 IHA
             "34L": dict(name="ILS Z RWY34L", legs=[["ARLON", "=5000"], ["APOLO", "=5000"]], faf="APOLO", gpDeg=3.0),
