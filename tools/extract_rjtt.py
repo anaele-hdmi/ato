@@ -90,10 +90,16 @@ def main():
     # GODIN: AIP 表で GODIN→CHIPS 189.1°T 11.8NM, CHIPS→COLOR 189.1°T 11.7NM
     c = fixes["COLOR"]; g = dest(c["lat"], c["lon"], 9.1, 23.5)
     fixes["GODIN"] = dict(lat=g[0], lon=g[1], src="AIP-DR(back)", spreadNm=0.0)
-    # 進入経路上の点（AIP 図中に座標記載なし。opennav 値で、滑走路延長線上にあることを検算済み）
-    for k, (la, lo) in {"APOLO": (35.3220333, 139.9374389), "ACTOR": (35.4594444, 139.8403556),
-                        "CECIL": (35.4497167, 139.868875), "CREST": (35.4786167, 139.8484222),
-                        "UTIBO": (34.9463944, 139.8955278)}.items():
+    # 進入方式図（ILS Z RWY34L, EFF 2 OCT 2025）に座標記載のある点は AIP 値で上書き（推測航法値との差は 0.05NM 以内）
+    for k, (a, b) in {"CREAM": ("351743.4N", "1400612.4E"), "ARLON": ("351525.3N", "1395859.8E"),
+                      "APOLO": ("351919.32N", "1395614.78E")}.items():
+        drv = fixes.get(k)
+        fixes[k] = dict(lat=dms(a), lon=dms(b), src="AIP", spreadNm=0.0)
+        if drv:
+            fixes[k]["drDiffNm"] = round(dist((dms(a), dms(b)), (drv["lat"], drv["lon"])), 3)
+    # 図中に座標記載のない点は opennav 値（滑走路延長線上にあることを検算済み）
+    for k, (la, lo) in {"ACTOR": (35.4594444, 139.8403556), "CECIL": (35.4497167, 139.868875),
+                        "CREST": (35.4786167, 139.8484222), "UTIBO": (34.9463944, 139.8955278)}.items():
         fixes[k] = dict(lat=la, lon=lo, src="opennav", spreadNm=None)
     rw = {"34L": ("353211.76N", "1394708.41E", 329.88, 18.2), "34R": ("353233.02N", "1394811.34E", 329.88, 19.7),
           "16L": ("353346.27N", "1394719.34E", 149.88, 19.2), "16R": ("353322.47N", "1394618.19E", 149.88, 16.4),
@@ -104,9 +110,17 @@ def main():
         meta=dict(airport="RJTT", config="north (34L/34R arrivals)", magVar=-7.9,
                   source=AIP_URL, note="AIP Japan RJTT AD2 (STAR EFF 31 OCT 2024 / IAC EFF 2 OCT 2025). Not for navigation."),
         runways=runways, fixes=dict(sorted(fixes.items())), stars=stars,
-        approaches={"34L": dict(iaf="ARLON", faf="APOLO"), "34R": dict(iaf="CREAM", iF="CACAO", note="ILS Y via KAIHO-CECIL-CREST")})
+        approaches={
+            # ILS Z RWY34L: CREAM(IAF)/ARLON(IF) 5000, APOLO(FAF) D15.1 IHA, LOC 111.7 IHA
+            "34L": dict(name="ILS Z RWY34L", legs=[["ARLON", "=5000"], ["APOLO", "=5000"]], faf="APOLO", gpDeg=3.0),
+            # ILS Z RWY34R: CREAM(IAF) 4000 - CLOAK - CAMEL(IF) 4000 - CACAO(FAF) D12.1 ITC, LOC 108.9 ITC
+            "34R": dict(name="ILS Z RWY34R", legs=[["CREAM", "=4000"], ["CLOAK", "=4000"], ["CAMEL", "=4000"], ["CACAO", "=4000"]],
+                        faf="CACAO", gpDeg=3.0)},
+        speeds=dict(note="ILS Z 34L/34R: 180KIAS at D10.0, 160KIAS at D5.0"))
     os.makedirs(os.path.dirname(OUT), exist_ok=True)
     json.dump(data, open(OUT, "w"), indent=1, ensure_ascii=False)
+    with open(OUT[:-5] + ".js", "w") as f:  # file:// で開いても読めるよう JS として同梱
+        f.write("window.RJTT = " + json.dumps(data, ensure_ascii=False) + ";\n")
     print(f"stars={len(stars)} fixes={len(fixes)} -> {OUT}")
 
 if __name__ == "__main__":

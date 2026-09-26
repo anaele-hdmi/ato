@@ -42,7 +42,11 @@
 | POLIX | 北東 | POLIX 2A | POLIX 1C / 1H | POLIX 2K |
 
 - MVP では **A（→34L）と C（→34R）** を使う。H と K は第2段階で追加。
-- 最終進入: 34L は ARLON → APOLO → 滑走路、34R は CREAM → 最終進入コースへ誘導。
+- 最終進入（AIP 進入方式図 ILS Z, EFF 2 OCT 2025）
+  - 34L: ARLON(IF) 5000ft → APOLO(FAF, D15.1 IHA) → 3° パス
+  - 34R: CREAM(IAF) → CLOAK → CAMEL(IF) 4000ft → CACAO(FAF, D12.1 ITC) → 3° パス
+  - 速度: D10 で 180kt、D5 で 160kt
+  - CREAM・ARLON・APOLO の座標は進入方式図の記載値（推測航法値との差 0.04〜0.05NM）
 
 ## 3. ゲームの流れ
 
@@ -118,23 +122,23 @@
 
 ```
 index.html            画面・スタイル
-src/main.js           ループ・描画
-src/sim.js            機体モデル・STAR 追従・ILS
+src/main.js           ループ・描画・入力・交通生成
+src/sim.js            機体モデル・STAR 追従・ILS（node でもテスト可）
 src/cmd.js            コマンド解析
-src/traffic.js        交通生成
+test/sim.test.js      全 STAR を自動飛行させ着陸と高度制限を検証（node test/sim.test.js）
 data/rjtt_north.json  実データ（抽出スクリプトで生成）
 data/rjtt_north.js    上記を window.RJTT に格納（file:// でも動作させるため）
 tools/extract_rjtt.py データ抽出
 ```
 
-ビルド工程は設けない（素の ES modules ＋ Canvas 2D）。
+ビルド工程は設けない（通常の `<script>` ＋ Canvas 2D。file:// で開いても動くよう ES modules は使わない）。
 
 ## 9. 段階計画
 
 | 段階 | 内容 | 完了条件 |
 |---|---|---|
-| M1 | 地図描画（滑走路・STAR・経路点）＋ CRT 表現 | 実座標の地図が緑燐光で表示される |
-| M2 | 機体 1 機が STAR → ILS → 着陸まで自動で飛ぶ | AKSEL 1A で 34L に着陸する |
+| M1 ✅ | 地図描画（滑走路・STAR・経路点）＋ CRT 表現 | 実座標の地図が緑燐光で表示される |
+| M2 ✅ | 機体が STAR → ILS → 着陸まで自動で飛ぶ | A/C/H 系 15 本すべてで高度制限を守って着陸（テスト済み） |
 | M3 | 交通生成・コマンド・クリック操作・間隔違反判定・スコア | 遊べる状態 |
 | M4 | H/K 系 STAR、待機（ホールディング）、倍速、効果音、ハイスコア保存 | 継続して遊べる状態 |
 | M5 | 南風運用（22/23）、運用切替イベント | — |
@@ -144,6 +148,6 @@ tools/extract_rjtt.py データ抽出
 | 項目 | 内容 | 対応 |
 |---|---|---|
 | データの鮮度 | 2026-09 時点で最新の AIRAC か未確認 | 抽出スクリプトを残し、新 PDF で再生成できるようにする |
-| 34R の最終進入経路 | CREAM → CACAO 間の進入方式の細部は PDF の図から完全には抽出できていない | MVP では CREAM 以降をレーダー誘導（プレイヤーの方位指示）で処理 |
+| 34R の最終進入経路 | ILS Z RWY34R の CREAM→CLOAK→CAMEL→CACAO を採用済み | 解決 |
 | 高度制限の抽出 | 本文記述からの正規表現抽出。「at」「at or above」「at or below」のみ対応 | M2 で STAR ごとに目視確認 |
 | 平行進入の間隔免除 | 実際の運用条件（NTZ 監視など）を簡略化している | ゲーム上の仕様として明記 |

@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Haneda Approach</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=VT323&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #000;
+    --ph: #33ff66;      /* 燐光グリーン */
+    --ph-dim: #1a8a3a;
+    --ph-faint: #0c3d1a;
+    --amber: #ffcc33;   /* 警告のみ */
+    --font: "VT323", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ph); font-family: var(--font); overflow: hidden; }
+  body { touch-action: none; user-select: none; -webkit-user-select: none; }
+  #scope { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  /* CRT: 走査線とビネット */
+  #crt { position: fixed; inset: 0; pointer-events: none;
+    background:
+      repeating-linear-gradient(to bottom, rgba(0,0,0,0) 0 2px, rgba(0,0,0,.28) 2px 3px),
+      radial-gradient(ellipse at center, rgba(0,0,0,0) 60%, rgba(0,0,0,.55) 100%);
+    mix-blend-mode: multiply; }
+  .hud { position: fixed; font-size: 20px; line-height: 1.05; text-shadow: 0 0 6px var(--ph); pointer-events: none; }
+  #tl { top: max(10px, env(safe-area-inset-top)); left: 16px; }
+  #tr { top: max(10px, env(safe-area-inset-top)); right: 16px; text-align: right; }
+  #tl .big { font-size: 28px; letter-spacing: 2px; }
+  .dim { color: var(--ph-dim); text-shadow: none; }
+  #strips { white-space: pre; }
+  #bar { position: fixed; left: 0; right: 0; bottom: 0; padding: 8px 16px max(10px, env(safe-area-inset-bottom));
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; background: linear-gradient(to top, rgba(0,0,0,.9), rgba(0,0,0,0)); }
+  button, select, input { font-family: var(--font); font-size: 20px; color: var(--ph); background: #000;
+    border: 1px solid var(--ph-dim); padding: 2px 10px; border-radius: 0; text-shadow: 0 0 5px var(--ph); }
+  button:hover, button.on { border-color: var(--ph); box-shadow: 0 0 6px var(--ph-dim) inset; }
+  button:focus-visible, select:focus-visible, input:focus-visible { outline: 1px solid var(--ph); outline-offset: 1px; }
+  #cmd { flex: 1 1 260px; min-width: 200px; caret-color: var(--ph); }
+  #cmd::placeholder { color: var(--ph-faint); }
+  #log { position: fixed; left: 16px; bottom: 64px; font-size: 18px; white-space: pre; pointer-events: none; text-shadow: 0 0 5px var(--ph); }
+  .warn { color: var(--amber); text-shadow: 0 0 6px var(--amber); }
+  @media (max-width: 600px) {
+    .hud { font-size: 16px; } #tl .big { font-size: 22px; }
+    #strips { display: none; }
+    button, select, input { font-size: 17px; padding: 2px 6px; }
+    #log { bottom: 104px; font-size: 15px; }
+  }
+</style>
+</head>
+<body>
+<canvas id="scope" aria-label="レーダー画面"></canvas>
+<div id="crt"></div>
+
+<div id="tl" class="hud">
+  <div class="big">HANEDA APPROACH</div>
+  <div>RJTT RWY 34L/34R <span class="dim">ARR</span></div>
+  <div id="clock">00:00:00</div>
+  <div id="stat" class="dim"></div>
+</div>
+<div id="tr" class="hud"><div id="strips"></div></div>
+<div id="log"></div>
+
+<div id="bar">
+  <select id="star" aria-label="STAR"></select>
+  <button id="spawn">SPAWN</button>
+  <button id="auto" title="自動で順番に出現させる">AUTO</button>
+  <button id="pause">❚❚</button>
+  <button data-ts="1" class="on">x1</button><button data-ts="2">x2</button><button data-ts="4">x4</button><button data-ts="8">x8</button>
+  <button id="lbl" class="on" title="経路点名の表示">FIX</button>
+  <input id="cmd" placeholder="JAL123 L250 A50 S190 / D ARLON / C 34L" autocomplete="off" autocapitalize="characters" spellcheck="false">
+</div>
+
+<script src="data/rjtt_north.js"></script>
+<script src="src/sim.js"></script>
+<script src="src/cmd.js"></script>
+<script src="src/main.js"></script>
+</body>
+</html>

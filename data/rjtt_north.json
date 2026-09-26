@@ -82,16 +82,17 @@
    "spreadNm": 0.0
   },
   "APOLO": {
-   "lat": 35.3220333,
-   "lon": 139.9374389,
-   "src": "opennav",
-   "spreadNm": null
+   "lat": 35.32203333333334,
+   "lon": 139.9374388888889,
+   "src": "AIP",
+   "spreadNm": 0.0
   },
   "ARLON": {
-   "lat": 35.2562685355211,
-   "lon": 139.98374296996133,
-   "src": "AIP-DR",
-   "spreadNm": 0.085
+   "lat": 35.25702777777778,
+   "lon": 139.98327777777777,
+   "src": "AIP",
+   "spreadNm": 0.0,
+   "drDiffNm": 0.051
   },
   "AROSA": {
    "lat": 34.700472222222224,
@@ -166,10 +167,11 @@
    "spreadNm": 0.0
   },
   "CREAM": {
-   "lat": 35.29483102688668,
-   "lon": 140.10383665845782,
-   "src": "AIP-DR",
-   "spreadNm": 0.073
+   "lat": 35.29538888888889,
+   "lon": 140.10344444444445,
+   "src": "AIP",
+   "spreadNm": 0.0,
+   "drDiffNm": 0.039
   },
   "CREST": {
    "lat": 35.4786167,
@@ -1289,13 +1291,45 @@
  },
  "approaches": {
   "34L": {
-   "iaf": "ARLON",
-   "faf": "APOLO"
+   "name": "ILS Z RWY34L",
+   "legs": [
+    [
+     "ARLON",
+     "=5000"
+    ],
+    [
+     "APOLO",
+     "=5000"
+    ]
+   ],
+   "faf": "APOLO",
+   "gpDeg": 3.0
   },
   "34R": {
-   "iaf": "CREAM",
-   "iF": "CACAO",
-   "note": "ILS Y via KAIHO-CECIL-CREST"
+   "name": "ILS Z RWY34R",
+   "legs": [
+    [
+     "CREAM",
+     "=4000"
+    ],
+    [
+     "CLOAK",
+     "=4000"
+    ],
+    [
+     "CAMEL",
+     "=4000"
+    ],
+    [
+     "CACAO",
+     "=4000"
+    ]
+   ],
+   "faf": "CACAO",
+   "gpDeg": 3.0
   }
+ },
+ "speeds": {
+  "note": "ILS Z 34L/34R: 180KIAS at D10.0, 160KIAS at D5.0"
  }
 }
