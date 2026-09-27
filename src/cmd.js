@@ -5,12 +5,13 @@
   // 1 つの指示を機体に適用。戻り値 { ok, msg }
   function apply(ac, verb, arg) {
     if (verb === "ACC") return ac.accept();
-    if (ac.ctl === "OFFER") return { ok: false, msg: "先に通信設定（ACC）" };
+    if (ac.ctl === "OFFER") return { ok: false, msg: "先にハンドオフを受け入れる（便名をタップ／ACC）" };
+    if (ac.ctl === "WAIT") return { ok: false, msg: "まだ周波数に来ていない（初回通信待ち）" };
     if (ac.ctl === "TWR") return { ok: false, msg: "タワーへ移管済み" };
     switch (verb) {
       case "H": case "L": case "R": return ac.cmdHeading((+arg % 360) || 360, verb === "L" ? -1 : verb === "R" ? 1 : 0);
       case "A": return ac.cmdAltitude(+arg * 100);
-      case "S": return ac.cmdSpeed(+arg);
+      case "S": return ac.cmdSpeed(arg == null ? null : +arg);
       case "D": return ac.cmdDirect(arg);
       case "HOLD": return ac.cmdHold(arg);
       case "C": return ac.cmdClearApproach(arg);
@@ -38,6 +39,7 @@
       if ((m = /^([HLR])(\d{1,3})$/.exec(t))) r = apply(ac, m[1], m[2]);
       else if ((m = /^A(\d{1,3})$/.exec(t))) r = apply(ac, "A", m[1]);
       else if ((m = /^S(\d{3})$/.exec(t))) r = apply(ac, "S", m[1]);
+      else if (t === "SN") r = apply(ac, "S", null); // 速度指示の解除
       else if ((t === "D" || t === "HOLD" || t === "C") && toks[i + 1]) r = apply(ac, t, toks[++i]);
       else if (t === "ACC" || t === "TWR" || t === "STAR") r = apply(ac, t);
       else r = { ok: false, msg: `${t}?` };

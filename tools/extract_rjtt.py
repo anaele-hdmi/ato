@@ -108,15 +108,19 @@ def main():
     c = fixes["COLOR"]; g = dest(c["lat"], c["lon"], 9.1, 23.5)
     fixes["GODIN"] = dict(lat=g[0], lon=g[1], src="AIP-DR(back)", spreadNm=0.0)
     # 進入方式図（ILS Z RWY34L, EFF 2 OCT 2025）に座標記載のある点は AIP 値で上書き（推測航法値との差は 0.05NM 以内）
+    # ILS X/Y RWY34L・ILS Y RWY34R（EFF 2 OCT 2025）、UTIBO は SID 表の値
     for k, (a, b) in {"CREAM": ("351743.4N", "1400612.4E"), "ARLON": ("351525.3N", "1395859.8E"),
-                      "APOLO": ("351919.32N", "1395614.78E")}.items():
+                      "APOLO": ("351919.32N", "1395614.78E"), "KAIHO": ("351857.8N", "1394642.4E"),
+                      "AVION": ("352437.2N", "1395105.5E"), "ALLIE": ("352637.5N", "1395105.3E"),
+                      "AZURE": ("352821.48N", "1394951.68E"), "CHIBA": ("353522.20N", "1400359.96E"),
+                      "UTIBO": ("345647.0N", "1395343.9E")}.items():
         drv = fixes.get(k)
         fixes[k] = dict(lat=dms(a), lon=dms(b), src="AIP", spreadNm=0.0)
         if drv:
             fixes[k]["drDiffNm"] = round(dist((dms(a), dms(b)), (drv["lat"], drv["lon"])), 3)
     # 図中に座標記載のない点は opennav 値（滑走路延長線上にあることを検算済み）
     for k, (la, lo) in {"ACTOR": (35.4594444, 139.8403556), "CECIL": (35.4497167, 139.868875),
-                        "CREST": (35.4786167, 139.8484222), "UTIBO": (34.9463944, 139.8955278)}.items():
+                        "CREST": (35.4786167, 139.8484222), "KASGA": (35.90685, 139.821)}.items():
         fixes[k] = dict(lat=la, lon=lo, src="opennav", spreadNm=None)
     rw = {"34L": ("353211.76N", "1394708.41E", 329.88, 18.2), "34R": ("353233.02N", "1394811.34E", 329.88, 19.7),
           "16L": ("353346.27N", "1394719.34E", 149.88, 19.2), "16R": ("353322.47N", "1394618.19E", 149.88, 16.4),
