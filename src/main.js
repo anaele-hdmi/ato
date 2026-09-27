@@ -335,7 +335,7 @@
     const ac = S.sel; if (!ac) return;
     const key = [ac.cs, ac.ctl, ac.mode, ac.rwy, ac.cleared, ac.altAssigned, ac.spdAssigned, dialDir, dialVal].join("|");
     $("pHead").textContent = `${ac.cs} ${ac.type}/${ac.wake} ${ac.star}  ${String(Math.round(ac.alt / 100)).padStart(3, "0")} ${Math.round(ac.spd)}kt HDG${String(ac.magHdg).padStart(3, "0")}  ${
-      ac.ctl === "OFFER" ? "通信設定待ち" : ac.ctl === "TWR" ? "タワー移管済み" : ac.mode === "HOLD" ? `待機 ${ac.hold.fix.id}` : ac.mode === "LOC" ? `LOC ${ac.rwy}` : ac.cleared ? `進入許可 ${ac.rwy}` : ac.mode === "HDG" ? "レーダー誘導" : "STAR 走行"}`;
+      ac.ctl === "OFFER" ? "通信設定待ち" : ac.ctl === "TWR" ? "タワー移管済み" : ac.mode === "HOLD" ? `待機 ${ac.hold.fix.id}` : ac.mode === "LOC" ? `LOC ${ac.rwy}` : ac.cleared ? `進入許可 ${ac.rwy}` : ac.mode === "HDG" ? "レーダー誘導" : "STAR 飛行中"}`;
     drawDial(ac);
     if (key === panelKey) return; panelKey = key;
     $("bAcc").hidden = ac.ctl !== "OFFER";
