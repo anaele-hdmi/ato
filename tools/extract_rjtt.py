@@ -51,9 +51,20 @@ def parse_star(p):
     dd = re.findall(r"^(\d{1,2}\.\d)\s*$", seg, re.M)
     n = len(dd) + 1
     eff = re.findall(r"EFF:([^)]*)", p)
+    # 速度制限（KIAS）: 表の列は「RNAV1」の並びの後に経路点数ずつ続く。160〜289 の数値と「–」だけの列を速度とみなす
+    toks = [t.strip() for t in seg.split("\n") if t.strip()]
+    idx = [i for i, t in enumerate(toks) if t == "RNAV1"]
+    speeds = {}
+    if len(idx) >= n:
+        st = idx[n - 1] + 1
+        for j in range(6):
+            c = toks[st + j * n: st + (j + 1) * n]
+            if len(c) == n and all(t in ("–", "-") or re.fullmatch(r"(1[6-9]\d|2[0-8]\d)", t) for t in c) and any(t[0].isdigit() for t in c):
+                speeds = {ids[i]: int(v) for i, v in enumerate(c) if v[0].isdigit()}
+                break
     return m.group(1).replace(" ", ""), dict(fixes=ids[:n], trueCourse=[float(x) for x in tc[:n - 1]],
                                             distNm=[float(x) for x in dd[:n - 1]], description=desc,
-                                            effective=eff[0] if eff else None)
+                                            speedKias=speeds, effective=eff[0] if eff else None)
 
 def parse_holds(p):
     """STAR ページ末尾の待機経路表（Waypoint / Inbound Course / Turn / Minimum Altitude）を読む。"""

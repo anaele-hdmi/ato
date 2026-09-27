@@ -205,3 +205,19 @@ XAC R098 / ANZAC L069 / AKSEL R039 / AVEEY R314 / WEDGE L300 / ARLON L009 / CIVI
 - 画面の配色・書式は TAPS の再現ではない（公開資料で確認できなかった）
 - HIGHWAY VISUAL の実際の飛行経路（チャート）は未反映
 - 担当セクターの分割、羽田出発機・成田の交通、風、コースト、NTZ 逸脱は未実装
+
+## 13. 降下の指示（2026-09-27）
+
+根拠: 管制方式基準 (Ⅱ)1(10)・7(7)b、AIP ENR 1.5 2.1.3/2.1.5（ATS シンポジウム 2021 資料の引用）、2006 年改正（高度指定で指示されなかった高度制限は無効）、2016 年 PANS-ATM 改正（DESCEND VIA STAR 導入）、R7.8.7 改正（STAR 公示速度は経路変更で無効にならず、管制官の速度指示が優先）。
+
+| 状況 | 機体の飛び方（実装） |
+|---|---|
+| 管轄に入った直後 | 入口の高度を維持（東京コントロールがどこまで降下させているかは未確認のため、入口高度で統一） |
+| DESCEND VIA STAR TO（`DV40` / 高度の選択肢「VIA STAR」） | STAR の高度制限（at / at or below / at or above）を守って指定高度まで降下。最後の制限を過ぎたら指定高度まで降りる |
+| DESCEND AND MAINTAIN（`A50` / 「MAINTAIN」） | 指定高度へ直接降下。STAR の高度制限は無効 |
+| STAR の公示速度 | 通過した地点・5NM 以内の地点の制限を適用。高度の再指定でも有効。速度指示（S…）が優先 |
+| STAR 経由の進入許可 | STAR と進入方式の高度に従って降下（(Ⅱ)7(7)b(a)） |
+| 誘導中の進入許可 | 指定高度を維持し、グライドパスに会合してから降下 |
+| データブロック 2 行目 | `120↓V040` = DESCEND VIA STAR、`120↓050` = DESCEND AND MAINTAIN |
+
+STAR の公示速度（AIP 表から抽出）: ANZAC・WANDA・AKSEL・WALLY・AVEEY・WALTZ 230kt、CIVIC・EPSON・COACH・EDDIE 210kt。

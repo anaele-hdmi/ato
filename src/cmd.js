@@ -1,4 +1,4 @@
-// コマンド解析: "SKY42 L250 A50 S190" / "D ARLON" / "HOLD WEDGE" / "C 34L" / "ACC" / "TWR" / "STAR"
+// コマンド解析: "SKY42 L250 A50 S190" / "DV50" / "D ARLON" / "HOLD WEDGE" / "C 34L" / "ACC" / "TWR" / "STAR"
 (function (g) {
   const ATC = (g.ATC = g.ATC || {});
 
@@ -11,6 +11,7 @@
     switch (verb) {
       case "H": case "L": case "R": return ac.cmdHeading((+arg % 360) || 360, verb === "L" ? -1 : verb === "R" ? 1 : 0);
       case "A": return ac.cmdAltitude(+arg * 100);
+      case "DV": return ac.cmdDescendVia(+arg * 100);
       case "S": return ac.cmdSpeed(arg == null ? null : +arg);
       case "D": return ac.cmdDirect(arg);
       case "HOLD": return ac.cmdHold(arg);
@@ -26,7 +27,8 @@
     const toks = line.trim().toUpperCase().split(/\s+/).filter(Boolean);
     if (!toks.length) return { ok: false, msgs: [] };
     let ac = selected;
-    if (/^[A-Z]{2,3}\d/.test(toks[0])) {
+    const isCmd = (t) => /^(DV\d{1,3}|[HLRA]\d{1,3}|S\d{3}|SN|D|C|HOLD|ACC|TWR|STAR)$/.test(t);
+    if (/^[A-Z]{2,3}\d/.test(toks[0]) && !isCmd(toks[0])) {
       const hit = aircraft.filter((a) => a.state === "AIR" && a.cs.startsWith(toks[0]));
       if (hit.length !== 1) return { ok: false, msgs: [`${toks[0]}: ${hit.length ? `該当 ${hit.length} 機` : "該当なし"}`] };
       ac = hit[0]; toks.shift();
@@ -38,6 +40,7 @@
       const t = toks[i]; let m, r;
       if ((m = /^([HLR])(\d{1,3})$/.exec(t))) r = apply(ac, m[1], m[2]);
       else if ((m = /^A(\d{1,3})$/.exec(t))) r = apply(ac, "A", m[1]);
+      else if ((m = /^DV(\d{1,3})$/.exec(t))) r = apply(ac, "DV", m[1]); // DESCEND VIA STAR TO
       else if ((m = /^S(\d{3})$/.exec(t))) r = apply(ac, "S", m[1]);
       else if (t === "SN") r = apply(ac, "S", null); // 速度指示の解除
       else if ((t === "D" || t === "HOLD" || t === "C") && toks[i + 1]) r = apply(ac, t, toks[++i]);

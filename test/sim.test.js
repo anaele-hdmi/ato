@@ -38,6 +38,8 @@ const imc = ATC.buildWorld(data, "IMC");
   check(ac.ctl === "OWN" && ac.events.some((e) => e.type === "CHECKIN"), "manual: 数秒後に初回通信");
   run(ac, 1500);
   check(ac.mode === "HOLD" && ac.hold.fix.id === "ARLON" && ac.hold.turn === -1, "manual: 許可限界 ARLON で公示の左旋回待機", ac.mode);
+  check(Math.abs(ac.alt - 12000) < 50, "manual: 降下指示がなければ入口の 12000ft を維持", Math.round(ac.alt));
+  ac.cmdAltitude(5000);
   let maxD = 0; run(ac, 600, () => { maxD = Math.max(maxD, ATC.dist(ac, imc.fixes.ARLON)); });
   check(maxD < 8, "manual: 待機中は ARLON 付近に留まる", `最大 ${maxD.toFixed(1)}NM`);
   ac.cmdClearApproach("34L");
@@ -78,6 +80,21 @@ const imc = ATC.buildWorld(data, "IMC");
   ac.cmdResumeStar();
   const r = ac.cmdClearApproach("34L");
   check(r.ok && ac.app === "ILSZ34L", "VMC: ILS X に繋がらない経路は ILS Z 34L", r.msg);
+}
+// 8. 降下指示の種類: DESCEND VIA STAR は高度制限を守る / DESCEND AND MAINTAIN は制限なしで降下 / 公示速度
+{
+  const passAlt = (ac, id) => { let v = null, last = ac.leg; run(ac, 2400, () => { if (ac.leg !== last) { if (ac.route[last].id === id && v == null) v = { alt: ac.alt, spd: ac.spd }; last = ac.leg; } }); return v; };
+  const a = new ATC.Aircraft(imc, { callsign: "SKY6", star: "AKSEL1A", ctl: "OWN" });
+  const r = a.cmdDescendVia(4000);
+  const w = passAlt(a, "WEDGE");
+  check(r.ok && w && Math.abs(w.alt - 8000) <= 300, "DESCEND VIA STAR: WEDGE を 8000ft で通過", `${r.msg} 実${w && Math.round(w.alt)}`);
+  run(a, 300);
+  check(Math.abs(a.alt - 4000) < 50, "DESCEND VIA STAR: 最後の制限（WEDGE）を過ぎたら指定の 4000ft まで降下し、それより下には降りない", Math.round(a.alt));
+  const b = new ATC.Aircraft(imc, { callsign: "SKY7", star: "AKSEL1A", ctl: "OWN" });
+  b.cmdAltitude(6000);
+  const wb = passAlt(b, "WALLY");
+  check(wb && wb.alt < 11000, "DESCEND AND MAINTAIN: WALLY の 12000ft 制限は無効（先に降下）", `実${wb && Math.round(wb.alt)}`);
+  check(wb && wb.spd <= 231, "公示速度: WALLY を 230kt 以下で通過（高度の再指定後も有効）", `実${wb && Math.round(wb.spd)}`);
 }
 // 7. 後方乱気流間隔の表
 check(ATC.wakeReq("H", "M") === 5 && ATC.wakeReq("H", "H") === 4 && ATC.wakeReq("M", "H") === 3, "後方乱気流間隔 H→M 5 / H→H 4 / M→H 3");

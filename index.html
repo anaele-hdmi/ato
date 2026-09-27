@@ -84,6 +84,7 @@
   #fixmenu { position: fixed; display: flex; gap: 4px; z-index: 5; }
   #pop { position: fixed; z-index: 6; background: var(--panel); border: 1px solid var(--dim); padding: 6px; max-width: calc(100vw - 16px); box-shadow: 0 6px 20px rgba(0,0,0,.5); }
   #popHead { font-size: 12px; color: var(--dim); margin-bottom: 6px; font-family: var(--mono); }
+  #popMode { margin-bottom: 6px; }
   .pg { display: grid; gap: 4px; }
   .pg.alt { grid-template-columns: repeat(4, 1fr); }
   .pg.spd { grid-template-columns: repeat(4, 1fr); }
@@ -129,6 +130,7 @@
 <div id="fixmenu" hidden><button data-act="dct">DCT</button><button data-act="hold">HOLD</button></div>
 <div id="pop" hidden>
   <div id="popHead"></div>
+  <div id="popMode" class="dirs" hidden></div>
   <div id="popGrid" class="pg"></div>
   <div id="dialWrap" hidden>
     <canvas id="dial" width="132" height="132" aria-label="方位ダイヤル"></canvas>
@@ -179,17 +181,20 @@
     <table>
       <tr><td>① ハンドオフ</td><td>東京コントロールが機体を渡してくる。データブロックの便名が水色で点滅する。<b>便名をタップ</b>（または ACC）で受け入れる。60 秒以内に受け入れないと減点</td></tr>
       <tr><td>② 初回通信</td><td>数秒後に機体が周波数を変えて呼んでくる（例「TOKYO APPROACH, SKY42, 13000, AKSEL 1K ARRIVAL, INFORMATION C」）。予定の進入方式を伝え、以後は指示できる</td></tr>
-      <tr><td>③ 順序付け</td><td>機体は STAR を自動で飛ぶ。詰まりそうなら 高度・速度・方位・待機 で間隔を作る</td></tr>
-      <tr><td>④ 進入許可</td><td><b>APP 34L / 34R</b>。STAR 上なら公示の進入経路へ、誘導中なら滑走路延長線に会合する。許可しないまま STAR 終点に着くと公示の待機に入る</td></tr>
-      <tr><td>⑤ タワー移管</td><td>最終進入に入ったら <b>TWR</b>。滑走路 2NM 手前までに移管しないと着陸復行（AIP の復行方式で上昇し待機）</td></tr>
+      <tr><td>③ 降下</td><td>機体は STAR の経路を飛ぶが、<b>降下はあなたの指示</b>があるまで入口の高度を維持する。高度の選択肢で
+        <b>VIA STAR</b>（DESCEND VIA STAR TO：公示の高度制限と速度を守って指定高度まで降下）か
+        <b>MAINTAIN</b>（DESCEND AND MAINTAIN：高度制限は無効、公示速度は有効）を選ぶ</td></tr>
+      <tr><td>④ 順序付け</td><td>詰まりそうなら 速度・方位・待機 で間隔を作る</td></tr>
+      <tr><td>⑤ 進入許可</td><td><b>APP 34L / 34R</b>。STAR 上なら進入経路につながり、STAR と進入方式の高度に従って降下する。誘導中なら指定高度を維持して滑走路延長線に会合する。許可しないまま STAR 終点に着くと公示の待機に入る</td></tr>
+      <tr><td>⑥ タワー移管</td><td>最終進入に入ったら <b>TWR</b>。滑走路 2NM 手前までに移管しないと着陸復行（AIP の復行方式で上昇し待機）</td></tr>
     </table>
     <h2>データブロックの読み方と操作</h2>
     <table>
       <tr><td>1 行目</td><td>便名（大型機は H）。タップで選択・ハンドオフ受け入れ</td></tr>
-      <tr><td>2 行目</td><td>高度（百 ft）↓指示高度。タップで高度の選択肢</td></tr>
+      <tr><td>2 行目</td><td>高度（百 ft）と指定高度。↓V は DESCEND VIA STAR、↓ だけは DESCEND AND MAINTAIN。タップで高度の選択肢</td></tr>
       <tr><td>3 行目</td><td>対地速度（10kt 単位）・速度指示、次の経路点や方位・進入方式。速度部分のタップで速度、残りのタップで方位ダイヤル</td></tr>
       <tr><td>経路点</td><td>機体を選んだまま経路点をタップ → DCT（直行）/ HOLD（待機）</td></tr>
-      <tr><td>入力欄</td><td>SKY4 L250 A50 S190 / D ARLON / HOLD WEDGE / C 34L / TWR（便名は前方一致）</td></tr>
+      <tr><td>入力欄</td><td>SKY4 DV40（VIA STAR）/ A50（MAINTAIN）/ L250 S190 / D ARLON / HOLD WEDGE / C 34L / TWR（便名は前方一致）</td></tr>
     </table>
     <h2>運用と採点</h2>
     <table>

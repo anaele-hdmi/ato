@@ -69,7 +69,7 @@
     const cfg = CONFIGS[configName];
     const stars = {};
     for (const [name, s] of Object.entries(data.stars))
-      stars[name] = { name, rwy: cfg.star(name), fixes: s.fixes.map((id) => ({ id, ...fixes[id], alt: parseAlt(s.altitude[id]) })) };
+      stars[name] = { name, rwy: cfg.star(name), fixes: s.fixes.map((id) => ({ id, ...fixes[id], alt: parseAlt(s.altitude[id]), spd: (s.speedKias || {})[id] || null })) };
     return { fixes, runways, stars, holds: data.holds || {}, config: configName, cfg };
   }
 
@@ -94,7 +94,10 @@
       this.spd = opts.spd ?? 280;
       this.tHdg = this.hdg; this.tAlt = this.alt; this.tSpd = this.spd; this.turnDir = 0;
       this.mode = "LNAV"; // LNAV（経路） / HDG（方位指示） / HOLD（待機） / LOC（最終進入） / MISSED（着陸復行の上昇）
-      this.altAssigned = null; this.spdAssigned = null;
+      // 指定高度（CFL）。管轄に入った時点の高度を維持し、降下は管制官の指示による
+      // via=true: DESCEND VIA STAR（公示の高度制限に従って指定高度まで降下）/ false: DESCEND AND MAINTAIN（高度制限は無効）
+      this.altAssigned = this.alt; this.via = false;
+      this.spdAssigned = null;
       this.gsCaptured = false;
       // OFFER: 東京コントロールからハンドオフ提示中 / WAIT: 受け入れ済み・機体の初回通信待ち / OWN: 担当中 / TWR: タワーへ移管済み
       this.ctl = opts.ctl || (this.auto ? "OWN" : "OFFER");
@@ -134,7 +137,21 @@
         if (c.op === "=" || c.op === "<=") desired = Math.min(desired, c.ft + Math.max(0, d - 3) * this.ftPerNm() * 0.8); // 旋回の先読み分（最大 3NM）早めに降下
         if (!floorSet && (c.op === "=" || c.op === ">=")) { floor = c.ft; floorSet = true; }
       }
-      return Math.max(floor, Math.min(this.alt, desired));
+      // 先に「at / at or below」の制限がなければ、下限（at / at or above）までは降りてよい
+      return Math.max(floor, desired === Infinity ? -Infinity : Math.min(this.alt, desired));
+    }
+
+    // STAR に公示された速度制限（KIAS）。通過した地点、または 5NM 以内に近づいた地点の制限のうち最小値
+    // 高度の再指定や経路変更では無効にならない（管制業務処理規程 R7.8.7 改正）。管制官の速度指示が優先
+    starSpdLimit() {
+      if (this.mode !== "LNAV" || this.cleared) return Infinity;
+      let lim = Infinity;
+      for (let i = 0; i < this.route.length && i <= this.leg; i++) {
+        const f = this.route[i];
+        if (!f.spd) continue;
+        if (i < this.leg || dist(this, f) < 5) lim = Math.min(lim, f.spd);
+      }
+      return lim;
     }
 
     scheduleSpd() {
@@ -190,7 +207,7 @@
       const r = this.rwyObj, m = this.apObj.missed;
       this.mode = "MISSED"; this.missed = m;
       this.tHdg = r.trueHdg; this.turnDir = 0;
-      this.altAssigned = m.alt; this.spdAssigned = null;
+      this.altAssigned = m.alt; this.via = false; this.spdAssigned = null;
       this.cleared = false; this.gsCaptured = false; this.ctl = "OWN";
       this.leg = this.route.length;
       this.emit("GOAROUND", { reason, text: m.text });
@@ -255,7 +272,7 @@
         const gm = this.locGeom();
         this.tHdg = norm360(gm.crs + Math.max(-30, Math.min(30, -gm.xtk * 40)));
         const gpAlt = r.elev + 50 + gm.along * FT_PER_NM_3DEG;
-        if (!this.gsCaptured && this.alt >= gpAlt - 100) { this.gsCaptured = true; this.altAssigned = null; }
+        if (!this.gsCaptured && this.alt >= gpAlt - 100) this.gsCaptured = true;
         if (this.gsCaptured) this.tAlt = gpAlt;
         if (this.auto && this.ctl === "OWN") this.ctl = "TWR";
         if (gm.along < HANDOFF_LIMIT_NM && this.ctl !== "TWR") return this.goAround("NO_TWR");
@@ -266,10 +283,12 @@
 
       // ---- 高度・速度の目標 ----
       if (!(this.mode === "LOC" && this.gsCaptured)) {
-        if (this.altAssigned != null) this.tAlt = this.altAssigned;
-        else if (this.mode === "LNAV") this.tAlt = this.vnavAlt();
+        // STAR 経由の進入許可後は STAR・進入方式の高度に従って降下（管制方式基準 (Ⅱ)7(7)b）
+        if (this.mode === "LNAV" && this.cleared) { const v = this.vnavAlt(); this.tAlt = v === -Infinity ? this.alt : v; }
+        else if (this.mode === "LNAV" && this.via) this.tAlt = Math.max(this.altAssigned, this.vnavAlt());
+        else this.tAlt = this.altAssigned;
       }
-      this.tSpd = this.spdAssigned ?? this.scheduleSpd();
+      this.tSpd = this.spdAssigned ?? Math.min(this.scheduleSpd(), this.starSpdLimit());
       if (this.mode === "LOC") this.tSpd = Math.min(this.tSpd, this.scheduleSpd());
       if (this.mode === "HOLD") this.tSpd = Math.min(this.tSpd, 230);
       if (this.mode === "MISSED") this.tSpd = 200;
@@ -321,8 +340,16 @@
       if (this.mode === "LOC" && this.gsCaptured) return { ok: false, msg: "UNABLE, ESTABLISHED ON FINAL" };
       if (ft < MIN_VECTOR_ALT) return { ok: false, msg: `UNABLE（誘導最低高度 ${MIN_VECTOR_ALT}ft）` };
       if (ft > 15000) return { ok: false, msg: "UNABLE（管轄上限 15000ft）" };
-      this.altAssigned = ft;
+      this.altAssigned = ft; this.via = false; // STAR の高度制限は無効（速度制限は有効）
       return { ok: true, msg: `${ft < this.alt ? "DESCEND AND MAINTAIN" : "CLIMB AND MAINTAIN"} ${ft}` };
+    }
+    // DESCEND VIA STAR TO [高度]: STAR の高度制限と速度に従って指定高度まで降下
+    cmdDescendVia(ft) {
+      if (this.mode !== "LNAV" || this.cleared) return { ok: false, msg: "UNABLE（STAR 上を飛行していない）" };
+      if (ft < MIN_VECTOR_ALT) return { ok: false, msg: `UNABLE（誘導最低高度 ${MIN_VECTOR_ALT}ft）` };
+      if (ft >= this.alt - 50) return { ok: false, msg: "UNABLE（現在高度より低い高度を指定）" };
+      this.altAssigned = ft; this.via = true;
+      return { ok: true, msg: `DESCEND VIA STAR TO ${ft}` };
     }
     cmdSpeed(kt) {
       if (kt == null) { this.spdAssigned = null; return { ok: true, msg: "RESUME NORMAL SPEED" }; }
@@ -356,7 +383,7 @@
         if (Math.abs(angDiff(this.hdg, brgTo(this, f))) < 100 && d < bd) { bd = d; best = i; }
       }
       if (best < 0) return { ok: false, msg: "UNABLE（戻れる経路点がない。誘導して進入許可を）" };
-      this.leg = best; this.mode = "LNAV"; this.hold = null; this.altAssigned = null; this.turnDir = 0;
+      this.leg = best; this.mode = "LNAV"; this.hold = null; this.turnDir = 0;
       return { ok: true, msg: `RESUME ${spoken(this.star)} ARRIVAL VIA ${this.route[best].id}` };
     }
     cmdClearApproach(rwy) {

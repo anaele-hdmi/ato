@@ -431,6 +431,10 @@
     6.4
    ],
    "description": "From XAC, to ANZAC at 13000FT, to TT450, to TT451, to TT452, to TT453, to WANDA at 13000FT, to WEDGE at 8000FT, to ARLON.",
+   "speedKias": {
+    "ANZAC": 230,
+    "WANDA": 230
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "ANZAC": "=13000",
@@ -474,6 +478,10 @@
     6.9
    ],
    "description": "From XAC, to ANZAC at 13000FT, to TT450, to TT451, to TT452, to TT453, to WANDA at 13000FT, to WEDGE at 8000FT, to UMUKI at or above 6000FT, to KAIHO.",
+   "speedKias": {
+    "ANZAC": 230,
+    "WANDA": 230
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "ANZAC": "=13000",
@@ -518,6 +526,10 @@
     14.1
    ],
    "description": "From XAC, to CLONE to TT460, to TT461, to CIVIC at 7000FT, to TT462, to TT463, to TT464, to EPSON at 7000FT, to CREAM.",
+   "speedKias": {
+    "CIVIC": 210,
+    "EPSON": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CIVIC": "=7000",
@@ -551,6 +563,10 @@
     6.4
    ],
    "description": "From AKSEL at 12000FT, to TT454, to TT455, to TT456, to WALLY at 12000FT, to WEDGE at 8000FT, to ARLON.",
+   "speedKias": {
+    "AKSEL": 230,
+    "WALLY": 230
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "WALLY": "=12000",
@@ -588,6 +604,10 @@
     6.9
    ],
    "description": "From AKSEL at 12000FT, to TT454, to TT455, to TT456, to WALLY at 12000FT, to WEDGE at 8000FT, to UMUKI at or above 6000FT, to KAIHO.",
+   "speedKias": {
+    "AKSEL": 230,
+    "WALLY": 230
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "WALLY": "=12000",
@@ -632,6 +652,10 @@
     14.1
    ],
    "description": "From AKSEL, to CLONE, to TT460, to TT461, to CIVIC at 7000FT, to TT462, to TT463, to TT464, to EPSON at 7000FT, to CREAM.",
+   "speedKias": {
+    "CIVIC": 210,
+    "EPSON": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CIVIC": "=7000",
@@ -668,6 +692,10 @@
     6.4
    ],
    "description": "From AROSA, to AVEEY at 11000FT, to TT457, to TT458, to TT459, to WALTZ at 11000FT, to WEDGE at 8000FT, to ARLON.",
+   "speedKias": {
+    "AVEEY": 230,
+    "WALTZ": 230
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "AVEEY": "=11000",
@@ -708,6 +736,10 @@
     6.9
    ],
    "description": "From AROSA, to AVEEY at 11000FT, to TT457, to TT458, to TT459, to WALTZ at 11000FT, to WEDGE at 8000FT, to UMUKI at or above 6000FT, to KAIHO.",
+   "speedKias": {
+    "AVEEY": 230,
+    "WALTZ": 230
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "AVEEY": "=11000",
@@ -752,6 +784,11 @@
     14.1
    ],
    "description": "From AROSA, to AVEEY at 11000FT, to TT460, to TT461, to CIVIC at 7000FT, to TT462, to TT463, to TT464, to EPSON at 7000FT, to CREAM.",
+   "speedKias": {
+    "AVEEY": 230,
+    "CIVIC": 210,
+    "EPSON": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "AVEEY": "=11000",
@@ -801,6 +838,10 @@
     6.2
    ],
    "description": "From GODIN, to CHIPS at or below 13000FT, to COLOR at or below 11000FT, to COPSE, to COACH at 8000FT, to TT465, to TT466, to TT467, to EDDIE at 8000FT, to TT468, to ANDEN, to ARLON.",
+   "speedKias": {
+    "COACH": 210,
+    "EDDIE": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CHIPS": "<=13000",
@@ -854,6 +895,10 @@
     6.9
    ],
    "description": "From GODIN ,to CHIPS at or below 13000FT, to COLOR at or below 11000FT, to COPSE, to COACH at 8000FT, to TT465, to TT466, to TT467, to EDDIE at 8000FT, to TT468, to ANDEN, to UMUKI at or above 6000FT, to KAIHO.",
+   "speedKias": {
+    "COACH": 210,
+    "EDDIE": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CHIPS": "<=13000",
@@ -899,6 +944,10 @@
     13.0
    ],
    "description": "From GODIN ,to CHIPS at or below 13000FT, to COLOR at or below 11000FT, to COPSE, to COACH at 8000FT, to TT465, to TT466, to TT467, to EDDIE at 8000FT, to CREAM.",
+   "speedKias": {
+    "COACH": 210,
+    "EDDIE": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CHIPS": "<=13000",
@@ -949,6 +998,10 @@
     6.2
    ],
    "description": "From POLIX at FL150, to CHIPS at or below 13000FT, to COLOR at or below 11000FT, to COPSE, to COACH at 8000FT, to TT465, to TT466, to TT467, to EDDIE at 8000FT, to TT468, to ANDEN, to ARLON.",
+   "speedKias": {
+    "COACH": 210,
+    "EDDIE": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CHIPS": "<=13000",
@@ -1003,6 +1056,10 @@
     6.9
    ],
    "description": "From POLIX at FL150, to CHIPS at or below 13000FT, to COLOR at or below 11000FT, to COPSE, to COACH at 8000FT, to TT465, to TT466, to TT467, to EDDIE at 8000FT, to TT468, to ANDEN, to UMUKI at or above 6000FT, to KAIHO.",
+   "speedKias": {
+    "COACH": 210,
+    "EDDIE": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CHIPS": "<=13000",
@@ -1049,6 +1106,10 @@
     13.0
    ],
    "description": "From POLIX at FL150, to CHIPS at or below 13000FT, to COLOR at or below 11000FT, to COPSE, to COACH at 8000FT, to TT465, to TT466, to TT467, to EDDIE at 8000FT, to CREAM.",
+   "speedKias": {
+    "COACH": 210,
+    "EDDIE": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CHIPS": "<=13000",
@@ -1103,6 +1164,10 @@
     5.7
    ],
    "description": "From XAC, to CLONE, to TT460, to TT461, to CIVIC at 7000FT, to TT462, to TT463, to TT464, to EPSON at 7000FT, to CREAM, to CLOAK, to CAMEL, to CACAO.",
+   "speedKias": {
+    "CIVIC": 210,
+    "EPSON": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CIVIC": "=7000",
@@ -1154,6 +1219,10 @@
     5.7
    ],
    "description": "From AKSEL, to CLONE, to TT460, to TT461, to CIVIC at 7000FT, to TT462, to TT463, to TT464, to EPSON at 7000FT, to CREAM, to CLOAK, to CAMEL, to CACAO.",
+   "speedKias": {
+    "CIVIC": 210,
+    "EPSON": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CIVIC": "=7000",
@@ -1205,6 +1274,11 @@
     5.7
    ],
    "description": "From AROSA, to AVEEY at 11000FT, to TT460, to TT461, to CIVIC at 7000FT, to TT462, to TT463, toTT464, to EPSON at 7000FT, to CREAM, to CLOAK, to CAMEL, to CACAO.",
+   "speedKias": {
+    "AVEEY": 230,
+    "CIVIC": 210,
+    "EPSON": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "AVEEY": "=11000",
@@ -1257,6 +1331,10 @@
     5.7
    ],
    "description": "From GODIN, to CHIPS at or below 13000FT, to COLOR at or below 11000FT, to COPSE, to COACH at 8000FT, to TT465, to TT466, to TT467, to EDDIE at 8000FT, to CREAM, to CLOAK, to CAMEL, to CACAO.",
+   "speedKias": {
+    "COACH": 210,
+    "EDDIE": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CHIPS": "<=13000",
@@ -1310,6 +1388,10 @@
     5.7
    ],
    "description": "From POLIX at FL150, to CHIPS at or below 13000FT, to COLOR at or below 11000FT, to COPSE, to COACH at 8000FT, to TT465, to TT466, to TT467, to EDDIE at 8000FT, to CREAM, to CLOAK, to CAMEL, to CACAO.",
+   "speedKias": {
+    "COACH": 210,
+    "EDDIE": 210
+   },
    "effective": "31 OCT 2024",
    "altitude": {
     "CHIPS": "<=13000",

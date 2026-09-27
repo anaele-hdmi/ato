@@ -293,8 +293,10 @@
       const v = (d.spd / 60) * S.view.scale, hr = d.hdg * Math.PI / 180;
       ctx.beginPath(); ctx.moveTo(X, Y); ctx.lineTo(X + v * Math.sin(hr), Y - v * Math.cos(hr)); ctx.stroke();
       ctx.beginPath(); ctx.moveTo(X + 5, Y - 5); ctx.lineTo(X + 14, Y - 14); ctx.stroke();
-      const alt = Math.round(d.alt / 100), talt = Math.round(ac.tAlt / 100);
-      const arrow = talt < alt - 1 ? "↓" : talt > alt + 1 ? "↑" : "";
+      // 2 行目: 現在高度と指定高度（V = DESCEND VIA STAR）。進入許可後は指定高度を出さない
+      const alt = Math.round(d.alt / 100), cfl = Math.round(ac.altAssigned / 100);
+      const showCfl = !ac.cleared && ac.mode !== "LOC" && Math.abs(cfl - alt) > 1;
+      const arrow = showCfl ? (cfl < alt ? "↓" : "↑") + (ac.via ? "V" : "") : "", talt = cfl;
       const l1 = ac.cs + (ac.wake === "H" ? " H" : "") + (ac.ctl === "TWR" ? " TWR" : ac.ctl === "WAIT" ? " …" : "");
       const l2 = `${String(alt).padStart(3, "0")}${arrow ? arrow + String(talt).padStart(3, "0") : ""}`;
       const spdTxt = String(Math.round(d.spd / 10)).padStart(2, "0") + (ac.spdAssigned ? " S" + ac.spdAssigned / 10 : "");
@@ -371,7 +373,7 @@
     S.sel = ac; closePop();
     panel.hidden = !ac; $("fixmenu").hidden = true;
     panelKey = ""; chipsKey = ""; seqKey = "";
-    if (ac) { $("cmd").placeholder = `${ac.cs}: L250 A50 S190 / D ARLON / HOLD WEDGE / C 34L`; requestAnimationFrame(() => keepVisible(ac)); }
+    if (ac) { $("cmd").placeholder = `${ac.cs}: DV40 / A50 / L250 S190 / D ARLON / HOLD WEDGE / C 34L`; requestAnimationFrame(() => keepVisible(ac)); }
   }
   function keepVisible(ac) {
     const top = $("tl").getBoundingClientRect().bottom + 50;
@@ -421,7 +423,7 @@
   // ---- データブロックから開く選択肢（高度・速度・方位） ----
   const pop = $("pop");
   const dialWrap = $("dialWrap"), dial = $("dial"), dctx = dial.getContext("2d");
-  let popAc = null, popKind = null, dialDir = 0, dialVal = null;
+  let popAc = null, popKind = null, dialDir = 0, dialVal = null, altMode = "via";
   function closePop() { pop.hidden = true; popAc = null; popKind = null; }
   function openPop(kind, ac, anchor) {
     if (!ac) return;
@@ -430,7 +432,23 @@
     const grid = $("popGrid"); grid.textContent = ""; grid.className = "pg " + kind;
     $("popHead").textContent = `${ac.cs}  ${{ alt: "高度（百ft）", spd: "速度（kt）", hdg: "磁方位（ドラッグして離す）" }[kind]}`;
     const add = (label, cmd, on) => { const b = document.createElement("button"); b.textContent = label; if (on) b.className = "on"; b.onclick = () => { issueFor(ac, cmd); closePop(); }; grid.appendChild(b); };
-    if (kind === "alt") for (let a = 150; a >= 20; a -= 10) add(String(a).padStart(3, "0"), `A${a}`, ac.altAssigned === a * 100);
+    const modeRow = $("popMode"); modeRow.textContent = ""; modeRow.hidden = kind !== "alt";
+    if (kind === "alt") {
+      // DESCEND VIA STAR（STAR の高度制限を守って降下）と DESCEND AND MAINTAIN（高度制限は無効）を切り替える
+      const canVia = ac.mode === "LNAV" && !ac.cleared;
+      if (!canVia) altMode = "maint";
+      for (const [m, label] of [["via", "VIA STAR"], ["maint", "MAINTAIN"]]) {
+        const b = document.createElement("button"); b.textContent = label;
+        b.className = altMode === m ? "on" : ""; b.disabled = m === "via" && !canVia;
+        b.title = m === "via" ? "DESCEND VIA STAR TO: 公示の高度制限・速度を守って降下" : "DESCEND AND MAINTAIN: 高度制限は無効（公示速度は有効）";
+        b.onclick = () => { altMode = m; openPop("alt", ac, anchor); };
+        modeRow.appendChild(b);
+      }
+      for (let a = 150; a >= 20; a -= 10) {
+        if (altMode === "via" && a * 100 >= ac.alt - 50) continue;
+        add(String(a).padStart(3, "0"), `${altMode === "via" ? "DV" : "A"}${a}`, ac.altAssigned === a * 100 && ac.via === (altMode === "via"));
+      }
+    }
     else if (kind === "spd") { add("標準", "SN", ac.spdAssigned == null); for (let s = 280; s >= 160; s -= 10) add(String(s), `S${s}`, ac.spdAssigned === s); }
     dialWrap.hidden = kind !== "hdg";
     if (kind === "hdg") { dialDir = 0; dialVal = null; document.querySelectorAll("[data-dir]").forEach((b) => b.classList.toggle("on", +b.dataset.dir === 0)); drawDial(); }
