@@ -32,9 +32,13 @@ async function main(): Promise<void> {
   let wakeLockUnsupported = false;
   const shell = initMobileShell({ onWakeLockUnsupported: () => (wakeLockUnsupported = true) });
 
-  let simTime = Date.now();
-  const sunrise0 = findNextSunrise(simTime);
-  if (Number.isFinite(sunrise0)) simTime = sunrise0 - START_LEAD_MS;
+  // ?t=<ISO time> pins the start time (for debugging / screenshots).
+  const pinned = Date.parse(new URLSearchParams(location.search).get('t') ?? '');
+  let simTime = Number.isFinite(pinned) ? pinned : Date.now();
+  if (!Number.isFinite(pinned)) {
+    const sunrise0 = findNextSunrise(simTime);
+    if (Number.isFinite(sunrise0)) simTime = sunrise0 - START_LEAD_MS;
+  }
 
   let rate: TimeRate = 1;
   let skipping = false;
