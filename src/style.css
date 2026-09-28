@@ -29,7 +29,7 @@ body {
 }
 
 body {
-  font-family: 'Noto Sans JP', -apple-system, 'Hiragino Sans', 'Yu Gothic',
+  font-family: -apple-system, 'Hiragino Sans', 'Yu Gothic',
     system-ui, sans-serif;
   font-weight: 300;
   color: var(--ui-fg);
