@@ -56,7 +56,7 @@ varying vec3 vCenter;
 const float SCALE_H = 13.0;     // km, stylised scale height (thicker than real ~8 km)
 const float GLOW_H = 70.0;      // km, faint outer glow that turns the sky above the limb navy
 const float AIRGLOW_H = 95.0;   // km, airglow layer altitude
-const float AIRGLOW_W = 4.0;    // km, layer half-width
+const float AIRGLOW_W = 5.0;    // km, layer half-width
 const int STEPS = 18;
 
 // Returns (tNear, tFar) of a ray against a sphere at the origin, or (-1,-1).
@@ -81,17 +81,22 @@ void main() {
   // approach (Chapman-style column ~ exp(-h/H) * sqrt(2*pi*R*H)). Marching it
   // over thousands of km with few steps produced visible bands.
   vec3 outer = vec3(0.0);
+  vec3 glowA = vec3(0.0);
   if (ground0.x <= 0.0) {
     float tc = max(-dot(o, d), 0.0);
     vec3 pc = o + d * tc;
     float hc = length(pc) - uRadius;
     float lit = smoothstep(-0.2, 0.25, dot(normalize(pc), sunDir));
     outer = uGlowColor * exp(-max(hc, 0.0) / GLOW_H) * lit;
+    // Airglow: thin layer at ~95 km, evaluated analytically at the tangent
+    // point (marching a 4 km-thin layer with few steps made multiple rings).
+    float ag = exp(-pow((hc - AIRGLOW_H) / AIRGLOW_W, 2.0));
+    glowA = uNightColor * uNightIntensity * ag * (1.0 - lit);
   }
 
   vec2 atm = hitSphere(o, d, uRadius + uTop);
   if (atm.y <= 0.0) {
-    vec3 oc = outer * 0.5;
+    vec3 oc = outer * 0.5 + glowA;
     gl_FragColor = vec4(oc, max(oc.r, max(oc.g, oc.b)));
     #include <colorspace_fragment>
     return;
@@ -104,7 +109,6 @@ void main() {
 
   float dt = (t1 - t0) / float(STEPS);
   vec3 scatter = vec3(0.0);
-  vec3 glow = vec3(0.0);
   float depth = 0.0;
 
   for (int i = 0; i < STEPS; i++) {
@@ -123,15 +127,13 @@ void main() {
     // light that reaches this sample is itself attenuated by what's already in front of it
     scatter += c * rho * exp(-depth * 0.012);
 
-    float g = exp(-pow((h - AIRGLOW_H) / AIRGLOW_W, 2.0)) * (1.0 - day);
-    glow += uNightColor * uNightIntensity * g * dt;
   }
 
   if (hitsGround) scatter *= uDiscHaze;
   // forward scattering: warm cream brightening toward the Sun
   float mu = max(dot(d, sunDir), 0.0);
   vec3 forward = uForwardColor * (pow(mu, 6.0) * 0.8 + pow(mu, 40.0) * 1.5);
-  vec3 col = 1.0 - exp(-scatter * 0.06 * (vec3(1.0) + forward)) + glow * 0.02 + outer * 0.5;
+  vec3 col = 1.0 - exp(-scatter * 0.06 * (vec3(1.0) + forward)) + glowA + outer * 0.5;
   float a = clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0);
   gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>

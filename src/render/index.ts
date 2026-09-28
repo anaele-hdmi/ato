@@ -23,6 +23,8 @@ export interface SceneRenderer {
 }
 
 const MAX_DPR = 1.5;
+const SHADER_TIME_EPOCH_MS = Date.UTC(2026, 0, 1);
+const SHADER_TIME_WRAP_S = 4 * 86400;
 const CAMERA_NEAR_KM = 0.001;
 const CAMERA_FAR_KM = 100000;
 
@@ -107,7 +109,10 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     earth.setSunDirWorld(sunDirVec);
     atmosphere.setSunDir(sunDirVec);
 
-    const simSeconds = frame.timeMs / 1000;
+    // Shader time must stay small: float32 in GLSL can't resolve epoch seconds
+    // (~1.8e9), which silently flattened all cloud noise. Seconds since
+    // 2026-01-01, wrapped every 4 days (a jump at the wrap is acceptable).
+    const simSeconds = ((frame.timeMs - SHADER_TIME_EPOCH_MS) / 1000) % SHADER_TIME_WRAP_S;
     earth.setTime(simSeconds);
     clouds.setSunDirObject(sunDirObjVec);
     clouds.setSunDirWorld(sunDirVec);

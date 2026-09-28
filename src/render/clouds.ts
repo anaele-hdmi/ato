@@ -152,27 +152,32 @@ void main() {
   vec3 ns = n + uShellOffset; // slight per-shell offset so the two shells don't look identical
   float f = cloudField(ns, uTime);
 
-  // soft, painterly coverage falloff (not a hard aaStep edge) plus a little
-  // wispy high-frequency streak detail inside the body.
-  float w = max(fwidth(f) * 1.3, 0.24);
-  float coverage = smoothstep(-w, w, f);
+  // Cumulus-scale puffs on top of the ~300 km macro field: this is what makes
+  // clouds read as fluffy fields (ref images) instead of a soft veil. Detail
+  // fades out where it would alias (far / grazing).
+  vec3 drift = vec3(uTime * 0.03, 0.0, -uTime * 0.02);
+  vec3 pp = ns * 140.0 + drift;
+  float detailFade = 1.0 - smoothstep(0.35, 0.9, length(fwidth(pp)));
+  // two cell sizes so fields aren't uniform blobs
+  float puffs = cloudNoise(ns * 55.0 + drift * 0.5) * 0.45 + cloudFbm2(pp) * 0.4 + cloudNoise(ns * 380.0 + drift * 2.0) * 0.15;
+  float density = (f - 0.07) * 1.5 + (puffs - 0.5) * 0.7 * detailFade;
+  float coverage = smoothstep(0.0, 0.16, density);
   if (coverage < 0.01) discard;
-
-  vec3 detailP = ns * 9.0 + vec3(uTime * 0.02, 0.0, -uTime * 0.015);
-  float wisps = cloudFbm2(detailP) * 0.5 + 0.5;
-  coverage *= mix(0.78, 1.0, wisps);
-  coverage = clamp(coverage, 0.0, 1.0);
 
   float l = dot(n, normalize(uSunDirObj));
 
-  // soft self-shadow: sample the field a little further toward the sun; a
-  // denser cloud there means *this* point sits in its shadow.
-  vec3 shadowSampleN = normalize(ns - normalize(uSunDirObj) * 0.05);
-  float fShadowed = cloudField(shadowSampleN, uTime);
-  float selfShadow = clamp((fShadowed - f) * 1.6, 0.0, 1.0);
+  // Puffy shading: compare the puff field a little toward the sun. Sides
+  // facing the sun brighten, far sides fall into soft blue-grey.
+  vec3 sunT = normalize(uSunDirObj) - n * dot(normalize(uSunDirObj), n);
+  vec3 pp2 = (ns + sunT * 0.0045) * 140.0 + drift;
+  vec3 ns2 = ns + sunT * 0.0045;
+  float puffs2 = cloudNoise(ns2 * 55.0 + drift * 0.5) * 0.45 + cloudFbm2(pp2) * 0.4 + cloudNoise(ns2 * 380.0 + drift * 2.0) * 0.15;
+  float puffLight = clamp(0.5 + (puffs - puffs2) * 6.0 * detailFade, 0.0, 1.0);
+  // thin edges are brighter / more translucent, cores slightly darker
+  float core = smoothstep(0.1, 0.5, density);
 
-  vec3 tone = mix(uShade, uLit, smoothstep(0.0, 0.45, l));
-  tone = mix(tone, uShade * 0.72, selfShadow * 0.6);
+  vec3 tone = mix(uShade, uLit, smoothstep(0.0, 0.45, l) * mix(0.55, 1.0, puffLight));
+  tone = mix(tone, tone * 0.88, core * 0.4);
   tone = mix(uTwilight, tone, smoothstep(-0.1, 0.14, l));
 
   // aerial perspective: pale blue-white haze toward the limb / grazing angle
@@ -187,7 +192,7 @@ void main() {
   // night side: clouds fade to near-invisible rather than staying bright
   float nightFade = smoothstep(-0.25, -0.03, l);
   vec3 color = tone * mix(0.03, 1.0, nightFade);
-  float alpha = coverage * mix(0.04, 1.0, nightFade);
+  float alpha = coverage * mix(0.85, 0.97, core) * mix(0.04, 1.0, nightFade);
 
   gl_FragColor = vec4(color, alpha);
   #include <colorspace_fragment>

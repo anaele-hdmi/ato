@@ -37,7 +37,7 @@ export const ATMOSPHERE = {
   nightAirglow: new THREE.Color(0x3f9a72),
   dayIntensity: 0.6,
   duskIntensity: 0.75,
-  nightIntensity: 0.1,
+  nightIntensity: 0.4,
   /** haze over the Earth disc relative to the limb */
   discHaze: 0.5,
   /** faint tall glow: the sky just above the limb reads dark navy, not black */
@@ -82,8 +82,8 @@ export const BIOMES = {
 
 /** Cloud shell tones: quantized like the ground (lit / shaded / twilight-warm). */
 export const CLOUDS = {
-  lit: new THREE.Color(0xfcfcfb),
-  shade: new THREE.Color(0x8291a8),
+  lit: new THREE.Color(0xe9ebee),
+  shade: new THREE.Color(0x6f7f9c),
   twilight: new THREE.Color(0xf0b487),
 };
 
