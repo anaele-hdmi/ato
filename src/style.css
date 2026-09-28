@@ -1,0 +1,246 @@
+:root {
+  color-scheme: dark;
+  --ui-fg: rgba(235, 238, 245, 0.86);
+  --ui-fg-dim: rgba(235, 238, 245, 0.5);
+  --ui-bg: rgba(10, 12, 18, 0.38);
+  --ui-border: rgba(235, 238, 245, 0.14);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-l: env(safe-area-inset-left, 0px);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100dvh;
+  background: #000;
+  overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+body {
+  font-family: 'Noto Sans JP', -apple-system, 'Hiragino Sans', 'Yu Gothic',
+    system-ui, sans-serif;
+  font-weight: 300;
+  color: var(--ui-fg);
+}
+
+#scene {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100dvh;
+  display: block;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+#ui {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  touch-action: none;
+}
+
+#ui * {
+  box-sizing: border-box;
+}
+
+/* ---------- start screen ---------- */
+
+.lt-start {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.9em;
+  background: #000;
+  pointer-events: auto;
+  cursor: pointer;
+  transition: opacity 900ms ease;
+  z-index: 50;
+}
+
+.lt-start.lt-hidden {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.lt-start__title {
+  font-size: clamp(1.1rem, 3.2vw, 1.6rem);
+  font-weight: 300;
+  letter-spacing: 0.32em;
+  text-indent: 0.32em;
+  color: var(--ui-fg);
+}
+
+.lt-start__hint {
+  font-size: clamp(0.7rem, 1.6vw, 0.85rem);
+  font-weight: 300;
+  letter-spacing: 0.24em;
+  text-indent: 0.24em;
+  color: var(--ui-fg-dim);
+  animation: lt-pulse 2.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lt-start__hint {
+    animation: none;
+  }
+}
+
+@keyframes lt-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 0.9;
+  }
+}
+
+/* ---------- fade-to-black overlay ---------- */
+
+.lt-fade {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 40;
+}
+
+/* ---------- readout (bottom-left) ---------- */
+
+.lt-readout {
+  position: fixed;
+  left: calc(1rem + var(--safe-l));
+  bottom: calc(0.9rem + var(--safe-b));
+  font-size: 0.68rem;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  line-height: 1.6;
+  color: var(--ui-fg-dim);
+  white-space: pre-line;
+  pointer-events: none;
+  z-index: 20;
+  transition: opacity 700ms ease;
+}
+
+/* ---------- controls (bottom-right) ---------- */
+
+.lt-controls {
+  position: fixed;
+  right: calc(1rem + var(--safe-r));
+  bottom: calc(0.9rem + var(--safe-b));
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  pointer-events: auto;
+  z-index: 20;
+  transition: opacity 700ms ease;
+}
+
+.lt-btn {
+  appearance: none;
+  border: 1px solid var(--ui-border);
+  background: var(--ui-bg);
+  color: var(--ui-fg);
+  font-family: inherit;
+  font-weight: 300;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  padding: 0.45em 0.75em;
+  border-radius: 999px;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.lt-btn:disabled {
+  opacity: 0.28;
+  pointer-events: none;
+}
+
+.lt-btn[aria-pressed='true'] {
+  color: #fff;
+  border-color: rgba(235, 238, 245, 0.34);
+}
+
+/* fade group (auto-hide on inactivity) */
+
+.lt-fadeable.lt-dim {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lt-readout,
+  .lt-controls {
+    transition: opacity 300ms linear;
+  }
+}
+
+/* ---------- transient notice (top, centered) ---------- */
+
+.lt-notify {
+  position: fixed;
+  top: calc(1rem + var(--safe-t));
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.72rem;
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  color: var(--ui-fg-dim);
+  background: var(--ui-bg);
+  border: 1px solid var(--ui-border);
+  border-radius: 999px;
+  padding: 0.5em 1em;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 600ms ease;
+  z-index: 30;
+  white-space: nowrap;
+  max-width: calc(100vw - 2rem);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.lt-notify.lt-visible {
+  opacity: 1;
+}
+
+/* ---------- rotate overlay (mobile.ts) ---------- */
+
+.lt-rotate {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  color: var(--ui-fg-dim);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 2rem;
+  font-size: 0.85rem;
+  font-weight: 300;
+  letter-spacing: 0.1em;
+  z-index: 100;
+}
+
+.lt-rotate[hidden] {
+  display: none;
+}

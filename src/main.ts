@@ -29,7 +29,8 @@ function formatLatLon(lat: number, lon: number): string {
 async function main(): Promise<void> {
   const canvas = document.getElementById('scene') as HTMLCanvasElement;
   const uiRoot = document.getElementById('ui') as HTMLElement;
-  const shell = initMobileShell();
+  let wakeLockUnsupported = false;
+  const shell = initMobileShell({ onWakeLockUnsupported: () => (wakeLockUnsupported = true) });
 
   let simTime = Date.now();
   const sunrise0 = findNextSunrise(simTime);
@@ -94,6 +95,7 @@ async function main(): Promise<void> {
 
   await ui.waitForStart();
   shell.onStarted();
+  if (wakeLockUnsupported) ui.notify('画面が自動で消灯する場合があります');
 }
 
 main();

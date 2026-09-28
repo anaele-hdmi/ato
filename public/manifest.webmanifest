@@ -1,0 +1,20 @@
+{
+  "name": "低軌道旅行",
+  "short_name": "低軌道旅行",
+  "description": "操縦しない宇宙旅行。ISS相当の軌道から地球を眺める。",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "fullscreen",
+  "orientation": "landscape",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "lang": "ja",
+  "icons": [
+    {
+      "src": "icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}
