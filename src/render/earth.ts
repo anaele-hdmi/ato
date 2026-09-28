@@ -271,9 +271,18 @@ export function createEarth(cloudMap: THREE.Texture): EarthObjects {
 
   // Heightmap is only needed on the CPU (displacement is baked per chunk).
   let heightRaster: Raster | null = null;
-  loadRaster(topoUrl).then((r) => {
-    heightRaster = r;
-  });
+  // Retry: a flaky connection can fail the first decode, which would leave
+  // the planet without relief for the whole session.
+  const loadHeight = (attempt: number) => {
+    loadRaster(topoUrl)
+      .then((r) => {
+        heightRaster = r;
+      })
+      .catch(() => {
+        if (attempt < 4) setTimeout(() => loadHeight(attempt + 1), 1000 * (attempt + 1));
+      });
+  };
+  loadHeight(0);
 
   const material = new THREE.ShaderMaterial({
     vertexShader: VERTEX_SHADER,
