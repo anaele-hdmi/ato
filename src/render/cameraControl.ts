@@ -6,8 +6,15 @@ import * as THREE from 'three';
 
 const MIN_DISTANCE_KM = 0.15;
 const MAX_DISTANCE_KM = 2;
-const DEFAULT_DISTANCE_KM = 0.42;
-const DEFAULT_PITCH = THREE.MathUtils.degToRad(18); // above horizontal
+const DEFAULT_DISTANCE_KM = 0.4;
+const DEFAULT_PITCH = THREE.MathUtils.degToRad(14); // above horizontal
+// Composition (art-direction §4): after looking at the station, turn the view
+// slightly so the station sits off-centre and the horizon falls toward the
+// lower third instead of cutting the frame in half.
+const FRAME_YAW = THREE.MathUtils.degToRad(-9);
+const FRAME_PITCH = THREE.MathUtils.degToRad(8);
+// Aiming eases the yaw toward the target over roughly this time constant.
+const AIM_TIME_CONSTANT_S = 0.6;
 const MAX_PITCH = THREE.MathUtils.degToRad(85);
 const MIN_PITCH = THREE.MathUtils.degToRad(-85);
 const DRAG_SENSITIVITY = 0.0045; // rad per px
@@ -27,6 +34,8 @@ export class ChaseCameraController {
   private distance = DEFAULT_DISTANCE_KM;
 
   private yawVel = 0;
+  private aimPending = false;
+  private aimTargetYaw: number | null = null;
   private pitchVel = 0;
 
   private pointers = new Map<number, PointerInfo>();
@@ -121,9 +130,21 @@ export class ChaseCameraController {
     return Math.hypot(pts[0].x - pts[1].x, pts[0].y - pts[1].y);
   }
 
+  /** Requests a yaw that puts the Sun's horizontal direction in view (applied on next update). */
+  aimAtSun(): void {
+    this.aimPending = true;
+  }
+
   /** Advances inertia and writes the resulting camera pose. */
-  update(dtSec: number, camera: THREE.PerspectiveCamera, upDir: THREE.Vector3, forwardDirRaw: THREE.Vector3): void {
+  update(
+    dtSec: number,
+    camera: THREE.PerspectiveCamera,
+    upDir: THREE.Vector3,
+    forwardDirRaw: THREE.Vector3,
+    sunDir?: THREE.Vector3,
+  ): void {
     const dragging = this.pointers.size >= 1;
+    if (dragging) this.aimTargetYaw = null;
     if (!dragging) {
       this.yaw += this.yawVel * dtSec;
       this.pitch = THREE.MathUtils.clamp(this.pitch + this.pitchVel * dtSec, MIN_PITCH, MAX_PITCH);
@@ -142,6 +163,24 @@ export class ChaseCameraController {
     }
     forward.normalize();
 
+    if (this.aimPending && sunDir) {
+      this.aimPending = false;
+      const sunH = sunDir.clone().sub(up.clone().multiplyScalar(sunDir.dot(up)));
+      if (sunH.lengthSq() > 1e-8) {
+        sunH.normalize();
+        // view direction at yaw=θ is forward rotated by θ about up
+        const target = Math.atan2(new THREE.Vector3().crossVectors(forward, sunH).dot(up), forward.dot(sunH));
+        // take the shortest way round from the current yaw
+        const delta = Math.atan2(Math.sin(target - this.yaw), Math.cos(target - this.yaw));
+        this.aimTargetYaw = this.yaw + delta;
+      }
+    }
+    if (this.aimTargetYaw !== null) {
+      const k = 1 - Math.exp(-dtSec / AIM_TIME_CONSTANT_S);
+      this.yaw += (this.aimTargetYaw - this.yaw) * k;
+      if (Math.abs(this.aimTargetYaw - this.yaw) < 1e-3) this.aimTargetYaw = null;
+    }
+
     const base = forward.clone().multiplyScalar(-1); // behind, at yaw=0/pitch=0
     const qYaw = new THREE.Quaternion().setFromAxisAngle(up, this.yaw);
     base.applyQuaternion(qYaw);
@@ -155,6 +194,8 @@ export class ChaseCameraController {
     camera.position.copy(base.multiplyScalar(this.distance));
     camera.up.copy(up);
     camera.lookAt(0, 0, 0);
+    camera.rotateY(FRAME_YAW);
+    camera.rotateX(FRAME_PITCH);
   }
 
   dispose(): void {

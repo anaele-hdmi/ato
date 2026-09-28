@@ -26,11 +26,17 @@ export function createStation(): StationObjects {
   const geometries: THREE.BufferGeometry[] = [];
   const materials: THREE.Material[] = [];
 
-  const trussMat = new THREE.MeshLambertMaterial({ color: STATION.truss });
-  const panelMat = new THREE.MeshLambertMaterial({ color: STATION.panel });
-  const moduleMat = new THREE.MeshLambertMaterial({ color: STATION.module });
-  const hullMat = new THREE.MeshLambertMaterial({ color: STATION.hull });
-  materials.push(trussMat, panelMat, moduleMat, hullMat);
+  // Two-step toon shading: lit side / shade side, nothing in between.
+  const gradient = new THREE.DataTexture(new Uint8Array([90, 255]), 2, 1, THREE.RedFormat);
+  gradient.minFilter = THREE.NearestFilter;
+  gradient.magFilter = THREE.NearestFilter;
+  gradient.needsUpdate = true;
+  const toon = (color: THREE.Color) => new THREE.MeshToonMaterial({ color, gradientMap: gradient });
+  const trussMat = toon(STATION.truss);
+  const panelMat = toon(STATION.panel);
+  const hullMat = toon(STATION.hull);
+  const moduleMat = hullMat;
+  materials.push(trussMat, panelMat, hullMat);
 
   // main truss, along local X
   const trussGeo = new THREE.BoxGeometry(TRUSS_LENGTH, TRUSS_SECTION, TRUSS_SECTION);
@@ -91,6 +97,7 @@ export function createStation(): StationObjects {
     dispose() {
       for (const g of geometries) g.dispose();
       for (const mat of materials) mat.dispose();
+      gradient.dispose();
     },
   };
 }

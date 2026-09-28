@@ -1,55 +1,63 @@
-// Single source of truth for all render colours. Flat, quantized palette —
-// "art of rally" / "Slow Roads": few tones, gradients used sparingly and only
-// where they carry meaning (terminator, atmosphere limb).
+// Single source of truth for all render colours (docs/art-direction.md §4).
+// Rule: every colour on screen comes from here. Surfaces are flat, lighting is
+// quantized into a few steps; only the atmosphere/twilight keeps smooth
+// gradients, and even those only blend between colours defined here.
 import * as THREE from 'three';
 
-/** Land / ocean quantized palette (used to build the land-mask texture's implied colours
- *  and by the Earth fragment shader for final shading). */
+/** Earth surfaces (day, fully lit). Five faces: deep/shallow ocean, land, high-latitude land, ice. */
 export const EARTH_COLORS = {
-  deepOcean: new THREE.Color(0x0b2f4f),
-  ocean: new THREE.Color(0x14507e),
-  land: new THREE.Color(0x3c6b45),
-  iceLand: new THREE.Color(0xdfe9e6),
-  // night-side (unlit) tints — near black with a faint cool cast
-  nightLand: new THREE.Color(0x05070b),
-  nightOcean: new THREE.Color(0x03050a),
+  deepOcean: new THREE.Color(0x1f4f7c),
+  shallowOcean: new THREE.Color(0x3a86a6),
+  land: new THREE.Color(0x7a8c5c),
+  highLand: new THREE.Color(0x9a9c84),
+  ice: new THREE.Color(0xe9edec),
+  // night side — near black with a faint cool cast
+  nightLand: new THREE.Color(0x0b0e15),
+  nightOcean: new THREE.Color(0x05070c),
 };
 
-/** Terminator ramp: warm band that straddles the day/night boundary. */
-export const TERMINATOR = {
-  // sun-elevation (radians) half-width of the warm band either side of the horizon
-  widthRad: THREE.MathUtils.degToRad(5),
-  warm: new THREE.Color(0xff7a3c),
+/** Quantized lighting: sun-cosine thresholds and the brightness of each step. */
+export const LIGHT_STEPS = {
+  /** cos(sun zenith) above which a surface is fully lit */
+  full: 0.32,
+  /** above this (and below full) → mid step; below → low (twilight) step */
+  low: 0.08,
+  midLevel: 0.74,
+  lowLevel: 0.5,
+  /** twilight step tint */
+  warm: new THREE.Color(0xe08a5a),
+  warmAmount: 0.35,
 };
 
-/** Atmosphere limb ramp colours, sampled in a 2D LUT-like shader function of
- *  (sun elevation at the shell point, view-to-sun angle). Kept subtle. */
+/** Atmosphere ramp colours (smooth, B-side of A+B). */
 export const ATMOSPHERE = {
-  dayBlue: new THREE.Color(0x4da6ff),
-  duskOrange: new THREE.Color(0xff8a4a),
-  duskRed: new THREE.Color(0xb23a3a),
-  nightAirglow: new THREE.Color(0x1d5c4a),
-  // overall intensity multipliers
-  dayIntensity: 0.55,
-  duskIntensity: 0.65,
-  nightIntensity: 0.12,
+  dayBlue: new THREE.Color(0x6fb4ff),
+  duskOrange: new THREE.Color(0xffa066),
+  duskRed: new THREE.Color(0xc0504a),
+  nightAirglow: new THREE.Color(0x3f9a72),
+  dayIntensity: 0.6,
+  duskIntensity: 0.75,
+  nightIntensity: 0.1,
+  /** haze over the Earth disc relative to the limb (keeps surfaces clean) */
+  discHaze: 0.28,
 };
 
 export const SPACE = {
   black: new THREE.Color(0x000000),
-  starDim: new THREE.Color(0xaeb8c8),
+  star: new THREE.Color(0xc9d2e0),
 };
 
 export const SUN = {
   color: new THREE.Color(0xfff3e0),
-  intensity: 1.4,
+  intensity: 2.2,
 };
 
+/** Station: three colours only. */
 export const STATION = {
-  hull: new THREE.Color(0xb9bec4),
-  hullDark: new THREE.Color(0x7d8288),
-  truss: new THREE.Color(0xc8ccce),
-  panel: new THREE.Color(0x1a2a4a),
-  panelLit: new THREE.Color(0x3a5ea8),
-  module: new THREE.Color(0xd8d2c0),
+  hull: new THREE.Color(0xe7e3d8),
+  truss: new THREE.Color(0xa9aaa4),
+  panel: new THREE.Color(0x4a6a9c),
+  /** ambient fill so the unlit side reads as a darker step, not black */
+  ambient: new THREE.Color(0x2a3448),
+  ambientIntensity: 0.9,
 };

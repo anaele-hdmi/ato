@@ -10,11 +10,13 @@ import { createStars } from './stars';
 import { createStation } from './station';
 import { ChaseCameraController } from './cameraControl';
 import { createSun } from './sun';
-import { SUN, SPACE } from './palette';
+import { SUN, SPACE, STATION } from './palette';
 
 export interface SceneRenderer {
   update(frame: FrameState, dtSec: number): void;
   resize(width: number, height: number, dpr: number): void;
+  /** Swing the chase camera so the Sun's direction (above or below the horizon) is in frame. */
+  aimAtSun(): void;
   dispose(): void;
 }
 
@@ -70,7 +72,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   sunLight.target.position.set(0, 0, 0);
   scene.add(sunLight);
   scene.add(sunLight.target);
-  const fill = new THREE.AmbientLight(0x1a2436, 0.18);
+  const fill = new THREE.AmbientLight(STATION.ambient, STATION.ambientIntensity);
   scene.add(fill);
 
   const cameraControl = new ChaseCameraController(canvas);
@@ -101,7 +103,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     fwdDirVec.copy(stationVelVec).normalize();
     station.orient(upDirVec, fwdDirVec);
 
-    cameraControl.update(dtSec, camera, upDirVec, fwdDirVec);
+    cameraControl.update(dtSec, camera, upDirVec, fwdDirVec, sunDirVec);
 
     renderer.render(scene, camera);
   }
@@ -124,5 +126,5 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     renderer.dispose();
   }
 
-  return { update, resize, dispose };
+  return { update, resize, aimAtSun: () => cameraControl.aimAtSun(), dispose };
 }

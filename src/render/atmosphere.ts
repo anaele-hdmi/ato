@@ -45,13 +45,14 @@ uniform float uDuskIntensity;
 uniform float uNightIntensity;
 uniform float uRadius;
 uniform float uTop;
+uniform float uDiscHaze;
 
 varying vec3 vWorldPosition;
 varying vec3 vCenter;
 
 const float SCALE_H = 9.0;      // km, stylised scale height
 const float AIRGLOW_H = 95.0;   // km, airglow layer altitude
-const float AIRGLOW_W = 6.0;    // km, layer half-width
+const float AIRGLOW_W = 4.0;    // km, layer half-width
 const int STEPS = 14;
 
 // Returns (tNear, tFar) of a ray against a sphere at the origin, or (-1,-1).
@@ -76,7 +77,8 @@ void main() {
   float t0 = max(atm.x, 0.0);
   float t1 = atm.y;
   vec2 ground = hitSphere(o, d, uRadius);
-  if (ground.x > 0.0) t1 = min(t1, ground.x);
+  bool hitsGround = ground.x > 0.0;
+  if (hitsGround) t1 = min(t1, ground.x);
 
   float dt = (t1 - t0) / float(STEPS);
   vec3 scatter = vec3(0.0);
@@ -103,9 +105,11 @@ void main() {
     glow += uNightColor * uNightIntensity * g * dt;
   }
 
+  if (hitsGround) scatter *= uDiscHaze;
   vec3 col = 1.0 - exp(-scatter * 0.06) + glow * 0.02;
   float a = clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0);
   gl_FragColor = vec4(col, a);
+  #include <colorspace_fragment>
 }
 `;
 
@@ -132,6 +136,7 @@ export function createAtmosphere(): AtmosphereObjects {
       uNightIntensity: { value: ATMOSPHERE.nightIntensity },
       uRadius: { value: EARTH_RADIUS_KM },
       uTop: { value: ATMO_TOP_KM },
+      uDiscHaze: { value: ATMOSPHERE.discHaze },
     },
     transparent: true,
     depthWrite: false,

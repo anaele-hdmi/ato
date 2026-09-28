@@ -28,7 +28,7 @@ function tracePolygon(ctx: CanvasRenderingContext2D, rings: PolygonCoords, lonSh
   }
 }
 
-/** Builds the equirectangular land-mask canvas (land = opaque white, ocean = transparent black in R). */
+/** Builds the equirectangular land-mask canvas (R = land, G = coastal band). */
 export function buildLandMaskCanvas(): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
@@ -44,7 +44,6 @@ export function buildLandMaskCanvas(): HTMLCanvasElement {
   const geometries: any[] =
     geo.type === 'FeatureCollection' ? geo.features.map((f: any) => f.geometry) : [geo.geometry];
 
-  ctx.fillStyle = '#ffffff';
   ctx.beginPath();
   for (const g of geometries) {
     if (!g) continue;
@@ -55,7 +54,15 @@ export function buildLandMaskCanvas(): HTMLCanvasElement {
       }
     }
   }
+  // G: coastal band (stroked outline) → shallow ocean; R: land.
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.strokeStyle = '#00ff00';
+  ctx.lineJoin = 'round';
+  ctx.lineWidth = 7;
+  ctx.stroke();
+  ctx.fillStyle = '#ff0000';
   ctx.fill('evenodd');
+  ctx.globalCompositeOperation = 'source-over';
 
   return canvas;
 }

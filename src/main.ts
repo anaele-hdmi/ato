@@ -58,6 +58,7 @@ async function main(): Promise<void> {
       skipping = true;
       await ui.fadeToBlack(600);
       simTime = Math.max(simTime, t - SKIP_LEAD_MS);
+      renderer.aimAtSun();
       await ui.fadeFromBlack(900);
       skipping = false;
     },
@@ -69,6 +70,8 @@ async function main(): Promise<void> {
     renderer.resize(window.innerWidth, window.innerHeight, window.devicePixelRatio || 1);
   window.addEventListener('resize', resize);
   resize();
+  // Start facing where the Sun will come up (design §13: something must happen in the first minutes).
+  renderer.aimAtSun();
 
   // Cache event times; recompute only after they pass.
   let nextRise = findNextSunrise(simTime);
