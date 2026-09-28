@@ -48,7 +48,7 @@ const GradeShader = {
     uVignetteStrength: { value: 0.28 },
     uVignetteRadius: { value: 0.72 },
     uVignetteSoftness: { value: 0.62 },
-    uGrainAmount: { value: 0.018 },
+    uGrainAmount: { value: 0.008 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -141,7 +141,15 @@ export function createPost(
   renderer.getSize(size);
   const pixelRatio = renderer.getPixelRatio();
 
-  const composer = new EffectComposer(renderer);
+  // MSAA: the composer renders the scene into its own target, so the
+  // canvas's `antialias: true` no longer applies — without this, facet edges
+  // and the station's thin trusses alias badly. 4x on WebGL2 (tile-based
+  // mobile GPUs resolve it cheaply).
+  const msaaTarget = new THREE.WebGLRenderTarget(Math.max(1, size.x * pixelRatio), Math.max(1, size.y * pixelRatio), {
+    type: THREE.HalfFloatType,
+    samples: 4,
+  });
+  const composer = new EffectComposer(renderer, msaaTarget);
   composer.setPixelRatio(pixelRatio);
   composer.setSize(size.x, size.y);
 

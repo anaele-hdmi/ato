@@ -22,22 +22,23 @@
 // displacement.
 import * as THREE from 'three';
 import { EARTH_COLORS, BIOMES, GLINT, RELIEF } from './palette';
-import { buildLandMaskTexture } from './landmask';
+import { buildLandMask, buildBiomeTexture } from './landmask';
+import { elevationKm, loadRaster, type Raster } from './terrain';
+import { CLOUD_MAP_GLSL } from './cloudMap';
 import { buildSeedChunks, buildChunkMesh, buildMergedCoarseSphere, type SeedChunk } from './icosphere';
 import { EARTH_RADIUS_KM } from '../types';
 import { CLOUD_GLSL } from './clouds';
 import topoUrl from '../assets/earth-topology.png';
 
-/** True summit elevation the heightmap's white (255) represents, km. */
-const MAX_ELEV_KM = 8.8;
-/** Vertical exaggeration so ranges read clearly from a 420 km orbit. */
-const EXAGGERATION = 8.0;
 
 // --- LOD tuning ---------------------------------------------------------
 const SEED_LEVEL = 3; // 20 * 4^3 = 1280 seed chunks, stable indices
-const COARSE_EXTRA_LEVELS = 3; // seed(3) + 3 = level 6 full sphere, merged, always resident
+const COARSE_EXTRA_LEVELS = 2; // seed(3) + 2 = level 5 full sphere (20k tris), always resident, behind the horizon
 const COARSE_INSET_KM = 0.5; // below true radius, so layer 2 is never z-fought
-const SKIRT_DROP_KM = 3; // detail chunk border curtain, hides LOD cracks
+// Detail chunks share identical edge vertices (same subdivision, same CPU
+// displacement), so no skirts are needed between them; the coarse layer only
+// shows beyond the horizon.
+const SKIRT_DROP_KM = 0;
 // From 420 km orbit, horizon distance is ~2300 km; add margin for tall
 // exaggerated peaks poking over it. Hysteresis avoids flicker at the boundary.
 const DETAIL_ENTER_KM = 3300;
@@ -47,80 +48,31 @@ const BUILD_BUDGET_PER_FRAME = 6;
 function readDetailLevel(): number {
   try {
     const v = new URLSearchParams(location.search).get('detail');
-    if (v === '8') return 8;
+    if (v === '9') return 9;
+    if (v === '7') return 7;
   } catch {
     /* location unavailable (non-browser); default */
   }
-  return 9;
+  // Level 8 (~9 km facets, ~1k triangles per chunk) is the default for
+  // mobile; ?detail=9 quadruples the triangle count for strong GPUs.
+  return 8;
 }
 const DETAIL_LEVEL = readDetailLevel();
-const DETAIL_EXTRA_LEVELS = DETAIL_LEVEL - SEED_LEVEL; // 6 (level 9) or 5 (level 8)
+const DETAIL_EXTRA_LEVELS = DETAIL_LEVEL - SEED_LEVEL;
 
 const VERTEX_SHADER = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_vertex>
 
-attribute float aSkirt;
-
-uniform sampler2D uLandTex;
-uniform sampler2D uHeightTex;
-uniform float uMaxElevKm;
-uniform float uExaggeration;
-
 varying vec3 vNormalObj;
 varying vec3 vWorldPosition;
 
-${CLOUD_GLSL}
-
-float ridgedNoise(vec3 p) {
-  float n = cloudNoise(p);
-  float r = 1.0 - abs(n * 2.0 - 1.0);
-  return r * r;
-}
-
-float ridgedFbm4(vec3 p) {
-  float sum = 0.0;
-  float amp = 0.55;
-  float freq = 1.0;
-  for (int i = 0; i < 4; i++) {
-    sum += ridgedNoise(p * freq) * amp;
-    freq *= 2.08;
-    amp *= 0.5;
-  }
-  return sum;
-}
-
+// Positions arrive already displaced (terrain.ts, computed once per chunk).
 void main() {
-  vec3 n = normalize(position);
-  float lat = asin(clamp(n.y, -1.0, 1.0));
-  float lon = atan(-n.z, n.x);
-  vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
-
-  float landRaw = texture2D(uLandTex, uv).r;
-  float land = smoothstep(0.42, 0.58, landRaw);
-  float heightRaw = texture2D(uHeightTex, uv).r;
-
-  // Procedural micro-relief: ridged noise scaled up by the DEM's own value
-  // (so mountains get sharp exaggerated ridges) plus a gentle 0.5-2 km
-  // rolling undulation everywhere else -- every facet, not just named
-  // ranges, ends up with its own tilt.
-  float mountainMask = smoothstep(0.035, 0.22, heightRaw);
-  float ridge = (ridgedFbm4(n * 260.0) - 0.3) * 4.0;
-  float rolling = (cloudFbm4(n * 140.0) - 0.5) * 1.6;
-  float microKm = mix(rolling, ridge, mountainMask);
-
-  float notSkirt = 1.0 - aSkirt;
-  float elevKm = (heightRaw * uMaxElevKm + microKm) * uExaggeration * land * notSkirt;
-
-  float baseR = length(position);
-  vec3 displaced = n * (baseR + elevKm);
-
-  vNormalObj = n;
-  vWorldPosition = (modelMatrix * vec4(displaced, 1.0)).xyz;
-
-  vec4 mvPosition = modelViewMatrix * vec4(displaced, 1.0);
-  gl_Position = projectionMatrix * mvPosition;
-
+  vNormalObj = normalize(position);
+  vec4 world = modelMatrix * vec4(position, 1.0);
+  vWorldPosition = world.xyz;
+  gl_Position = projectionMatrix * viewMatrix * world;
   #include <logdepthbuf_vertex>
 }
 `;
@@ -130,6 +82,7 @@ const FRAGMENT_SHADER = /* glsl */ `
 #include <logdepthbuf_pars_fragment>
 
 uniform sampler2D uLandTex;
+uniform sampler2D uBiomeTex;
 uniform vec3 uSunDirObj;
 uniform vec3 uSunDirWorld;
 uniform float uTime;
@@ -157,6 +110,7 @@ varying vec3 vNormalObj;
 varying vec3 vWorldPosition;
 
 ${CLOUD_GLSL}
+${CLOUD_MAP_GLSL}
 
 // Anti-aliased step: hard edge, but smoothed over ~1 pixel.
 float aaStep(float edge, float x) {
@@ -164,36 +118,20 @@ float aaStep(float edge, float x) {
   return smoothstep(edge - w, edge + w, x);
 }
 
-// Cheap low-frequency hash noise (object space) used to break land-biome
-// band edges so they don't read as stripes.
-float bandNoise(vec3 n) {
-  return cloudNoise(n * 3.1 + 5.0) * 0.6 + cloudNoise(n * 7.3 + 19.0) * 0.4;
-}
-
-// Flat land-biome colour from latitude + coast distance + a moisture-like
-// low-frequency noise. coastDist: 0 = at the coast, 1 = deep interior.
-vec3 biomeColor(float absLat, float coastDist, vec3 n) {
-  float jitter = (bandNoise(n) - 0.5) * 10.0;
-  float moist = cloudNoise(n * 1.6 + 41.0);
+// Land colour: hand-placed arid / rainforest regions (biome texture) +
+// latitude bands for temperate, boreal/tundra and ice. One noise lookup
+// only, to break band edges.
+vec3 biomeColor(float absLat, vec2 uv, vec3 n) {
+  vec2 bio = texture2D(uBiomeTex, uv).rg;
+  float jitter = (cloudNoise(n * 9.0 + 5.0) - 0.5) * 8.0;
   float L = absLat + jitter;
 
-  vec3 c = mix(uSavanna, uTropicalForest, smoothstep(0.42, 0.56, moist));
-
-  float desertBand = smoothstep(11.0, 19.0, L) * (1.0 - smoothstep(32.0, 38.0, L));
-  float dryness = smoothstep(0.42, 0.68, coastDist);
-  c = mix(c, uSavanna, desertBand * (1.0 - dryness));
-  c = mix(c, uDesert, desertBand * dryness);
-
-  float gobiBand = smoothstep(32.0, 38.0, L) * (1.0 - smoothstep(46.0, 52.0, L));
-  float deepInterior = smoothstep(0.6, 0.82, coastDist);
-  c = mix(c, uDesert, gobiBand * deepInterior);
-
-  float temperateBand = smoothstep(26.0, 36.0, L) * (1.0 - smoothstep(57.0, 65.0, L));
-  c = mix(c, uTemperateForest, temperateBand * (1.0 - gobiBand * deepInterior));
-
-  float tundraBand = smoothstep(56.0, 63.0, L) * (1.0 - smoothstep(68.0, 74.0, L));
-  c = mix(c, uTundra, tundraBand);
-
+  vec3 c = mix(uSavanna, uTropicalForest, smoothstep(0.35, 0.8, bio.g));
+  float temperate = smoothstep(28.0, 38.0, L) * (1.0 - smoothstep(58.0, 64.0, L));
+  c = mix(c, uTemperateForest, temperate * (1.0 - bio.g));
+  float tundra = smoothstep(60.0, 66.0, L);
+  c = mix(c, uTundra, tundra);
+  c = mix(c, uDesert, smoothstep(0.3, 0.75, bio.r) * (1.0 - tundra));
   return c;
 }
 
@@ -208,11 +146,10 @@ void main() {
 
   float land = aaStep(0.5, mask.r);
   float coast = aaStep(0.35, mask.g);
-  float coastDist = abs(mask.b * 2.0 - 1.0);
   float absLat = abs(lat) * 57.2958;
 
   vec3 ocean = mix(uDeepOcean, uShallowOcean, coast);
-  vec3 ground = biomeColor(absLat, coastDist, n);
+  vec3 ground = biomeColor(absLat, uv, n);
   ground = mix(ground, uIce, aaStep(70.0, absLat));
   ocean = mix(ocean, uIce, aaStep(74.0, absLat));
   vec3 base = mix(ocean, ground, land);
@@ -257,7 +194,11 @@ void main() {
   vec3 litColor = mix(uWarmLit, base, 0.62) * 1.05;
   vec3 lit = mix(shadeColor, litColor, wrap) * grain;
   vec3 ambient = uSkyAmbient * (1.0 - clamp(ndotl, 0.0, 1.0)) * 0.14;
-  vec3 color = lit + ambient;
+  vec3 landColor = lit + ambient;
+  // Water is flat: the gold/teal split toning (meant for facets) turned it
+  // mauve. Plain diffuse with a little sky fill keeps it blue.
+  vec3 waterColor = base * (0.45 + 0.6 * clamp(ndotl, 0.0, 1.0)) + uSkyAmbient * 0.05;
+  vec3 color = mix(waterColor, landColor, land);
 
   vec3 nightColor = mix(uNightOcean, uNightLand, land);
   // NB: edges must stay ascending here -- smoothstep with edge0 > edge1 is
@@ -268,19 +209,18 @@ void main() {
 
   // cloud shadow: sample the same field the cloud shell uses, offset toward
   // the sun (cheap parallax stand-in for its altitude), darken the ground.
-  vec3 shadowN = normalize(n + normalize(uSunDirObj) * 0.012);
-  float shadowField = cloudField(shadowN, uTime);
-  float shadowAmt = smoothstep(-0.05, 0.05, shadowField) * (1.0 - nightMix);
+  vec3 shadowN = normalize(n + normalize(uSunDirObj) * 0.004);
+  float shadowAmt = smoothstep(0.0, 0.12, cloudMacro(shadowN)) * (1.0 - nightMix);
   color *= mix(1.0, 0.8, shadowAmt);
 
   // stylized ocean sun glint: bright core + soft halo, water only, daylight only.
   vec3 viewDir = normalize(cameraPosition - vWorldPosition);
   vec3 halfDir = normalize(viewDir + sunW);
   float spec = max(dot(flatN, halfDir), 0.0);
-  float core = smoothstep(0.94, 0.985, spec);
-  float halo = smoothstep(0.65, 0.88, spec) * 0.4;
+  float core = smoothstep(0.985, 0.996, spec);
+  float halo = smoothstep(0.9, 0.985, spec) * 0.22;
   float glint = max(core, halo) * (1.0 - land) * clamp(ndotl * 3.0, 0.0, 1.0) * (1.0 - shadowAmt * 0.6) * (1.0 - nightMix);
-  color = mix(color, uGlintColor, glint);
+  color = mix(color, uGlintColor, glint * 0.6);
 
   // aerial perspective: pale blue-white haze toward the horizon (grazing
   // view angle) and with distance from the camera -- stronger than a
@@ -323,17 +263,17 @@ export interface EarthObjects {
   dispose(): void;
 }
 
-export function createEarth(): EarthObjects {
-  const landTexture = buildLandMaskTexture();
+export function createEarth(cloudMap: THREE.Texture): EarthObjects {
+  const landMask = buildLandMask();
+  const landTexture = landMask.texture;
+  const landRaster: Raster = { data: landMask.data, width: landMask.width, height: landMask.height, stride: 4 };
+  const biomeTexture = buildBiomeTexture();
 
-  const heightTexture = new THREE.TextureLoader().load(topoUrl);
-  heightTexture.flipY = false; // match the land-mask's uv convention (v=0 = north pole)
-  heightTexture.wrapS = THREE.RepeatWrapping;
-  heightTexture.wrapT = THREE.ClampToEdgeWrapping;
-  heightTexture.colorSpace = THREE.NoColorSpace;
-  heightTexture.minFilter = THREE.LinearFilter;
-  heightTexture.magFilter = THREE.LinearFilter;
-  heightTexture.generateMipmaps = false;
+  // Heightmap is only needed on the CPU (displacement is baked per chunk).
+  let heightRaster: Raster | null = null;
+  loadRaster(topoUrl).then((r) => {
+    heightRaster = r;
+  });
 
   const material = new THREE.ShaderMaterial({
     vertexShader: VERTEX_SHADER,
@@ -341,9 +281,8 @@ export function createEarth(): EarthObjects {
     side: THREE.DoubleSide,
     uniforms: {
       uLandTex: { value: landTexture },
-      uHeightTex: { value: heightTexture },
-      uMaxElevKm: { value: MAX_ELEV_KM },
-      uExaggeration: { value: EXAGGERATION },
+      uBiomeTex: { value: biomeTexture },
+      uCloudMap: { value: cloudMap },
       uSunDirObj: { value: new THREE.Vector3(1, 0, 0) },
       uSunDirWorld: { value: new THREE.Vector3(1, 0, 0) },
       uTime: { value: 0 },
@@ -375,7 +314,6 @@ export function createEarth(): EarthObjects {
   const coarseBuilt = buildMergedCoarseSphere(seeds, COARSE_EXTRA_LEVELS, EARTH_RADIUS_KM - COARSE_INSET_KM);
   const coarseGeometry = new THREE.BufferGeometry();
   coarseGeometry.setAttribute('position', new THREE.BufferAttribute(coarseBuilt.positions, 3));
-  coarseGeometry.setAttribute('aSkirt', new THREE.BufferAttribute(coarseBuilt.aSkirt, 1));
   coarseGeometry.setIndex(new THREE.BufferAttribute(coarseBuilt.indices, 1));
   coarseGeometry.computeBoundingSphere();
   const coarseMesh = new THREE.Mesh(coarseGeometry, material);
@@ -388,7 +326,25 @@ export function createEarth(): EarthObjects {
   const detailCache = new Map<number, { mesh: THREE.Mesh; geometry: THREE.BufferGeometry }>();
   const trisPerDetailChunk = (2 ** DETAIL_EXTRA_LEVELS) ** 2; // border skirt tris are a small, ignored bonus
 
+  function displace(positions: Float32Array, height: Raster): void {
+    for (let i = 0; i < positions.length; i += 3) {
+      const x = positions[i];
+      const y = positions[i + 1];
+      const z = positions[i + 2];
+      const r = Math.hypot(x, y, z);
+      const nx = x / r;
+      const ny = y / r;
+      const nz = z / r;
+      const rr = r + elevationKm(height, landRaster, nx, ny, nz);
+      positions[i] = nx * rr;
+      positions[i + 1] = ny * rr;
+      positions[i + 2] = nz * rr;
+    }
+  }
+
   function updateLOD(subDirObj: THREE.Vector3): void {
+    const height = heightRaster;
+    if (!height) return; // coarse sphere only until the heightmap has loaded
     const toBuild: { seed: SeedChunk; d: number }[] = [];
     const toRemove: number[] = [];
 
@@ -418,9 +374,9 @@ export function createEarth(): EarthObjects {
     for (let i = 0; i < budget; i++) {
       const seed = toBuild[i].seed;
       const built = buildChunkMesh(seed, DETAIL_EXTRA_LEVELS, EARTH_RADIUS_KM, SKIRT_DROP_KM);
+      displace(built.positions, height);
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.BufferAttribute(built.positions, 3));
-      geometry.setAttribute('aSkirt', new THREE.BufferAttribute(built.aSkirt, 1));
       geometry.setIndex(new THREE.BufferAttribute(built.indices as Uint16Array, 1));
       geometry.computeBoundingSphere();
       const mesh = new THREE.Mesh(geometry, material);
@@ -455,7 +411,7 @@ export function createEarth(): EarthObjects {
       for (const entry of detailCache.values()) entry.geometry.dispose();
       material.dispose();
       landTexture.dispose();
-      heightTexture.dispose();
+      biomeTexture.dispose();
     },
   };
 }

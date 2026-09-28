@@ -12,6 +12,7 @@ import { createStation } from './station';
 import { ChaseCameraController } from './cameraControl';
 import { createSun } from './sun';
 import { createPost } from './post';
+import { createCloudMap } from './cloudMap';
 import { SUN, SPACE, STATION } from './palette';
 
 export interface SceneRenderer {
@@ -23,6 +24,14 @@ export interface SceneRenderer {
 }
 
 const MAX_DPR = 1.5;
+const MIN_DPR = 0.75;
+// Adaptive resolution: keep the frame rate up on weak phones by lowering the
+// render resolution first (cheapest visual cost), then raising it back when
+// there is headroom.
+const SLOW_FRAME_S = 1 / 45;
+const FAST_FRAME_S = 1 / 58;
+const DOWNSCALE_AFTER_S = 1.5;
+const UPSCALE_AFTER_S = 4;
 const SHADER_TIME_EPOCH_MS = Date.UTC(2026, 0, 1);
 const SHADER_TIME_WRAP_S = 4 * 86400;
 const CAMERA_NEAR_KM = 0.001;
@@ -58,9 +67,10 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   const initialAspect = canvas.clientWidth > 0 && canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 16 / 9;
   const camera = new THREE.PerspectiveCamera(50, initialAspect, CAMERA_NEAR_KM, CAMERA_FAR_KM);
 
-  const earth = createEarth();
+  const cloudMap = createCloudMap();
+  const earth = createEarth(cloudMap.texture);
   const atmosphere = createAtmosphere();
-  const clouds = createClouds();
+  const clouds = createClouds(cloudMap.texture);
   earth.rotGroup.add(clouds.mesh);
   earth.pivot.add(atmosphere.mesh);
   scene.add(earth.pivot);
@@ -85,6 +95,32 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   scene.add(fill);
 
   const post = createPost(renderer, scene, camera);
+
+  // --- adaptive resolution + optional stats overlay (?stats=1) -------------
+  let viewW = 1;
+  let viewH = 1;
+  let deviceDpr = 1;
+  let dpr = 1;
+  let smoothDt = 1 / 60;
+  let slowFor = 0;
+  let fastFor = 0;
+  const applyDpr = () => {
+    renderer.setPixelRatio(dpr);
+    renderer.setSize(viewW, viewH, false);
+    post.resize(viewW, viewH, dpr);
+  };
+  const params = new URLSearchParams(location.search);
+  const showStats = params.get('stats') === '1';
+  // ?adaptive=0 pins the resolution (screenshots, profiling)
+  const adaptive = params.get('adaptive') !== '0';
+  const statsEl = showStats ? document.createElement('div') : null;
+  if (statsEl) {
+    statsEl.style.cssText =
+      'position:fixed;top:6px;left:8px;z-index:50;font:11px/1.35 monospace;color:#9fb3c8;pointer-events:none;white-space:pre';
+    document.body.appendChild(statsEl);
+    renderer.info.autoReset = false;
+  }
+  let statsAcc = 0;
 
   const cameraControl = new ChaseCameraController(canvas);
 
@@ -130,13 +166,46 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
 
     cameraControl.update(dtSec, camera, upDirVec, fwdDirVec, sunDirVec);
 
+    cloudMap.update(renderer, simSeconds);
+    if (statsEl) renderer.info.reset();
     post.render();
+
+    // adaptive resolution
+    if (dtSec > 0) smoothDt += (dtSec - smoothDt) * 0.1;
+    slowFor = smoothDt > SLOW_FRAME_S ? slowFor + dtSec : 0;
+    fastFor = smoothDt < FAST_FRAME_S ? fastFor + dtSec : 0;
+    if (!adaptive) {
+      /* resolution pinned */
+    } else if (slowFor > DOWNSCALE_AFTER_S && dpr > MIN_DPR) {
+      dpr = Math.max(MIN_DPR, dpr * 0.85);
+      slowFor = 0;
+      applyDpr();
+    } else if (fastFor > UPSCALE_AFTER_S && dpr < Math.min(deviceDpr, MAX_DPR)) {
+      dpr = Math.min(Math.min(deviceDpr, MAX_DPR), dpr / 0.85);
+      fastFor = 0;
+      applyDpr();
+    }
+
+    if (statsEl) {
+      statsAcc += dtSec;
+      if (statsAcc > 0.5) {
+        statsAcc = 0;
+        const st = earth.getStats();
+        statsEl.textContent =
+          `fps ${(1 / smoothDt).toFixed(0)}  dpr ${dpr.toFixed(2)}\n` +
+          `tris ${renderer.info.render.triangles}  calls ${renderer.info.render.calls}\n` +
+          `terrain chunks ${st.detailChunks}`;
+      }
+    }
   }
 
-  function resize(width: number, height: number, dpr: number): void {
-    renderer.setPixelRatio(Math.min(Math.max(dpr, 1), MAX_DPR));
-    renderer.setSize(width, height, false);
-    post.resize(width, height, Math.min(Math.max(dpr, 1), MAX_DPR));
+  function resize(width: number, height: number, devicePixelRatio: number): void {
+    viewW = width;
+    viewH = height;
+    const first = deviceDpr === 1 && dpr === 1;
+    deviceDpr = Math.max(1, devicePixelRatio);
+    if (first || dpr > Math.min(deviceDpr, MAX_DPR)) dpr = Math.min(deviceDpr, MAX_DPR);
+    applyDpr();
     camera.aspect = width / Math.max(1, height);
     camera.updateProjectionMatrix();
   }
@@ -146,6 +215,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     earth.dispose();
     atmosphere.dispose();
     clouds.dispose();
+    cloudMap.dispose();
     stars.dispose();
     sun.dispose();
     station.dispose();

@@ -130,8 +130,18 @@ export function buildLandMaskCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
-export function buildLandMaskTexture(): THREE.CanvasTexture {
+/** Land mask texture plus its pixels (RGBA) for CPU-side terrain displacement. */
+export function buildLandMask(): { texture: THREE.CanvasTexture; data: Uint8ClampedArray; width: number; height: number } {
   const canvas = buildLandMaskCanvas();
+  const data = canvas.getContext('2d')!.getImageData(0, 0, WIDTH, HEIGHT).data;
+  return { texture: textureFromCanvas(canvas), data, width: WIDTH, height: HEIGHT };
+}
+
+export function buildLandMaskTexture(): THREE.CanvasTexture {
+  return textureFromCanvas(buildLandMaskCanvas());
+}
+
+function textureFromCanvas(canvas: HTMLCanvasElement): THREE.CanvasTexture {
   const texture = new THREE.CanvasTexture(canvas);
   texture.flipY = false;
   texture.wrapS = THREE.RepeatWrapping;
@@ -142,4 +152,74 @@ export function buildLandMaskTexture(): THREE.CanvasTexture {
   texture.generateMipmaps = false;
   texture.needsUpdate = true;
   return texture;
+}
+
+// --- Biome map ------------------------------------------------------------
+// Latitude rules alone paint the Ganges plain or the Amazon as desert, so the
+// big arid and rainforest regions are hand-placed as soft ellipses
+// (lon, lat, radius-lon, radius-lat in degrees). R = aridity, G = rainforest.
+const ARID: [number, number, number, number, number][] = [
+  // lon, lat, rLon, rLat, strength
+  [8, 23, 26, 9, 1], // Sahara
+  [45, 22, 13, 8, 1], // Arabia
+  [56, 30, 8, 5, 0.8], // Iran
+  [71, 27, 4, 3, 0.8], // Thar
+  [83, 40, 10, 4, 0.9], // Taklamakan / Tarim
+  [104, 43, 12, 4, 0.8], // Gobi
+  [60, 44, 8, 4, 0.6], // Kazakh / Aral steppe
+  [128, -25, 13, 7, 0.95], // Australian interior
+  [19, -23, 6, 6, 0.8], // Kalahari / Namib
+  [-70, -23, 3, 8, 0.9], // Atacama
+  [-68, -45, 4, 6, 0.5], // Patagonian steppe
+  [-112, 33, 7, 5, 0.8], // SW US / Sonora
+  [45, 7, 5, 4, 0.5], // Horn of Africa
+];
+const RAINFOREST: [number, number, number, number, number][] = [
+  [-62, -4, 14, 8, 1], // Amazon
+  [20, 0, 10, 5, 1], // Congo
+  [105, 2, 18, 8, 0.9], // SE Asia / Indonesia
+  [-8, 7, 6, 2.5, 0.6], // West Africa coast
+  [145, -5, 5, 3, 0.8], // New Guinea
+  [-84, 10, 4, 5, 0.6], // Central America
+  [80, 24, 10, 4, 0.55], // Ganges plain / Bengal (green, not rainforest proper)
+  [115, 28, 9, 6, 0.55], // South China
+];
+
+export function buildBiomeTexture(): THREE.CanvasTexture {
+  const w = 512;
+  const h = 256;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, w, h);
+  ctx.globalCompositeOperation = 'lighter';
+  const paint = (list: typeof ARID, channel: 'r' | 'g') => {
+    for (const [lon, lat, rl, ra, k] of list) {
+      for (const shift of [-360, 0, 360]) {
+        const x = ((lon + shift + 180) / 360) * w;
+        const y = ((90 - lat) / 180) * h;
+        const rx = (rl / 360) * w;
+        const ry = (ra / 180) * h;
+        ctx.save();
+        ctx.translate(x, y);
+        ctx.scale(rx, ry);
+        const g = ctx.createRadialGradient(0, 0, 0, 0, 0, 1.6);
+        const c = Math.round(255 * k);
+        const col = (a: number) => (channel === 'r' ? `rgba(${c},0,0,${a})` : `rgba(0,${c},0,${a})`);
+        g.addColorStop(0, col(1));
+        g.addColorStop(0.55, col(0.85));
+        g.addColorStop(1, col(0));
+        ctx.fillStyle = g;
+        ctx.beginPath();
+        ctx.arc(0, 0, 1.6, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+    }
+  };
+  paint(ARID, 'r');
+  paint(RAINFOREST, 'g');
+  return textureFromCanvas(canvas);
 }
