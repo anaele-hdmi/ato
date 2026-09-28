@@ -10,9 +10,9 @@ import { ATMOSPHERE } from './palette';
 import { EARTH_RADIUS_KM } from '../types';
 
 /** Analytic top of the atmosphere used by the shader. */
-const ATMO_TOP_KM = 110;
+const ATMO_TOP_KM = 320;
 /** Geometry sits a little higher so polygon faceting never clips the analytic edge. */
-const SHELL_HEIGHT_KM = 160;
+const SHELL_HEIGHT_KM = 380;
 
 const VERTEX_SHADER = /* glsl */ `
 #include <common>
@@ -46,14 +46,17 @@ uniform float uNightIntensity;
 uniform float uRadius;
 uniform float uTop;
 uniform float uDiscHaze;
+uniform vec3 uGlowColor;
+uniform vec3 uForwardColor;
 
 varying vec3 vWorldPosition;
 varying vec3 vCenter;
 
-const float SCALE_H = 9.0;      // km, stylised scale height
+const float SCALE_H = 13.0;     // km, stylised scale height (thicker than real ~8 km)
+const float GLOW_H = 70.0;      // km, faint outer glow that turns the sky above the limb navy
 const float AIRGLOW_H = 95.0;   // km, airglow layer altitude
 const float AIRGLOW_W = 4.0;    // km, layer half-width
-const int STEPS = 14;
+const int STEPS = 18;
 
 // Returns (tNear, tFar) of a ray against a sphere at the origin, or (-1,-1).
 vec2 hitSphere(vec3 o, vec3 d, float r) {
@@ -83,6 +86,7 @@ void main() {
   float dt = (t1 - t0) / float(STEPS);
   vec3 scatter = vec3(0.0);
   vec3 glow = vec3(0.0);
+  vec3 outer = vec3(0.0);
   float depth = 0.0;
 
   for (int i = 0; i < STEPS; i++) {
@@ -100,13 +104,18 @@ void main() {
     c = mix(c, duskCol * uDuskIntensity, dusk * 0.85);
     // light that reaches this sample is itself attenuated by what's already in front of it
     scatter += c * rho * exp(-depth * 0.012);
+    // outer glow: very thin, tall layer lit only on the day side
+    outer += uGlowColor * exp(-h / GLOW_H) * dt * smoothstep(-0.15, 0.2, sunElev);
 
     float g = exp(-pow((h - AIRGLOW_H) / AIRGLOW_W, 2.0)) * (1.0 - day);
     glow += uNightColor * uNightIntensity * g * dt;
   }
 
   if (hitsGround) scatter *= uDiscHaze;
-  vec3 col = 1.0 - exp(-scatter * 0.06) + glow * 0.02;
+  // forward scattering: warm cream brightening toward the Sun
+  float mu = max(dot(d, sunDir), 0.0);
+  vec3 forward = uForwardColor * (pow(mu, 6.0) * 0.8 + pow(mu, 40.0) * 1.5);
+  vec3 col = 1.0 - exp(-scatter * 0.06 * (vec3(1.0) + forward)) + glow * 0.02 + outer * 0.00035;
   float a = clamp(max(col.r, max(col.g, col.b)), 0.0, 1.0);
   gl_FragColor = vec4(col, a);
   #include <colorspace_fragment>
@@ -137,6 +146,8 @@ export function createAtmosphere(): AtmosphereObjects {
       uRadius: { value: EARTH_RADIUS_KM },
       uTop: { value: ATMO_TOP_KM },
       uDiscHaze: { value: ATMOSPHERE.discHaze },
+      uGlowColor: { value: ATMOSPHERE.outerGlow },
+      uForwardColor: { value: ATMOSPHERE.forward },
     },
     transparent: true,
     depthWrite: false,
