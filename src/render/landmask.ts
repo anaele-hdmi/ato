@@ -28,7 +28,57 @@ function tracePolygon(ctx: CanvasRenderingContext2D, rings: PolygonCoords, lonSh
   }
 }
 
-/** Builds the equirectangular land-mask canvas (R = land, G = coastal band). */
+/** Separable box blur with longitude wrap (X) and edge clamp (Y, poles). Used
+ * repeatedly (3 passes) to approximate a wide gaussian cheaply at build time. */
+function boxBlur(src: Float32Array, width: number, height: number, radius: number): Float32Array {
+  const tmp = new Float32Array(width * height);
+  const dst = new Float32Array(width * height);
+  const norm = 1 / (radius * 2 + 1);
+
+  for (let y = 0; y < height; y++) {
+    const row = y * width;
+    let sum = 0;
+    for (let k = -radius; k <= radius; k++) {
+      sum += src[row + (((k % width) + width) % width)];
+    }
+    for (let x = 0; x < width; x++) {
+      tmp[row + x] = sum * norm;
+      const addX = (x + radius + 1) % width;
+      const subX = ((x - radius) % width + width) % width;
+      sum += src[row + addX] - src[row + subX];
+    }
+  }
+
+  for (let x = 0; x < width; x++) {
+    let sum = 0;
+    for (let k = -radius; k <= radius; k++) {
+      const y = Math.min(height - 1, Math.max(0, k));
+      sum += tmp[y * width + x];
+    }
+    for (let y = 0; y < height; y++) {
+      dst[y * width + x] = sum * norm;
+      const addY = Math.min(height - 1, y + radius + 1);
+      const subY = Math.max(0, y - radius);
+      sum += tmp[addY * width + x] - tmp[subY * width + x];
+    }
+  }
+  return dst;
+}
+
+/** Builds a coast-distance field: 0 = deep ocean, 0.5 = coastline, 1 = deep
+ * interior. Cheap repeated box-blur of the binary land mask (art-direction
+ * §4 land-biome follow-up): far from the smoothing radius the value
+ * saturates toward 0 or 1, so |field*2-1| reads as "distance from coast". */
+function buildCoastDistanceField(landBinary: Float32Array, width: number, height: number): Float32Array {
+  let field = landBinary;
+  for (let i = 0; i < 3; i++) {
+    field = boxBlur(field, width, height, 18);
+  }
+  return field;
+}
+
+/** Builds the equirectangular land-mask canvas (R = land, G = coastal band,
+ * B = coast-distance field for land-biome selection). */
 export function buildLandMaskCanvas(): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
   canvas.width = WIDTH;
@@ -63,6 +113,19 @@ export function buildLandMaskCanvas(): HTMLCanvasElement {
   ctx.fillStyle = '#ff0000';
   ctx.fill('evenodd');
   ctx.globalCompositeOperation = 'source-over';
+
+  // Build the coast-distance field from a clean binary land fill (independent
+  // of the stroke used above) and write it into B.
+  const img = ctx.getImageData(0, 0, WIDTH, HEIGHT);
+  const landBinary = new Float32Array(WIDTH * HEIGHT);
+  for (let i = 0; i < WIDTH * HEIGHT; i++) {
+    landBinary[i] = img.data[i * 4] > 127 ? 1 : 0;
+  }
+  const coastField = buildCoastDistanceField(landBinary, WIDTH, HEIGHT);
+  for (let i = 0; i < WIDTH * HEIGHT; i++) {
+    img.data[i * 4 + 2] = Math.max(0, Math.min(255, Math.round(coastField[i] * 255)));
+  }
+  ctx.putImageData(img, 0, 0);
 
   return canvas;
 }

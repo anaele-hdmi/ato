@@ -73,17 +73,17 @@ export const STATION = {
 /** Land biome faces (M2): flat colours picked by latitude + coast distance + a
  *  low-frequency noise jitter, replacing the old uniform land/highLand faces. */
 export const BIOMES = {
-  tropicalForest: new THREE.Color(0x1f5b34),
-  savanna: new THREE.Color(0xa78a49),
-  desert: new THREE.Color(0xd9b877),
-  temperateForest: new THREE.Color(0x35603a),
-  tundra: new THREE.Color(0x8a9a86),
+  tropicalForest: new THREE.Color(0x2b5f3f),
+  savanna: new THREE.Color(0x9c8f5a),
+  desert: new THREE.Color(0xc9ad80),
+  temperateForest: new THREE.Color(0x3f6349),
+  tundra: new THREE.Color(0x899487),
 };
 
 /** Cloud shell tones: quantized like the ground (lit / shaded / twilight-warm). */
 export const CLOUDS = {
-  lit: new THREE.Color(0xfbfbfa),
-  shade: new THREE.Color(0xaab6c9),
+  lit: new THREE.Color(0xfcfcfb),
+  shade: new THREE.Color(0x8291a8),
   twilight: new THREE.Color(0xf0b487),
 };
 
@@ -103,10 +103,10 @@ export const TWILIGHT = {
  *  split-toned lit-gold / shadow-teal, plus a pale aerial-perspective haze
  *  that brightens toward the horizon. */
 export const RELIEF = {
-  warmLit: new THREE.Color(0xffd9a0),
-  coolShadow: new THREE.Color(0x2b4a5e),
-  skyAmbient: new THREE.Color(0x7fb0d8),
-  hazeCool: new THREE.Color(0xcfe4f2),
-  hazeWarm: new THREE.Color(0xffe2b8),
+  warmLit: new THREE.Color(0xffd9a3),
+  coolShadow: new THREE.Color(0x2c5068),
+  skyAmbient: new THREE.Color(0x8fc0e8),
+  hazeCool: new THREE.Color(0xe4f0fa),
+  hazeWarm: new THREE.Color(0xfff0d8),
 };
 

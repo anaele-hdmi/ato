@@ -6,10 +6,12 @@ import * as THREE from 'three';
 import type { FrameState, Vec3 } from '../types';
 import { createEarth } from './earth';
 import { createAtmosphere } from './atmosphere';
+import { createClouds } from './clouds';
 import { createStars } from './stars';
 import { createStation } from './station';
 import { ChaseCameraController } from './cameraControl';
 import { createSun } from './sun';
+import { createPost } from './post';
 import { SUN, SPACE, STATION } from './palette';
 
 export interface SceneRenderer {
@@ -56,8 +58,13 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
 
   const earth = createEarth();
   const atmosphere = createAtmosphere();
+  const clouds = createClouds();
+  earth.rotGroup.add(clouds.mesh);
   earth.pivot.add(atmosphere.mesh);
   scene.add(earth.pivot);
+  // Dev/perf-verification hook only (no gameplay effect): lets a screenshot
+  // script read live LOD stats via page.evaluate(() => window.__earthStats()).
+  (window as unknown as { __earthStats?: () => unknown }).__earthStats = () => earth.getStats();
 
   const stars = createStars();
   scene.add(stars.points);
@@ -75,6 +82,8 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   const fill = new THREE.AmbientLight(STATION.ambient, STATION.ambientIntensity);
   scene.add(fill);
 
+  const post = createPost(renderer, scene, camera);
+
   const cameraControl = new ChaseCameraController(canvas);
 
   const stationPosVec = new THREE.Vector3();
@@ -82,6 +91,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   const sunDirVec = new THREE.Vector3();
   const sunDirObjVec = new THREE.Vector3();
   const upDirVec = new THREE.Vector3();
+  const upDirObjVec = new THREE.Vector3();
   const fwdDirVec = new THREE.Vector3();
 
   function update(frame: FrameState, dtSec: number): void {
@@ -94,23 +104,34 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
 
     rotateYInverse(sunDirVec, frame.gmstRad, sunDirObjVec);
     earth.setSunDirObject(sunDirObjVec);
+    earth.setSunDirWorld(sunDirVec);
     atmosphere.setSunDir(sunDirVec);
+
+    const simSeconds = frame.timeMs / 1000;
+    earth.setTime(simSeconds);
+    clouds.setSunDirObject(sunDirObjVec);
+    clouds.setSunDirWorld(sunDirVec);
+    clouds.setTime(simSeconds);
 
     sunLight.position.copy(sunDirVec);
     sun.setDirection(sunDirVec);
 
     upDirVec.copy(stationPosVec).normalize();
     fwdDirVec.copy(stationVelVec).normalize();
-    station.orient(upDirVec, fwdDirVec);
+    station.orient(upDirVec, fwdDirVec, sunDirVec);
+
+    rotateYInverse(upDirVec, frame.gmstRad, upDirObjVec);
+    earth.updateLOD(upDirObjVec);
 
     cameraControl.update(dtSec, camera, upDirVec, fwdDirVec, sunDirVec);
 
-    renderer.render(scene, camera);
+    post.render();
   }
 
   function resize(width: number, height: number, dpr: number): void {
     renderer.setPixelRatio(Math.min(Math.max(dpr, 1), MAX_DPR));
     renderer.setSize(width, height, false);
+    post.resize(width, height, Math.min(Math.max(dpr, 1), MAX_DPR));
     camera.aspect = width / Math.max(1, height);
     camera.updateProjectionMatrix();
   }
@@ -119,10 +140,12 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     cameraControl.dispose();
     earth.dispose();
     atmosphere.dispose();
+    clouds.dispose();
     stars.dispose();
     sun.dispose();
     station.dispose();
     sunLight.dispose();
+    post.dispose();
     renderer.dispose();
   }
 
