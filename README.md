@@ -33,4 +33,5 @@ npm test         # 軌道計算のテスト
 
 - 陸地形状: Natural Earth（world-atlas 経由, パブリックドメイン）
 - 標高画像: three-globe（vasturiano, MIT）のサンプル画像 `earth-topology.png`。元データの出典は未確認
+- 恒星データ: d3-celestial © 2015 Olaf Frohn, BSD-3-Clause（Hipparcos 由来）
 - 宇宙船は架空のもので、実在の機関・機体とは無関係
