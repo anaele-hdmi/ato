@@ -217,11 +217,18 @@ void main() {
   vec3 viewDir = normalize(cameraPosition - vWorldPosition);
   vec3 halfDir = normalize(viewDir + sunW);
   float spec = max(dot(flatN, halfDir), 0.0);
-  // Sun glint: a tight bright core plus a broad sheen (two Blinn lobes),
-  // added on top so it can bloom; water only, sunlit only, dimmed under
-  // cloud shadow.
-  float water = (1.0 - land) * clamp(ndotl * 4.0, 0.0, 1.0) * (1.0 - nightMix) * (1.0 - shadowAmt * 0.7);
-  float glint = (pow(spec, 1500.0) * 1.4 + pow(spec, 110.0) * 0.32) * water;
+  // Sun glint from a wave-slope distribution (Cox-Munk style): the sea is a
+  // field of tilted facets, so the glint is a broad soft patch centred on
+  // the specular point (tens to hundreds of km from orbit), not a pinpoint.
+  // sigma^2 ~ mean-square wave slope (moderate wind).
+  float water = (1.0 - land) * clamp(ndotl * 4.0, 0.0, 1.0) * (1.0 - nightMix) * (1.0 - shadowAmt * 0.8);
+  float c2 = max(spec * spec, 1e-4);
+  float tan2 = (1.0 - c2) / c2;
+  const float SIGMA2 = 0.035;
+  float slopePdf = exp(-tan2 / SIGMA2) / (SIGMA2 * c2 * c2);
+  float nv = max(dot(flatN, viewDir), 0.05);
+  // radiance ~ F * pdf / (4 cos(view)); F ~ 0.02..0.1, folded into the gain
+  float glint = (slopePdf / (4.0 * nv) * 0.012 + pow(spec, 4000.0) * 1.2) * water;
   // grazing-angle sky reflection (Fresnel) gives the sea a sheen toward the horizon
   float fres = pow(1.0 - clamp(dot(flatN, viewDir), 0.0, 1.0), 5.0);
   color += uSkyAmbient * fres * 0.35 * water;

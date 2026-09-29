@@ -58,16 +58,16 @@ export const SUN = {
 
 /** Station: three main colours + two sparing accents. */
 export const STATION = {
-  hull: new THREE.Color(0xe7e3d8),
-  truss: new THREE.Color(0xa9aaa4),
-  panel: new THREE.Color(0x1c3f6e),
-  /** warm gold foil accent: docking ring, blanket edge trim, antenna tips */
-  gold: new THREE.Color(0xd7a94a),
-  /** dark panel-frame tone: masts, gimbal housings, blanket grid lines */
-  frame: new THREE.Color(0x53565e),
-  /** ambient fill so the unlit side reads as a darker step, not black */
-  ambient: new THREE.Color(0x2a3448),
-  ambientIntensity: 0.9,
+  body: new THREE.Color(0xc2bda6),
+  /** collars, joints, mount blocks, seam bands */
+  bodyShade: new THREE.Color(0xa9a79f),
+  /** windows, antenna, cupola underside (lifted a little toward bodyShade) */
+  dark: new THREE.Color(0x30353f),
+  panel: new THREE.Color(0x323c52),
+  frame: new THREE.Color(0xd2cfc6),
+  /** ambient fill so the unlit side reads as a cooler mid grey, not black */
+  ambient: new THREE.Color(0xc2d1ff),
+  ambientIntensity: 2.17,
 };
 
 /** Land biome faces (M2): flat colours picked by latitude + coast distance + a
