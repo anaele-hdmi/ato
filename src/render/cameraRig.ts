@@ -3,17 +3,17 @@
 // chase view keeps its own controller.
 //
 //   cupola : inside the Earth-facing window; frame in the foreground
-//   nadir  : straight down, zoomable
+//   aft    : looking back over the truss and solar wings to the horizon
 //   limb   : telephoto on the horizon (atmosphere layers, sunrise)
 //   chase  : outside the station (the only view where the station is visible)
 import * as THREE from 'three';
 import { ChaseCameraController } from './cameraControl';
 
-export type CameraMode = 'cupola' | 'nadir' | 'limb' | 'chase';
-export const CAMERA_ORDER: CameraMode[] = ['cupola', 'nadir', 'limb', 'chase'];
+export type CameraMode = 'cupola' | 'aft' | 'limb' | 'chase';
+export const CAMERA_ORDER: CameraMode[] = ['cupola', 'aft', 'limb', 'chase'];
 export const CAMERA_LABEL: Record<CameraMode, string> = {
   cupola: 'キューポラ',
-  nadir: '真下',
+  aft: '後方',
   limb: '地平線',
   chase: '外から',
 };
@@ -23,7 +23,9 @@ const DEG = Math.PI / 180;
 const HORIZON_TILT = 70 * DEG;
 
 interface LookParams {
-  /** azimuth limits relative to the window's facing (radians); omit = free */
+  /** azimuth the window faces (0 = forward, π = aft) */
+  azCenter?: number;
+  /** azimuth limits relative to azCenter (radians); omit = free */
   azMin?: number;
   azMax?: number;
   tiltMin: number;
@@ -36,7 +38,7 @@ interface LookParams {
 
 const LOOK: Record<Exclude<CameraMode, 'chase'>, LookParams> = {
   cupola: { tiltMin: 0, tiltMax: 80 * DEG, tiltDefault: 42 * DEG, fovMin: 40, fovMax: 75, fovDefault: 62 },
-  nadir: { tiltMin: 0, tiltMax: 25 * DEG, tiltDefault: 0, fovMin: 20, fovMax: 70, fovDefault: 55 },
+  aft: { azCenter: Math.PI, azMin: -60 * DEG, azMax: 60 * DEG, tiltMin: 55 * DEG, tiltMax: 100 * DEG, tiltDefault: 76 * DEG, fovMin: 30, fovMax: 75, fovDefault: 58 },
   limb: { azMin: -38 * DEG, azMax: 38 * DEG, tiltMin: HORIZON_TILT - 14 * DEG, tiltMax: HORIZON_TILT + 12 * DEG, tiltDefault: HORIZON_TILT + 1 * DEG, fovMin: 4, fovMax: 30, fovDefault: 14 },
 };
 
@@ -66,12 +68,16 @@ class LookController {
     this.params = p;
     this.tilt = p.tiltDefault;
     this.fov = p.fovDefault;
-    this.azimuth = this.clampAz(0);
+    this.azimuth = p.azCenter ?? 0;
   }
 
   clampAz(a: number): number {
     const { azMin, azMax } = this.params;
-    return azMin === undefined || azMax === undefined ? a : THREE.MathUtils.clamp(a, azMin, azMax);
+    if (azMin === undefined || azMax === undefined) return a;
+    const c = this.params.azCenter ?? 0;
+    // wrap relative to the window's facing before clamping
+    const rel = Math.atan2(Math.sin(a - c), Math.cos(a - c));
+    return c + THREE.MathUtils.clamp(rel, azMin, azMax);
   }
 
   private pinchDistance(): number {
@@ -185,17 +191,8 @@ function buildCupolaFrame(): THREE.Mesh {
   return frameMesh(outer);
 }
 
-/** Nadir: one round porthole in the lab floor. */
-function buildPortholeFrame(): THREE.Mesh {
-  const outer = hexOutline(0.06);
-  const hole = new THREE.Path();
-  hole.absarc(0, 0, rAt(33), 0, Math.PI * 2, true);
-  outer.holes.push(hole);
-  return frameMesh(outer);
-}
-
 /** Horizon: rounded rectangular window facing the forward horizon. */
-function buildHorizonFrame(): THREE.Object3D {
+function buildRectWindowFrame(tiltFromNadir: number, aft: boolean): THREE.Object3D {
   const outer = hexOutline(0.06);
   const w = rAt(42);
   const h = rAt(24);
@@ -212,10 +209,10 @@ function buildHorizonFrame(): THREE.Object3D {
   hole.quadraticCurveTo(-w, -h, -w + c, -h);
   outer.holes.push(hole);
   const mesh = frameMesh(outer);
-  // plane normal -z → point it at the forward horizon (70° from nadir toward +y)
+  // plane normal -z → rotate about x toward the forward (or aft) horizon
   const holder = new THREE.Group();
   holder.add(mesh);
-  mesh.rotation.x = HORIZON_TILT;
+  mesh.rotation.x = aft ? -tiltFromNadir : tiltFromNadir;
   return holder;
 }
 
@@ -232,8 +229,8 @@ export class CameraRig {
     this.chase = new ChaseCameraController(canvas);
     this.look = new LookController(canvas);
     this.frameByMode.cupola = buildCupolaFrame();
-    this.frameByMode.nadir = buildPortholeFrame();
-    this.frameByMode.limb = buildHorizonFrame();
+    this.frameByMode.aft = buildRectWindowFrame(LOOK.aft.tiltDefault, true);
+    this.frameByMode.limb = buildRectWindowFrame(HORIZON_TILT, false);
     for (const f of Object.values(this.frameByMode)) this.frames.add(f!);
     this.setMode('cupola');
   }
