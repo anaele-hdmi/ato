@@ -48,8 +48,12 @@ async function main(): Promise<void> {
   }
   let simTime = Number.isFinite(pinned) ? pinned : Number.isFinite(resumeAt) ? resumeAt : Date.now();
   if (!Number.isFinite(pinned) && !Number.isFinite(resumeAt)) {
+    // Always open in twilight: just before an orbital sunrise; on a
+    // white-night orbit (no sunrise for 2 orbits) just before a sunset.
     const sunrise0 = findNextSunrise(simTime);
+    const sunset0 = findNextSunset(simTime);
     if (Number.isFinite(sunrise0)) simTime = sunrise0 - START_LEAD_MS;
+    else if (Number.isFinite(sunset0)) simTime = sunset0 - START_LEAD_MS;
   }
 
   let rate: TimeRate = 1;

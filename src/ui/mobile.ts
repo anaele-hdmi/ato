@@ -34,7 +34,23 @@ function isPortrait(): boolean {
 function buildRotateOverlay(): HTMLDivElement {
   const el = document.createElement('div');
   el.className = 'lt-rotate';
-  el.textContent = '端末を横にしてください';
+  const standalone =
+    window.matchMedia?.('(display-mode: fullscreen), (display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const ua = navigator.userAgent;
+  const isIOS = /iPhone|iPad|iPod/.test(ua) || (ua.includes('Mac') && navigator.maxTouchPoints > 1);
+  const how = standalone
+    ? ''
+    : isIOS
+      ? `<div class="lt-rotate-how"><div class="lt-rotate-sub">全画面で見るには（iPhone / iPad）</div>
+<ol><li>Safari の共有ボタン <span aria-hidden="true">⬆︎</span> をタップ</li>
+<li>「ホーム画面に追加」を選ぶ</li>
+<li>ホーム画面にできたアイコンから開く</li></ol>
+<div class="lt-rotate-note">すぐ試すなら：アドレスバーの「ぁあ」→「ツールバーを非表示」</div></div>`
+      : `<div class="lt-rotate-how"><div class="lt-rotate-sub">全画面で見るには（Android）</div>
+<ol><li>「タップして出発」で自動的に全画面になります</li>
+<li>ならない場合：Chrome のメニュー ⋮ →「ホーム画面に追加」→ アイコンから開く</li></ol></div>`;
+  el.innerHTML = `<div class="lt-rotate-main">端末を横にしてください</div>${how}`;
   el.hidden = !isPortrait();
   document.body.appendChild(el);
 

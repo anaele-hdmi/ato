@@ -255,6 +255,32 @@ body {
   z-index: 100;
 }
 
+.lt-rotate {
+  flex-direction: column;
+  gap: 1.6rem;
+}
+.lt-rotate-main {
+  font-size: 0.95rem;
+  color: var(--ui-fg);
+}
+.lt-rotate-how {
+  max-width: 22rem;
+  text-align: left;
+  line-height: 1.8;
+  letter-spacing: 0.04em;
+}
+.lt-rotate-sub {
+  color: var(--ui-fg);
+  margin-bottom: 0.3rem;
+}
+.lt-rotate-how ol {
+  margin: 0;
+  padding-left: 1.2rem;
+}
+.lt-rotate-note {
+  margin-top: 0.6rem;
+  opacity: 0.8;
+}
 .lt-rotate[hidden] {
   display: none;
 }
@@ -285,4 +311,15 @@ body {
   touch-action: none;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+
+.lt-start__fs {
+  position: absolute;
+  bottom: calc(1.2rem + var(--safe-b));
+  left: 0;
+  right: 0;
+  text-align: center;
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  color: var(--ui-fg-dim);
 }

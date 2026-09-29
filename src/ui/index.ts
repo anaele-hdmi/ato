@@ -67,6 +67,18 @@ export function mountUI(root: HTMLElement, handlers: UIHandlers): UIController {
   startHint.className = 'lt-start__hint';
   startHint.textContent = 'タップして出発';
   startScreen.append(startTitle, startHint);
+  // Not installed as an app: browser bars eat the view. One quiet line on how
+  // to go full screen (the portrait overlay has the step-by-step version).
+  const standalone =
+    window.matchMedia?.('(display-mode: fullscreen), (display-mode: standalone)').matches ||
+    (navigator as Navigator & { standalone?: boolean }).standalone === true;
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) || (navigator.userAgent.includes('Mac') && navigator.maxTouchPoints > 1);
+  if (!standalone && isIOS) {
+    const fs = document.createElement('div');
+    fs.className = 'lt-start__fs';
+    fs.textContent = '全画面で見るには：共有 → ホーム画面に追加 → アイコンから開く';
+    startScreen.append(fs);
+  }
 
   const fadeOverlay = document.createElement('div');
   fadeOverlay.className = 'lt-fade';
