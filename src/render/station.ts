@@ -1,297 +1,427 @@
-// A stylized, fictional ISS-like station: integrated truss with lattice joints,
-// four pairs of sun-tracking solar array wings, a pressurized module stack,
-// radiators, a cupola and a docked capsule. Flat-shaded MeshToonMaterial only.
-// No real ISS imagery or markings.
+// A compact, symmetrical low-poly station (client concept art): an octagonal
+// hub with chamfered ends, a faceted zenith dome with a small antenna on top,
+// an Earth-facing cupola pod below, two chunky segmented arms and two square
+// 2x2 solar arrays that turn about the arm axis to face the Sun.
+// Matte flat-shaded Lambert with vertex colours; no textures.
 // LVLH-oriented: local -Z = velocity (forward), local +Y = away from Earth,
-// local X = the truss (lateral) axis.
+// local X = the arm axis.
 import * as THREE from 'three';
+import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { STATION } from './palette';
 
-// ---- dimensions (km) -------------------------------------------------------
-const TRUSS_LENGTH = 0.086;
-const TRUSS_SECTION = 0.0055;
-const LONGERON_OFFSET = 0.0045; // half-diagonal of the lattice cross-section
-const LONGERON_R = 0.0007;
-const JOINT_COUNT = 4; // internal segment joints along the truss
-const JOINT_SIZE = 0.0095;
+// ---- dimensions (km); 1 m = 0.001 ------------------------------------------
+const M = 0.001;
+const HUB_APOTHEM = 5.5 * M; // hub width (flat to flat) = 11 m
+const HUB_SIDE_HALF = 3.2 * M; // vertical side faces: y in [-3.2, 3.2] m
+const HUB_END_Y = 5.5 * M; // chamfered ends reach y = +-5.5 m (height 11 m)
+const HUB_END_APOTHEM = 3.5 * M;
 
-const WINGS_PER_END = 4; // -> 8 wings total = 4 pairs
-const WING_MOUNT_INSET = 0.006;
-const WING_Z_SPACING = 0.011;
-const PANEL_LENGTH = 0.03; // each blanket, half of the wing's deployed length
-const PANEL_WIDTH = 0.0105;
-const PANEL_THICKNESS = 0.0004;
-const MAST_HALF_GAP = 0.0016; // gap between the two blankets, for the mast
-const MAST_WIDTH = 0.0011;
-const GIMBAL_R = 0.0016;
-const GIMBAL_LEN = 0.0022;
-const BLANKET_UV_REPEAT = 7;
+const COLLAR_APOTHEM = 2.35 * M;
+const COLLAR_TOP = 6.3 * M;
+const DOME_R = 1.95 * M; // 35 % of the hub width, as a diameter
+const DOME_BASE = COLLAR_TOP + 0.15 * M;
+const DOME_TOP = DOME_BASE + DOME_R * 0.93;
+const MAST_TOP = DOME_TOP + 1.5 * M;
 
-const RADIATOR_W = 0.0009;
-const RADIATOR_H = 0.026;
-const RADIATOR_D = 0.015;
+const NECK_APOTHEM = 2.2 * M; // 40 % of the hub width
+const NECK_BOTTOM = -7.0 * M;
+const POD_APOTHEM = 3.1 * M;
+const POD_MID = -8.9 * M; // light upper half / dark lower half
+const POD_BOTTOM = -10.7 * M;
+const POD_BOTTOM_APOTHEM = 1.75 * M;
 
-const NODE_R = 0.0062;
-const NODE_LEN = 0.0095;
-const LAB_R = 0.0046;
-const LAB_LEN = 0.026;
-const LAB2_R = 0.004;
-const LAB2_LEN = 0.02;
-const SIDE_R = 0.0033;
-const SIDE_LEN = 0.013;
-const CUPOLA_R = 0.0032;
-const CAPSULE_R = 0.0036;
-const CAPSULE_LEN = 0.015;
-const CAPSULE_NOSE_LEN = 0.007;
-const DOCK_RING_R = 0.0042;
-const DOCK_RING_LEN = 0.0016;
+const ARM_ROOT = HUB_APOTHEM;
+const ARRAY_INNER = 11.4 * M; // x of the array's inner frame edge (pivot)
+const ARRAY_SIDE = 15 * M;
+const FRAME_BAR = 0.5 * M;
+const FRAME_THICK = 0.42 * M;
+const PANEL_THICK = 0.14 * M;
+const PANEL_RAISE = 0.7 * M; // centre of each panel face, for the faceted X
+const CORNER_BLOCK = 1.05 * M;
+
+/** Eyes sit this far off the nearest hull surface (cabin sphere is 3 m). */
+const EYE_CLEAR = 3.3 * M;
+
+const OCT_R = 1 / Math.cos(Math.PI / 8); // octagon apothem -> vertex radius
 
 export interface StationObjects {
   group: THREE.Group;
   /** Orients the group LVLH: local -Z = forward (velocity), local +Y = up (away from Earth).
-   *  `sunDir` (world-space, optional) rotates each solar wing about the truss axis to face the sun. */
+   *  `sunDir` (world-space, optional) rotates each solar array about the arm axis to face the sun. */
   orient(stationPosDir: THREE.Vector3, stationVelDir: THREE.Vector3, sunDir?: THREE.Vector3): void;
   /** Eye points (station-local) for the interior views: the window each view looks through. */
   eyes: { cupola: THREE.Vector3; aft: THREE.Vector3; limb: THREE.Vector3; zenith: THREE.Vector3 };
   dispose(): void;
 }
 
+// ---- geometry helpers ------------------------------------------------------
+
+/** Octagon ring (flats facing +-X and +-Z) at height y, given its apothem. */
+function octRing(y: number, apothem: number, out: THREE.Vector3[]): THREE.Vector3[] {
+  const r = apothem * OCT_R;
+  for (let k = 0; k < 8; k++) {
+    const a = Math.PI / 8 + (k * Math.PI) / 4;
+    out.push(new THREE.Vector3(Math.cos(a) * r, y, Math.sin(a) * r));
+  }
+  return out;
+}
+
+/** Convex octagonal stack along +Y from [y, apothem] pairs. */
+function octStack(rings: readonly (readonly [number, number])[]): THREE.BufferGeometry {
+  const pts: THREE.Vector3[] = [];
+  for (const [y, a] of rings) octRing(y, a, pts);
+  return new ConvexGeometry(pts);
+}
+
+/** Box with chamfered edges (half extents, bevel size). */
+function bevelBox(hx: number, hy: number, hz: number, b: number): THREE.BufferGeometry {
+  const pts: THREE.Vector3[] = [];
+  for (const sx of [-1, 1])
+    for (const sy of [-1, 1])
+      for (const sz of [-1, 1]) {
+        pts.push(new THREE.Vector3(sx * hx, sy * (hy - b), sz * (hz - b)));
+        pts.push(new THREE.Vector3(sx * (hx - b), sy * hy, sz * (hz - b)));
+        pts.push(new THREE.Vector3(sx * (hx - b), sy * (hy - b), sz * hz));
+      }
+  return new ConvexGeometry(pts);
+}
+
+/** Low-poly geodesic cap: icosphere (detail 1) upper half on an octagonal base. */
+function domeCap(r: number): THREE.BufferGeometry {
+  const ico = new THREE.IcosahedronGeometry(r, 1);
+  const p = ico.attributes.position;
+  const pts: THREE.Vector3[] = [];
+  const seen = new Set<string>();
+  for (let i = 0; i < p.count; i++) {
+    const v = new THREE.Vector3().fromBufferAttribute(p, i);
+    if (v.y < r * 0.2) continue;
+    const key = `${v.x.toFixed(7)},${v.y.toFixed(7)},${v.z.toFixed(7)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    pts.push(v);
+  }
+  ico.dispose();
+  octRing(0, r * Math.cos(Math.PI / 8), pts);
+  return new ConvexGeometry(pts);
+}
+
+/** Thin slab (in XZ, facing +-Y) whose both faces rise to a centre point:
+ *  four triangles per face, so flat shading draws a shallow X. */
+function facetedPanel(hx: number, hz: number, t: number, raise: number): THREE.BufferGeometry {
+  const pos: number[] = [];
+  const tri = (a: number[], b: number[], c: number[]) => pos.push(...a, ...b, ...c);
+  for (const s of [1, -1]) {
+    const y = (s * t) / 2;
+    const c = [0, y + s * raise, 0];
+    const corners = [
+      [-hx, y, -hz],
+      [hx, y, -hz],
+      [hx, y, hz],
+      [-hx, y, hz],
+    ];
+    for (let i = 0; i < 4; i++) {
+      const a = corners[i];
+      const b = corners[(i + 1) % 4];
+      // wind counter-clockwise seen from the face's outside (+Y for s = 1)
+      if (s > 0) tri(c, b, a);
+      else tri(c, a, b);
+    }
+  }
+  // rim
+  const e = [
+    [-hx, -hz],
+    [hx, -hz],
+    [hx, hz],
+    [-hx, hz],
+  ];
+  for (let i = 0; i < 4; i++) {
+    const [x0, z0] = e[i];
+    const [x1, z1] = e[(i + 1) % 4];
+    const lo0 = [x0, -t / 2, z0];
+    const lo1 = [x1, -t / 2, z1];
+    const hi0 = [x0, t / 2, z0];
+    const hi1 = [x1, t / 2, z1];
+    tri(lo0, lo1, hi1);
+    tri(lo0, hi1, hi0);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.computeVertexNormals();
+  return g;
+}
+
+// deterministic small per-plane brightness jitter ("panel shading")
+function planeJitter(nx: number, ny: number, nz: number, d: number): number {
+  const h = Math.sin(nx * 12.9898 + ny * 78.233 + nz * 37.719 + d * 4513.1) * 43758.5453;
+  return (h - Math.floor(h)) * 2 - 1;
+}
+
+const _v0 = new THREE.Vector3();
+const _v1 = new THREE.Vector3();
+const _v2 = new THREE.Vector3();
+const _n = new THREE.Vector3();
+const _c = new THREE.Color();
+
+/** Non-indexed geometry -> per-vertex colour; each flat plane gets a slightly
+ *  different shade (amount = relative jitter, 0 = uniform). */
+function paint(geo: THREE.BufferGeometry, color: THREE.Color, jitter = 0): THREE.BufferGeometry {
+  const g = geo.index ? geo.toNonIndexed() : geo;
+  if (g !== geo) geo.dispose();
+  const p = g.attributes.position;
+  const colors = new Float32Array(p.count * 3);
+  for (let i = 0; i < p.count; i += 3) {
+    _v0.fromBufferAttribute(p, i);
+    _v1.fromBufferAttribute(p, i + 1);
+    _v2.fromBufferAttribute(p, i + 2);
+    _n.subVectors(_v2, _v1).cross(_v0.clone().sub(_v1)).normalize();
+    const k = jitter ? 1 + jitter * planeJitter(_n.x, _n.y, _n.z, _n.dot(_v0) / M) : 1;
+    _c.copy(color).multiplyScalar(k);
+    for (let j = 0; j < 3; j++) {
+      colors[(i + j) * 3] = _c.r;
+      colors[(i + j) * 3 + 1] = _c.g;
+      colors[(i + j) * 3 + 2] = _c.b;
+    }
+  }
+  g.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  // ConvexGeometry carries no uvs; keep attribute sets identical for merging
+  g.deleteAttribute('uv');
+  if (!g.attributes.normal) g.computeVertexNormals();
+  return g;
+}
+
 export function createStation(): StationObjects {
   const group = new THREE.Group();
   const geometries: THREE.BufferGeometry[] = [];
-  const materials: THREE.Material[] = [];
-  const textures: THREE.Texture[] = [];
 
-  // 3-step toon shading: shade / mid / lit.
-  const gradient = new THREE.DataTexture(new Uint8Array([60, 170, 255]), 3, 1, THREE.RedFormat);
-  gradient.minFilter = THREE.NearestFilter;
-  gradient.magFilter = THREE.NearestFilter;
-  gradient.needsUpdate = true;
-  textures.push(gradient);
+  const body = STATION.body;
+  const shade = STATION.bodyShade;
+  const dark = STATION.dark;
+  const podDark = dark.clone().lerp(shade, 0.28);
 
-  // Vertex-coloured body material: every static hull/truss/frame/gold surface
-  // shares this one material (and one draw call) via per-vertex colour.
-  const bodyMat = new THREE.MeshToonMaterial({ color: 0xffffff, vertexColors: true, gradientMap: gradient });
-  // Same recipe, used per-wing for the mast/gimbal (kept separate from the
-  // static body only because the wing rotates).
-  const frameMat = new THREE.MeshToonMaterial({ color: 0xffffff, vertexColors: true, gradientMap: gradient });
-  const blanketTex = createBlanketTexture();
-  textures.push(blanketTex);
-  const blanketMat = new THREE.MeshToonMaterial({ color: 0xffffff, map: blanketTex, gradientMap: gradient });
-  materials.push(bodyMat, frameMat, blanketMat);
+  // Matte, faceted: flat-shaded Lambert, colour per vertex.
+  const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, flatShading: true });
 
-  // ---- reusable unit templates (cloned + transformed per placement) -------
-  const unitBox = new THREE.BoxGeometry(1, 1, 1);
-  const unitCyl = new THREE.CylinderGeometry(1, 1, 1, 12);
-  const unitCylFine = new THREE.CylinderGeometry(1, 1, 1, 16);
-  const unitCone = new THREE.ConeGeometry(1, 1, 10);
-  const unitSphere = new THREE.SphereGeometry(1, 10, 8);
-  const templates = [unitBox, unitCyl, unitCylFine, unitCone, unitSphere];
+  const _m = new THREE.Matrix4();
+  const _q = new THREE.Quaternion();
+  const _e = new THREE.Euler();
+  const _p = new THREE.Vector3();
+  const _s = new THREE.Vector3();
 
-  const _pos = new THREE.Vector3();
-  const _scale = new THREE.Vector3();
-  const _quat = new THREE.Quaternion();
-  const _euler = new THREE.Euler();
-  const _mat4 = new THREE.Matrix4();
-  const _color = new THREE.Color();
-
-  function place(
-    target: THREE.BufferGeometry[],
-    template: THREE.BufferGeometry,
-    hex: THREE.ColorRepresentation,
-    pos: readonly [number, number, number],
-    scale: readonly [number, number, number],
-    euler?: readonly [number, number, number],
-  ): THREE.BufferGeometry {
-    const geo = template.clone();
-    _euler.set(euler?.[0] ?? 0, euler?.[1] ?? 0, euler?.[2] ?? 0);
-    _quat.setFromEuler(_euler);
-    _pos.set(pos[0], pos[1], pos[2]);
-    _scale.set(scale[0], scale[1], scale[2]);
-    _mat4.compose(_pos, _quat, _scale);
-    geo.applyMatrix4(_mat4);
-    colorize(geo, hex);
-    target.push(geo);
-    return geo;
+  function put(
+    list: THREE.BufferGeometry[],
+    geo: THREE.BufferGeometry,
+    color: THREE.Color,
+    pos: readonly [number, number, number] = [0, 0, 0],
+    rot: readonly [number, number, number] = [0, 0, 0],
+    jitter = 0.035,
+    scale: readonly [number, number, number] = [1, 1, 1],
+  ): void {
+    _q.setFromEuler(_e.set(rot[0], rot[1], rot[2]));
+    _m.compose(_p.set(pos[0], pos[1], pos[2]), _q, _s.set(scale[0], scale[1], scale[2]));
+    geo.applyMatrix4(_m);
+    list.push(paint(geo, color, jitter));
   }
 
-  function colorize(geo: THREE.BufferGeometry, hex: THREE.ColorRepresentation): void {
-    _color.set(hex);
-    const count = geo.attributes.position.count;
-    const colors = new Float32Array(count * 3);
-    for (let i = 0; i < count; i++) {
-      colors[i * 3] = _color.r;
-      colors[i * 3 + 1] = _color.g;
-      colors[i * 3 + 2] = _color.b;
-    }
-    geo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+  const hull: THREE.BufferGeometry[] = [];
+
+  // ---- central hub: octagonal prism with strongly chamfered ends -----------
+  put(
+    hull,
+    octStack([
+      [-HUB_END_Y, HUB_END_APOTHEM],
+      [-HUB_SIDE_HALF, HUB_APOTHEM],
+      [HUB_SIDE_HALF, HUB_APOTHEM],
+      [HUB_END_Y, HUB_END_APOTHEM],
+    ]),
+    body,
+  );
+  // thin seam bands where the chamfers start (subtle panel break)
+  for (const y of [-HUB_SIDE_HALF, HUB_SIDE_HALF]) {
+    put(
+      hull,
+      octStack([
+        [y - 0.09 * M, HUB_APOTHEM + 0.05 * M],
+        [y + 0.09 * M, HUB_APOTHEM + 0.05 * M],
+      ]),
+      shade,
+      [0, 0, 0],
+      [0, 0, 0],
+      0.02,
+    );
   }
 
-  function mergeAndAdd(pieces: THREE.BufferGeometry[], mat: THREE.Material): THREE.Mesh {
-    const merged = mergeGeometries(pieces, false) ?? new THREE.BufferGeometry();
-    for (const p of pieces) p.dispose();
-    geometries.push(merged);
-    const mesh = new THREE.Mesh(merged, mat);
-    return mesh;
-  }
+  // windows: dark inset-look quads just proud of the side faces
+  const window = (faceAngle: number, u: number, y: number, w: number, h: number) => {
+    const g = new THREE.BoxGeometry(w, h, 0.12 * M);
+    // face normal direction in XZ; faceAngle 0 = -Z (forward)
+    const nx = -Math.sin(faceAngle);
+    const nz = -Math.cos(faceAngle);
+    const d = HUB_APOTHEM + 0.02 * M;
+    const tx = Math.cos(faceAngle); // tangent along the face (right-handed)
+    const tz = -Math.sin(faceAngle);
+    put(hull, g, dark, [nx * d + tx * u, y, nz * d + tz * u], [0, faceAngle, 0], 0);
+    // light sill under each window
+    const s = new THREE.BoxGeometry(w + 0.3 * M, 0.18 * M, 0.2 * M);
+    put(hull, s, shade, [nx * (d + 0.02 * M) + tx * u, y - h / 2 - 0.2 * M, nz * (d + 0.02 * M) + tz * u], [0, faceAngle, 0], 0);
+  };
+  const Q = Math.PI / 4;
+  window(0, -0.9 * M, 0.9 * M, 2.3 * M, 1.4 * M); // forward face: the larger one
+  window(0, 1.45 * M, 1.1 * M, 0.6 * M, 0.6 * M);
+  window(0, 1.45 * M, 0.1 * M, 0.6 * M, 0.6 * M);
+  window(Math.PI, 0.6 * M, 1.0 * M, 1.6 * M, 1.0 * M); // aft face
+  window(Math.PI, -1.5 * M, 1.0 * M, 0.6 * M, 0.6 * M);
+  window(Q, 0, 1.2 * M, 0.7 * M, 0.7 * M); // diagonal faces: tiny ones
+  window(-Q, 0, 1.2 * M, 0.7 * M, 0.7 * M);
+  window(Math.PI - Q, 0.6 * M, -0.8 * M, 0.7 * M, 0.7 * M);
+  window(Math.PI + Q, -0.6 * M, -0.8 * M, 0.7 * M, 0.7 * M);
 
-  // =========================================================================
-  // Static body: truss (lattice), radiators, module stack, cupola, capsule,
-  // gimbal housings, antennas. All merged into ONE mesh / ONE draw call.
-  // =========================================================================
-  const body: THREE.BufferGeometry[] = [];
+  // ---- top: collar, geodesic zenith dome, antenna -------------------------
+  put(
+    hull,
+    octStack([
+      [HUB_END_Y - 0.05 * M, COLLAR_APOTHEM],
+      [COLLAR_TOP - 0.25 * M, COLLAR_APOTHEM],
+      [COLLAR_TOP, COLLAR_APOTHEM - 0.25 * M],
+    ]),
+    shade,
+  );
+  put(hull, domeCap(DOME_R), body, [0, DOME_BASE - 0.2 * M, 0], [0, Math.PI / 8, 0], 0.05);
+  put(hull, new THREE.CylinderGeometry(0.07 * M, 0.09 * M, MAST_TOP - DOME_TOP + 0.3 * M, 5), dark, [0, (MAST_TOP + DOME_TOP - 0.3 * M) / 2, 0], [0, 0, 0], 0);
+  put(hull, new THREE.BoxGeometry(1.3 * M, 0.08 * M, 0.08 * M), dark, [0, MAST_TOP - 0.45 * M, 0], [0, 0, 0], 0);
+  put(hull, new THREE.OctahedronGeometry(0.13 * M), dark, [0, MAST_TOP, 0], [0, 0, 0], 0);
 
-  // --- integrated truss: main spine + 4 corner longerons (lattice read) ---
-  place(body, unitBox, STATION.truss, [0, 0, 0], [TRUSS_LENGTH, TRUSS_SECTION, TRUSS_SECTION]);
-  for (const sy of [1, -1]) {
-    for (const sz of [1, -1]) {
-      place(
-        body,
-        unitCyl,
-        STATION.truss,
-        [0, sy * LONGERON_OFFSET, sz * LONGERON_OFFSET],
-        [LONGERON_R * 2, TRUSS_LENGTH, LONGERON_R * 2],
-        [0, 0, Math.PI / 2],
+  // ---- bottom: neck, Earth-facing cupola pod -------------------------------
+  put(
+    hull,
+    octStack([
+      [-HUB_END_Y + 0.05 * M, NECK_APOTHEM],
+      [NECK_BOTTOM + 0.1 * M, NECK_APOTHEM],
+    ]),
+    shade,
+  );
+  put(
+    hull,
+    octStack([
+      [NECK_BOTTOM + 0.15 * M, POD_APOTHEM - 0.55 * M],
+      [NECK_BOTTOM - 0.35 * M, POD_APOTHEM],
+      [POD_MID, POD_APOTHEM],
+    ]),
+    body,
+  );
+  put(
+    hull,
+    octStack([
+      [POD_MID + 0.01 * M, POD_APOTHEM + 0.04 * M],
+      [POD_MID - 0.55 * M, POD_APOTHEM + 0.04 * M],
+      [POD_BOTTOM, POD_BOTTOM_APOTHEM],
+    ]),
+    podDark,
+    [0, 0, 0],
+    [0, 0, 0],
+    0.06,
+  );
+
+  // ---- arms: chunky segmented blocks with joint collars, to a mount block --
+  for (const side of [-1, 1]) {
+    const sx = (x: number) => side * x;
+    const collar = (x0: number, len: number, a: number) => {
+      put(
+        hull,
+        octStack([
+          [0, a],
+          [len, a],
+        ]),
+        shade,
+        [sx(x0 + (side < 0 ? len : 0)), 0, 0],
+        [0, 0, -Math.PI / 2],
       );
-    }
-  }
-  // segment joint collars
-  for (let i = 1; i <= JOINT_COUNT; i++) {
-    const t = i / (JOINT_COUNT + 1) - 0.5;
-    place(body, unitBox, STATION.frame, [t * TRUSS_LENGTH, 0, 0], [JOINT_SIZE * 0.4, JOINT_SIZE, JOINT_SIZE]);
-  }
-
-  // --- radiator panels, perpendicular to the truss, near centre ---
-  for (const t of [-0.16, 0.16]) {
-    place(
-      body,
-      unitBox,
-      STATION.hull,
-      [t * TRUSS_LENGTH, TRUSS_SECTION / 2 + RADIATOR_H / 2 - 0.0005, 0],
-      [RADIATOR_W, RADIATOR_H, RADIATOR_D],
-    );
-    // thin frame rib down the middle of each radiator
-    place(
-      body,
-      unitBox,
-      STATION.frame,
-      [t * TRUSS_LENGTH, TRUSS_SECTION / 2 + RADIATOR_H / 2 - 0.0005, 0],
-      [RADIATOR_W * 1.6, RADIATOR_H, RADIATOR_D * 0.03],
-    );
+    };
+    // octStack runs along +Y; rotating by -90deg about Z maps +Y -> +X
+    collar(ARM_ROOT - 0.1 * M, 0.55 * M, 1.5 * M);
+    put(hull, bevelBox(1.05 * M, 1.55 * M, 1.55 * M, 0.35 * M), body, [sx(ARM_ROOT + 1.5 * M), 0, 0]);
+    collar(ARM_ROOT + 2.5 * M, 0.4 * M, 1.05 * M);
+    put(hull, bevelBox(0.8 * M, 1.3 * M, 1.3 * M, 0.3 * M), body, [sx(ARM_ROOT + 3.65 * M), 0, 0]);
+    collar(ARM_ROOT + 4.4 * M, 0.35 * M, 0.85 * M);
+    // square mount block at the arm end (static; the array turns beside it)
+    put(hull, bevelBox(0.4 * M, 0.95 * M, 0.95 * M, 0.18 * M), shade, [sx(ARRAY_INNER - 0.8 * M), 0, 0]);
   }
 
-  // --- wing gimbal housings (static drum; the wing arm itself is a child group) ---
-  const wingMounts: Array<{ x: number; z: number }> = [];
-  for (const endSign of [1, -1]) {
-    for (let j = 0; j < WINGS_PER_END; j++) {
-      const x = endSign * (TRUSS_LENGTH / 2 - WING_MOUNT_INSET);
-      const z = (j - (WINGS_PER_END - 1) / 2) * WING_Z_SPACING;
-      wingMounts.push({ x, z });
-      place(body, unitCylFine, STATION.frame, [x, 0, z], [GIMBAL_R * 2.1, TRUSS_SECTION * 1.3, GIMBAL_R * 2.1], [0, 0, Math.PI / 2]);
-    }
-  }
+  const hullGeo = mergeGeometries(hull, false)!;
+  for (const g of hull) g.dispose();
+  geometries.push(hullGeo);
+  const hullMesh = new THREE.Mesh(hullGeo, material);
+  group.add(hullMesh);
 
-  // --- pressurized module stack, hanging along -Z (forward), slightly -Y (nadir) ---
-  const moduleY = -(TRUSS_SECTION / 2 + NODE_R + 0.0012);
-  let zc = -0.004; // cursor: leading (most -Z) edge of the next piece
-  function stackCyl(r: number, len: number, hex: THREE.ColorRepresentation, offsetY = moduleY): number {
-    const centerZ = zc - len / 2;
-    place(body, unitCylFine, hex, [0, offsetY, centerZ], [r * 2, len, r * 2], [Math.PI / 2, 0, 0]);
-    zc -= len;
-    return centerZ;
-  }
-
-  const node1Z = stackCyl(NODE_R, NODE_LEN, STATION.hull);
-  zc -= 0.0008;
-  stackCyl(LAB_R, LAB_LEN, STATION.hull);
-  zc -= 0.0008;
-  const node2Z = stackCyl(NODE_R, NODE_LEN, STATION.hull);
-  zc -= 0.0008;
-  const lab2Z = stackCyl(LAB2_R, LAB2_LEN, STATION.hull);
-  zc -= 0.0006;
-
-  // docking ring + capsule at the forward-most port
-  place(body, unitCylFine, STATION.gold, [0, moduleY, zc - DOCK_RING_LEN / 2], [DOCK_RING_R * 2, DOCK_RING_LEN, DOCK_RING_R * 2], [Math.PI / 2, 0, 0]);
-  zc -= DOCK_RING_LEN;
-  place(body, unitCylFine, STATION.hull, [0, moduleY, zc - CAPSULE_LEN / 2], [CAPSULE_R * 2, CAPSULE_LEN, CAPSULE_R * 2], [Math.PI / 2, 0, 0]);
-  zc -= CAPSULE_LEN;
-  place(body, unitCone, STATION.frame, [0, moduleY, zc - CAPSULE_NOSE_LEN / 2], [CAPSULE_R * 1.9, CAPSULE_NOSE_LEN, CAPSULE_R * 1.9], [-Math.PI / 2, 0, 0]);
-  const noseZ = zc - CAPSULE_NOSE_LEN * 0.5;
-
-  // side modules off the first node (fictional lab spurs)
-  for (const s of [1, -1]) {
-    place(body, unitCylFine, STATION.hull, [s * (NODE_R + SIDE_LEN / 2 - 0.001), moduleY, node1Z], [SIDE_R * 2, SIDE_LEN, SIDE_R * 2], [0, 0, Math.PI / 2]);
-  }
-
-  // cupola on the nadir (-Y) face, with a hint of dark window glass
-  const cupolaZ = node2Z;
-  place(body, unitSphere, STATION.hull, [0, moduleY - NODE_R - CUPOLA_R * 0.5, cupolaZ], [CUPOLA_R * 1.9, CUPOLA_R * 1.5, CUPOLA_R * 1.9]);
-  place(body, unitCylFine, STATION.panel, [0, moduleY - NODE_R - CUPOLA_R * 1.2, cupolaZ], [CUPOLA_R * 1.1, CUPOLA_R * 0.5, CUPOLA_R * 1.1]);
-
-  // sparse details: antennas + handrail-like beams
-  place(body, unitCylFine, STATION.frame, [0.006, TRUSS_SECTION / 2 + 0.004, 0.004], [0.0006, 0.009, 0.0006], [0.4, 0, 0.3]);
-  place(body, unitCylFine, STATION.gold, [0.006, TRUSS_SECTION / 2 + 0.0085, 0.004], [0.0004, 0.0014, 0.0004], [0.4, 0, 0.3]);
-  place(body, unitCylFine, STATION.frame, [-0.006, TRUSS_SECTION / 2 + 0.0035, -0.006], [0.0005, 0.007, 0.0005], [-0.3, 0, -0.2]);
-  place(body, unitBox, STATION.frame, [0, TRUSS_SECTION / 2 + 0.0002, -TRUSS_LENGTH * 0.3], [0.0004, 0.0004, 0.018]);
-  place(body, unitBox, STATION.frame, [0, -(TRUSS_SECTION / 2 + 0.0002), TRUSS_LENGTH * 0.32], [0.0004, 0.0004, 0.018]);
-
-  group.add(mergeAndAdd(body, bodyMat));
-
-  // =========================================================================
-  // Solar array wings: 8 rotary-jointed assemblies (4 pairs). Each is its own
-  // pivot Group so it can rotate about the truss (local X) axis to face the
-  // sun; blankets (textured) and mast/gimbal (vertex-coloured) are each
-  // merged into one mesh, so every wing costs exactly 2 draw calls.
-  // =========================================================================
-  interface Wing {
-    pivot: THREE.Group;
-  }
-  const wings: Wing[] = [];
-
-  for (const mount of wingMounts) {
-    const pivot = new THREE.Group();
-    pivot.position.set(mount.x, 0, mount.z);
-
-    const blanketPieces: THREE.BufferGeometry[] = [];
-    for (const s of [1, -1]) {
-      const cy = s * (MAST_HALF_GAP + PANEL_LENGTH / 2);
-      const geo = place(blanketPieces, unitBox, 0xffffff, [0, cy, 0], [PANEL_WIDTH, PANEL_LENGTH, PANEL_THICKNESS]);
-      const uv = geo.getAttribute('uv') as THREE.BufferAttribute;
-      for (let i = 0; i < uv.count; i++) uv.setY(i, uv.getY(i) * BLANKET_UV_REPEAT);
-      uv.needsUpdate = true;
-    }
-    const blanketMesh = mergeAndAdd(blanketPieces, blanketMat);
-
-    const framePieces: THREE.BufferGeometry[] = [];
-    place(framePieces, unitBox, STATION.frame, [0, 0, 0], [MAST_WIDTH, MAST_HALF_GAP * 2 + PANEL_LENGTH * 2, MAST_WIDTH]);
-    place(framePieces, unitCylFine, STATION.frame, [0, 0, 0], [GIMBAL_R * 1.6, GIMBAL_LEN, GIMBAL_R * 1.6], [Math.PI / 2, 0, 0]);
-    const frameMesh = mergeAndAdd(framePieces, frameMat);
-
-    pivot.add(blanketMesh, frameMesh);
+  // ---- solar arrays: frame + 2x2 faceted panels, one mesh per array --------
+  const arrays: THREE.Object3D[] = [];
+  const S = ARRAY_SIDE;
+  const half = S / 2;
+  const cellSpan = (S - 3 * FRAME_BAR) / 2;
+  for (const side of [-1, 1]) {
+    const parts: THREE.BufferGeometry[] = [];
+    const cx = half; // array centre along the pivot's local +X (mirrored below)
+    // shaft from the mount into the frame
+    put(parts, bevelBox(0.3 * M, 0.45 * M, 0.45 * M, 0.1 * M), dark, [-0.2 * M, 0, 0], [0, 0, 0], 0);
+    // frame bars: perimeter + centre cross (in XZ plane)
+    const bar = (x: number, z: number, lx: number, lz: number) =>
+      put(parts, bevelBox(lx / 2, FRAME_THICK / 2, lz / 2, 0.08 * M), STATION.frame, [x, 0, z], [0, 0, 0], 0.02);
+    bar(cx, -half + FRAME_BAR / 2, S, FRAME_BAR);
+    bar(cx, half - FRAME_BAR / 2, S, FRAME_BAR);
+    bar(cx, 0, S, FRAME_BAR);
+    bar(FRAME_BAR / 2, 0, FRAME_BAR, S - 2 * FRAME_BAR);
+    bar(S - FRAME_BAR / 2, 0, FRAME_BAR, S - 2 * FRAME_BAR);
+    bar(cx, 0, FRAME_BAR, S - 2 * FRAME_BAR);
+    // corner blocks + outer-edge middle block + inner-edge middle (mount) block
+    const block = (x: number, z: number, s = CORNER_BLOCK) =>
+      put(parts, bevelBox(s / 2, s / 2, s / 2, 0.12 * M), STATION.frame, [x, 0, z], [0, 0, 0], 0.04);
+    const e = FRAME_BAR / 2;
+    block(e, -half + e);
+    block(e, half - e);
+    block(S - e, -half + e);
+    block(S - e, half - e);
+    block(S - e, 0);
+    block(e, 0, CORNER_BLOCK * 1.1);
+    // four faceted navy panels
+    for (const px of [-1, 1])
+      for (const pz of [-1, 1]) {
+        const x = cx + px * (FRAME_BAR / 2 + cellSpan / 2);
+        const z = pz * (FRAME_BAR / 2 + cellSpan / 2);
+        put(parts, facetedPanel(cellSpan / 2, cellSpan / 2, PANEL_THICK, PANEL_RAISE), STATION.panel, [x, 0, z], [0, 0, 0], 0.12);
+      }
+    const geo = mergeGeometries(parts, false)!;
+    for (const g of parts) g.dispose();
+    geometries.push(geo);
+    const mesh = new THREE.Mesh(geo, material);
+    const pivot = new THREE.Object3D();
+    pivot.position.set(side * ARRAY_INNER, 0, 0);
+    // the -X array is the same geometry turned half-way round (not mirrored,
+    // which would flip the winding)
+    if (side < 0) mesh.rotation.y = Math.PI;
+    pivot.add(mesh);
     group.add(pivot);
-    wings.push({ pivot });
+    arrays.push(pivot);
   }
-
-  for (const t of templates) t.dispose();
 
   // ---- orientation -----------------------------------------------------
   const upDir = new THREE.Vector3(0, 1, 0);
   const forwardTarget = new THREE.Vector3();
+  const origin = new THREE.Vector3();
   const m = new THREE.Matrix4();
   const mT = new THREE.Matrix4();
   const localSun = new THREE.Vector3();
 
-  // Interior views sit just outside the hull at each window, so the rest of
-  // the station stays in the scene (and in view where the geometry allows).
+  // Interior eyes: just outside the hull, with the 3 m cabin sphere clear of
+  // all geometry and nothing in front of each view's default direction.
   const eyes = {
-    cupola: new THREE.Vector3(0, moduleY - NODE_R - CUPOLA_R * 1.7, cupolaZ),
-    // above the capsule nose, looking aft along the whole station to the truss and wings
-    aft: new THREE.Vector3(0, moduleY + CAPSULE_R + 0.009, noseZ),
-    // under the capsule nose, looking forward to the horizon with nothing in front
-    limb: new THREE.Vector3(0, moduleY - CAPSULE_R - 0.0008, noseZ),
-    // round window on top of the forward node, open to the sky
-    zenith: new THREE.Vector3(0, moduleY + NODE_R + 0.0008, node2Z),
+    // below the cupola pod's flat bottom, looking down at Earth
+    cupola: new THREE.Vector3(0, POD_BOTTOM - EYE_CLEAR, 0),
+    // off the hub's aft face, a little above mid-height, arrays at the sides
+    aft: new THREE.Vector3(0, 0.6 * M, HUB_APOTHEM + EYE_CLEAR),
+    // off the hub's forward face, slightly below mid-height
+    limb: new THREE.Vector3(0, -0.8 * M, -(HUB_APOTHEM + EYE_CLEAR)),
+    // above the dome, clear of the antenna tip
+    zenith: new THREE.Vector3(0, MAST_TOP + 3.4 * M, 0),
   };
 
   return {
@@ -300,63 +430,22 @@ export function createStation(): StationObjects {
     orient(stationPosDir: THREE.Vector3, stationVelDir: THREE.Vector3, sunDir?: THREE.Vector3) {
       forwardTarget.copy(stationVelDir).normalize();
       upDir.copy(stationPosDir).normalize();
-      m.lookAt(new THREE.Vector3(0, 0, 0), forwardTarget, upDir);
+      m.lookAt(origin, forwardTarget, upDir);
       group.quaternion.setFromRotationMatrix(m);
 
-      let theta = 0;
       if (sunDir) {
         mT.copy(m).transpose();
         localSun.copy(sunDir).normalize().transformDirection(mT);
-        const r = Math.hypot(localSun.y, localSun.z);
-        if (r > 1e-6) theta = Math.atan2(-localSun.y, localSun.z);
+        // panel normal at rotation.x = t is (0, cos t, sin t): aim it at the sun
+        if (Math.hypot(localSun.y, localSun.z) > 1e-6) {
+          const t = Math.atan2(localSun.z, localSun.y);
+          for (const a of arrays) a.rotation.x = t;
+        }
       }
-      for (const w of wings) w.pivot.rotation.x = theta;
     },
     dispose() {
       for (const g of geometries) g.dispose();
-      for (const mat of materials) mat.dispose();
-      for (const tex of textures) tex.dispose();
+      material.dispose();
     },
   };
-}
-
-/** Small baked texture for the solar blankets: deep-blue cells with darker
- *  grid lines and a thin gold edge trim. Repeated along the blanket length. */
-function createBlanketTexture(): THREE.CanvasTexture {
-  const w = 32;
-  const h = 128;
-  const canvas = document.createElement('canvas');
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext('2d')!;
-  ctx.fillStyle = `#${STATION.panel.getHexString()}`;
-  ctx.fillRect(0, 0, w, h);
-
-  ctx.strokeStyle = `#${STATION.frame.getHexString()}`;
-  ctx.lineWidth = 1;
-  const rows = 8;
-  for (let i = 1; i < rows; i++) {
-    const y = Math.round((i / rows) * h) + 0.5;
-    ctx.beginPath();
-    ctx.moveTo(0, y);
-    ctx.lineTo(w, y);
-    ctx.stroke();
-  }
-  const midX = Math.round(w / 2) + 0.5;
-  ctx.beginPath();
-  ctx.moveTo(midX, 0);
-  ctx.lineTo(midX, h);
-  ctx.stroke();
-
-  ctx.strokeStyle = `#${STATION.gold.getHexString()}`;
-  ctx.lineWidth = 1.4;
-  ctx.strokeRect(0.7, 0.7, w - 1.4, h - 1.4);
-
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.magFilter = THREE.NearestFilter;
-  tex.minFilter = THREE.NearestFilter;
-  tex.wrapS = THREE.RepeatWrapping;
-  tex.wrapT = THREE.RepeatWrapping;
-  tex.needsUpdate = true;
-  return tex;
 }

@@ -4,9 +4,9 @@
 // sickness guard). Pinch or wheel = distance, clamped to 0.15-2 km.
 import * as THREE from 'three';
 
-const MIN_DISTANCE_KM = 0.15;
-const MAX_DISTANCE_KM = 2;
-const DEFAULT_DISTANCE_KM = 0.4;
+const MIN_DISTANCE_KM = 0.03;
+const MAX_DISTANCE_KM = 0.6;
+const DEFAULT_DISTANCE_KM = 0.08;
 const DEFAULT_PITCH = THREE.MathUtils.degToRad(14); // above horizontal
 // Composition (art-direction §4): after looking at the station, turn the view
 // slightly so the station sits off-centre and the horizon falls toward the

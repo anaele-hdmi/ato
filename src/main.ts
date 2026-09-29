@@ -155,8 +155,9 @@ async function main(): Promise<void> {
       const v = frame.stationVel;
       const altKm = Math.hypot(p.x, p.y, p.z) - EARTH_RADIUS_KM;
       const speedKms = Math.hypot(v.x, v.y, v.z);
+      const sunEl = (Math.asin((p.x * frame.sunDir.x + p.y * frame.sunDir.y + p.z * frame.sunDir.z) / Math.hypot(p.x, p.y, p.z)) * 180) / Math.PI;
       ui.setReadout(
-        `高度 ${altKm.toFixed(0)} km  ·  秒速 ${speedKms.toFixed(2)} km\n` +
+        `高度 ${altKm.toFixed(0)} km  ·  秒速 ${speedKms.toFixed(2)} km  ·  太陽高度 ${sunEl.toFixed(0)}°\n` +
           `${formatLatLon(frame.latDeg, frame.lonDeg)}  ·  ${label} ${eta}`,
       );
     }
