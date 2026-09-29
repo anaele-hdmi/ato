@@ -12,7 +12,8 @@ export interface UIHandlers {
 
 export interface UIController {
   /** Resolves on the first tap of the start screen (user gesture: use it to request wake lock / audio later). */
-  waitForStart(): Promise<void>;
+  /** `onGesture` runs synchronously inside the tap handler (iOS only unlocks audio / wake lock / fullscreen there). */
+  waitForStart(onGesture?: () => void): Promise<void>;
   setReadout(text: string): void; // e.g. "北緯 34.2°  東経 135.1°  · 日の出まで 01:52"
   setRate(rate: TimeRate): void;
   /** Shows the current viewpoint's name on the view button. */
@@ -221,10 +222,15 @@ export function mountUI(root: HTMLElement, handlers: UIHandlers): UIController {
 
   // ---------- start screen ----------
 
-  function waitForStart(): Promise<void> {
+  function waitForStart(onGesture?: () => void): Promise<void> {
     return new Promise((resolve) => {
       const onTap = (): void => {
         startScreen.removeEventListener('pointerdown', onTap);
+        try {
+          onGesture?.();
+        } catch {
+          /* never block the start on a gesture side effect */
+        }
         startScreen.classList.add('lt-hidden');
         markVisited();
         started = true;

@@ -165,10 +165,12 @@ async function main(): Promise<void> {
   };
   requestAnimationFrame(loop);
 
-  await ui.waitForStart();
-  audio.setScene('interior');
-  void audio.start();
-  shell.onStarted();
+  // Audio, wake lock and fullscreen must start inside the tap itself (iOS).
+  await ui.waitForStart(() => {
+    audio.setScene('interior');
+    void audio.start();
+    shell.onStarted();
+  });
   ui.notify('ドラッグで見回す ・ ピンチで寄る');
   if (wakeLockUnsupported) setTimeout(() => ui.notify('画面が自動で消灯する場合があります'), 5000);
 }
