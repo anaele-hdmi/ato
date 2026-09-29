@@ -53,6 +53,11 @@ vec4 cloudFields(vec3 n) {
   vec2 uv = cloudUv(n);
   return mix(texture2D(uCloudMapA, uv), texture2D(uCloudMapB, uv), uCloudMix) * 2.0 - 1.0;
 }
+/** One keyframe only (half the fetches): for shadows, where a jump of one
+ *  keyframe step (~2 sim minutes of drift, a few km) is invisible. */
+vec4 cloudFieldsFast(vec3 n) {
+  return texture2D(uCloudMapA, cloudUv(n)) * 2.0 - 1.0;
+}
 /** Legacy single field: the thickest genus. */
 float cloudMacro(vec3 n) {
   vec4 f = cloudFields(n);
@@ -69,8 +74,8 @@ float cloudShadow(vec3 n, float groundKm, vec3 L) {
   // two lookups: the low deck / tower bases, and one between the mid and
   // high shells for As, anvils, cirrus and tower tops
   const float UPPER = 0.5 * (CL_MID + CL_HIGH);
-  vec4 fl = cloudFields(normalize(n + tang * max(CL_DECK_TOP - g, 0.0) * k));
-  vec4 fu = cloudFields(normalize(n + tang * max(UPPER - g, 0.0) * k));
+  vec4 fl = cloudFieldsFast(normalize(n + tang * max(CL_DECK_TOP - g, 0.0) * k));
+  vec4 fu = cloudFieldsFast(normalize(n + tang * max(UPPER - g, 0.0) * k));
   float sLow = smoothstep(-0.12, 0.3, fl.r) * 0.8 * (1.0 - smoothstep(CL_LOW_BASE, CL_LOW_TOP, g));
   float sCb = smoothstep(0.08, 0.45, max(fl.a, fu.a)) * 0.85;
   float sMid = smoothstep(-0.05, 0.4, fu.g) * 0.5 * (1.0 - smoothstep(CL_MID - 3.0, CL_MID + 1.0, g));

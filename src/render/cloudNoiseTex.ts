@@ -1,4 +1,4 @@
-// Tileable 3D "billow" noise for the cloud shells, generated once on the CPU.
+// Tileable 3D "billow" noise (cloud masses / detail / tower grouping) for the cloud layers, generated once on the CPU.
 //
 // Cumulus are round domes, so the puff field is inverted Worley (distance to
 // the nearest random feature point, squared → paraboloid domes) rather than
@@ -10,7 +10,7 @@
 //   R  puff domes: 4 cells/tile, with a 8 cells/tile octave (sub-puffs)
 //   G  fine cauliflower texture: 16 cells/tile
 //   B  tower cells: 2 cells/tile
-//   A  altocumulus cells: 8 cells/tile
+//   A  merged cloud masses (summed smooth domes, metaballs): 8 cells/tile
 import * as THREE from 'three';
 
 const SIZE = 64;
@@ -31,11 +31,11 @@ function makeRng(seed: number): () => number {
 /** Inverted squared-F1 Worley, tileable: 1 at a feature point, 0 beyond
  *  ~0.87 cell. Built by splatting each feature point into the voxels within
  *  that radius (≈2.7 cell³ each) instead of searching 27 cells per voxel. */
-function worley(cells: number, seed: number, vary = 0): Float32Array {
+function worley(cells: number, seed: number, vary = 0, blend = false): Float32Array {
   const rng = makeRng(seed);
   const out = new Float32Array(SIZE * SIZE * SIZE);
   const vox = SIZE / cells;
-  const R2 = 0.75; // cell² at which the dome reaches 0
+  const R2 = blend ? 1.1 : 0.75; // cell² at which the dome reaches 0
   const rv = Math.ceil(Math.sqrt(R2) * vox);
   const inv = 1 / (vox * vox * R2);
   for (let c = 0; c < cells * cells * cells; c++) {
@@ -65,20 +65,23 @@ function worley(cells: number, seed: number, vary = 0): Float32Array {
         const row = (wz * SIZE + WRAP[y + SIZE]) * SIZE;
         for (let x = x0; x <= fx + rv; x++) {
           const dx = x - fx;
-          const v = (1 - (dx * dx + dyz) * invP) * amp;
+          const v = 1 - (dx * dx + dyz) * invP;
           if (v <= 0) continue;
           const i = row + WRAP[x + SIZE];
-          if (v > out[i]) out[i] = v;
+          if (blend) out[i] += v * v * amp; // smooth kernel, summed: metaballs
+          else if (v * amp > out[i]) out[i] = v * amp;
         }
       }
     }
   }
+  if (blend) for (let i = 0; i < out.length; i++) out[i] = 1 - Math.exp(-1.8 * out[i]);
   return out;
 }
 
 export function buildCloudNoiseTexture(): THREE.Data3DTexture {
   const w4 = worley(4, 11, 1);
   const w8 = worley(8, 23, 1);
+  const m8 = worley(8, 71, 1, true);
   const w16 = worley(16, 37);
   const w2 = worley(2, 51, 0.7);
   const n = SIZE * SIZE * SIZE;
@@ -88,7 +91,7 @@ export function buildCloudNoiseTexture(): THREE.Data3DTexture {
     data[i * 4] = q(Math.max(w4[i], w8[i] * 0.8) * 0.8 + w8[i] * 0.2);
     data[i * 4 + 1] = q(w16[i]);
     data[i * 4 + 2] = q(w2[i]);
-    data[i * 4 + 3] = q(w8[i]);
+    data[i * 4 + 3] = q(m8[i]);
   }
   const tex = new THREE.Data3DTexture(data, SIZE, SIZE, SIZE);
   tex.format = THREE.RGBAFormat;
