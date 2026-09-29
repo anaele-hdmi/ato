@@ -7,7 +7,7 @@ import * as THREE from 'three';
 /** Earth surfaces (day, fully lit). Five faces: deep/shallow ocean, land, high-latitude land, ice. */
 export const EARTH_COLORS = {
   deepOcean: new THREE.Color(0x1f4f7c),
-  shallowOcean: new THREE.Color(0x3a86a6),
+  shallowOcean: new THREE.Color(0x285f8a),
   land: new THREE.Color(0x7a8c5c),
   highLand: new THREE.Color(0x9a9c84),
   ice: new THREE.Color(0xe9edec),
@@ -37,7 +37,7 @@ export const ATMOSPHERE = {
   nightAirglow: new THREE.Color(0x3f9a72),
   dayIntensity: 0.6,
   duskIntensity: 0.75,
-  nightIntensity: 0.4,
+  nightIntensity: 0.14,
   /** haze over the Earth disc relative to the limb */
   discHaze: 0.5,
   /** faint tall glow: the sky just above the limb reads dark navy, not black */
@@ -180,7 +180,7 @@ export const SKY = {
   bulgeTint: new THREE.Color(1.0, 0.82, 0.62),
   discTint: new THREE.Color(0.82, 0.88, 1.0),
   /** number of synthetic faint (mag 6.5-9.2) grain stars following the band */
-  grainStars: 90000,
+  grainStars: 20000,
 };
 
 /** Layered cloud tones (clouds.ts): painterly bright tops, blue-grey / lavender

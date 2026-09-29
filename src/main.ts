@@ -1,12 +1,13 @@
 import './style.css';
 import type { SkipTarget, TimeRate } from './types';
 import { EARTH_RADIUS_KM } from './types';
-import { computeFrame, findNextSunrise, findNextSunset } from './sim/orbit';
+import { computeFrame, findNextSunrise, findNextSunset, ORBIT_PERIOD_S } from './sim/orbit';
 import { createSceneRenderer } from './render/index';
 import { mountUI } from './ui/index';
 import { initMobileShell } from './ui/mobile';
 import { CAMERA_LABEL } from './render/cameraRig';
 import { createAudio } from './audio';
+import { createGlobe } from './ui/globe';
 
 // Skips land this long before the event so the moment itself is watched, not jumped over.
 const SKIP_LEAD_MS = 90_000;
@@ -96,6 +97,24 @@ async function main(): Promise<void> {
     },
   });
   ui.setRate(rate);
+
+  // mini globe: where we are, day/night, the orbit; drag along the track to travel
+  const globe = createGlobe(uiRoot, {
+    computeFrame,
+    orbitPeriodMs: ORBIT_PERIOD_S * 1000,
+    async onSeek(t) {
+      if (skipping) return;
+      skipping = true;
+      await ui.fadeToBlack(400);
+      simTime = t;
+      // seeking can go backwards: refresh the cached sunrise/sunset times
+      nextRise = findNextSunrise(simTime);
+      nextSet = findNextSunset(simTime);
+      globe.update(simTime);
+      await ui.fadeFromBlack(700);
+      skipping = false;
+    },
+  });
   ui.setCamera(CAMERA_LABEL.cupola);
 
   const renderer = await createSceneRenderer(canvas);
@@ -119,6 +138,7 @@ async function main(): Promise<void> {
     simTime += dt * 1000 * rate;
 
     const frame = computeFrame(simTime);
+    globe.update(simTime);
     // orbital sunrise: one soft chord
     if (wasInShadow && !frame.inShadow) audio.onSunrise();
     wasInShadow = frame.inShadow;

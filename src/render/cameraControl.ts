@@ -73,7 +73,7 @@ export class ChaseCameraController {
       const dt = Math.max(1, now - this.lastDragTime) / 1000;
 
       const dyaw = -dx * DRAG_SENSITIVITY;
-      const dpitch = -dy * DRAG_SENSITIVITY;
+      const dpitch = dy * DRAG_SENSITIVITY; // inverted per the client: drag down = look up
       this.yaw += dyaw;
       this.pitch = THREE.MathUtils.clamp(this.pitch + dpitch, MIN_PITCH, MAX_PITCH);
 

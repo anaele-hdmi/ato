@@ -255,3 +255,31 @@ body {
 .lt-rotate[hidden] {
   display: none;
 }
+
+/* ---------- mini globe ---------- */
+
+.lt-globe {
+  position: fixed;
+  left: calc(0.9rem + var(--safe-l));
+  top: calc(0.8rem + var(--safe-t, 0px));
+  width: 112px;
+  height: 112px;
+  z-index: 20;
+  pointer-events: auto;
+  opacity: 1;
+  transition: opacity 700ms ease;
+}
+
+.lt-globe.lt-globe--idle {
+  opacity: 0.35;
+}
+
+.lt-globe__canvas {
+  display: block;
+  width: 112px;
+  height: 112px;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}

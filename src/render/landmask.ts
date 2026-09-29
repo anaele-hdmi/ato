@@ -108,7 +108,7 @@ export function buildLandMaskCanvas(): HTMLCanvasElement {
   ctx.globalCompositeOperation = 'lighter';
   ctx.strokeStyle = '#00ff00';
   ctx.lineJoin = 'round';
-  ctx.lineWidth = 7;
+  ctx.lineWidth = 3; // narrow continental-shelf band (7 px read as a stripe on the sea)
   ctx.stroke();
   ctx.fillStyle = '#ff0000';
   ctx.fill('evenodd');

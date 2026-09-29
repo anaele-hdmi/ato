@@ -102,7 +102,7 @@ class LookController {
     if (this.pointers.size === 1) {
       const k = DRAG_RAD_PER_PX * (this.fov / 60);
       this.azimuth = this.clampAz(this.azimuth - (e.clientX - prev.x) * k);
-      this.tilt = THREE.MathUtils.clamp(this.tilt - (e.clientY - prev.y) * k, this.params.tiltMin, this.params.tiltMax);
+      this.tilt = THREE.MathUtils.clamp(this.tilt + (e.clientY - prev.y) * k, this.params.tiltMin, this.params.tiltMax);
     } else if (this.pointers.size === 2 && this.pinchStart > 0) {
       const f = this.pinchFov * (this.pinchStart / Math.max(1, this.pinchDistance()));
       this.fov = THREE.MathUtils.clamp(f, this.params.fovMin, this.params.fovMax);
