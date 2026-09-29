@@ -2,8 +2,9 @@
 //   - a coarse, always-resident full sphere (level ~6-7) that covers
 //     everything, inset slightly below the true radius so detail chunks
 //     (drawn at/above the true radius) are never z-fought by it;
-//   - high-detail chunks (level 8-9, ~4096 tri each) streamed in on demand
-//     for whatever is within ~horizon distance of the sub-station point,
+//   - high-detail chunks streamed in on demand around the sub-station point:
+//     level 9 (4096 tri, ~14 km edges) near it, level 8 (1024 tri, ~28 km
+//     edges) out to the horizon (earth.ts updateLOD),
 //     keyed by a fixed level-3 seed grid (1280 seeds) so "which chunk is
 //     this" is a stable index across frames.
 //
@@ -11,12 +12,14 @@
 // (i along corner0->corner1, j along corner0->corner2, i+j<=n) and
 // normalizing each grid point back onto the unit sphere.
 //
-// Every geometry produced here carries a per-vertex `aSkirt` value (0 or 1):
-// the vertex shader skips heightmap displacement entirely where aSkirt=1, so
-// the *same* shader serves the flat, undisplaced coarse sphere (aSkirt=1
-// everywhere) and detail chunks' skirt curtains (aSkirt=1 on the border ring
-// only, dropped a few km below the surface at build time to paper over
-// cracks between chunks of different tessellation).
+// Winding: every triangle is counter-clockwise seen from outside the sphere
+// (the base faces are, and the grid preserves orientation), so the Earth
+// material can use FrontSide.
+//
+// Every geometry produced here carries a per-vertex `aSkirt` value (0 or 1,
+// 1 = skirt vertex, left undisplaced). Detail chunks are currently built
+// without skirts: seams between level-8 and level-9 chunks are closed by
+// borderSnapTriples instead.
 
 export interface BuiltMesh {
   positions: Float32Array; // xyz per vertex, already scaled to the base radius (km)
@@ -203,6 +206,32 @@ export function buildChunkMesh(seed: SeedChunk, extraLevels: number, radiusKm: n
   }
 
   return { positions, aSkirt, indices };
+}
+
+/** Border "T-junction" fix for a chunk that is finer than its neighbour.
+ * Returns [odd, evenA, evenB] vertex-index triples for every odd vertex on
+ * the three border edges of an `extraLevels` chunk (i=0; j=0; i+j=n): the
+ * caller moves each odd vertex onto the straight line between its two even
+ * neighbours, which are exactly the vertices a chunk one level coarser has on
+ * the shared edge -- so a level-9 chunk meets a level-8 one without cracks.
+ * Two snapped (level-9) neighbours snap identically, so they stay watertight
+ * too. Only valid for chunks built without a skirt. */
+export function borderSnapTriples(extraLevels: number): [number, number, number][] {
+  const n = 2 ** extraLevels;
+  const rowStart: number[] = [];
+  let acc = 0;
+  for (let i = 0; i <= n + 1; i++) {
+    rowStart.push(acc);
+    acc += n + 1 - i;
+  }
+  const idx = (i: number, j: number) => rowStart[i] + j;
+  const out: [number, number, number][] = [];
+  for (let k = 1; k < n; k += 2) {
+    out.push([idx(0, k), idx(0, k - 1), idx(0, k + 1)]); // edge i=0
+    out.push([idx(k, 0), idx(k - 1, 0), idx(k + 1, 0)]); // edge j=0
+    out.push([idx(k, n - k), idx(k - 1, n - k + 1), idx(k + 1, n - k - 1)]); // edge i+j=n
+  }
+  return out;
 }
 
 /** Merges many seeds' coarse (flat, undisplaced) meshes into one big

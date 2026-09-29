@@ -1,76 +1,130 @@
 // The Earth: a two-layer LOD faceted-relief icosphere (client reference
 // direction, superseding the flat posterized-band rule in docs/art-direction.md).
 //
-// Layer 1 (always resident): one merged, coarse (level ~6) undisplaced sphere,
+// Layer 1 (always resident): one merged, coarse (level 5) undisplaced sphere,
 // inset 0.5 km below the true radius so it never z-fights layer 2.
 // Layer 2 (streamed): level-3 icosahedron "seed" chunks (1280 of them, stable
-// indices) built up to a fine sub-grid (default level 9, ~4096 tri each,
-// ?detail=8 for ~1024 tri each on weaker phones) on demand for whatever is
-// within ~horizon distance of the sub-station point, cached and streamed in a
-// few chunks/frame (see updateLOD). Detail chunks carry a skirt (border ring
-// dropped a few km, undisplaced) to hide seams against the coarse layer.
+// indices) built up to a fine sub-grid on demand, in two rings around the
+// sub-station point: level 9 (4096 tri/chunk, ~14 km facet edges) within
+// ~800 km, level 8 (1024 tri/chunk, ~28 km edges) out to beyond the horizon.
+// ?detail=8 uses level 8 everywhere (weaker phones), ?detail=9 level 9
+// everywhere. Chunks are built in a Web Worker (terrainWorker.ts) and
+// streamed in a few per frame (see updateLOD). Level-9 chunks snap their odd
+// border vertices onto their level-8 neighbours' edges, so the rings meet
+// without cracks.
 //
-// The vertex shader displaces land vertices radially using a heightmap
-// (base DEM value) plus a procedural ridged/rolling micro-relief noise, so
-// every triangle facet catches light a little differently even off the named
-// ranges. The fragment shader derives a flat per-triangle normal from
-// screen-space derivatives of the displaced world position
-// (normalize(cross(dFdx(p), dFdy(p)))) -- that's what produces the faceted,
-// sunlit-gold / shadow-teal mountain look. Lon/lat sampling always comes from
-// the *undisplaced* object-space direction (normalize(position)) so the land
-// mask / biome / cloud-shadow lookups stay correct regardless of LOD or
-// displacement.
+// Positions arrive displaced (DEM + ridged/rolling micro-relief, terrain.ts).
+// Each vertex also carries 8 baked horizon elevation angles (aHorizonA/B) for
+// cast shadows. The fragment shader derives a flat per-triangle normal from
+// screen-space derivatives of the displaced world position and shades it
+// relative to flat ground at that point (review-2 §5-1): facets tilted toward
+// the sun go warm gold, facets tilted away cool teal, at any sun elevation,
+// and anything below its horizon toward the sun is in cast shadow. Lon/lat
+// sampling always comes from the *undisplaced* object-space direction
+// (normalize(position)) so the land mask / biome / cloud-shadow lookups stay
+// correct regardless of LOD or displacement.
 import * as THREE from 'three';
 import { EARTH_COLORS, BIOMES, GLINT, RELIEF } from './palette';
 import { buildLandMask, buildBiomeTexture } from './landmask';
-import { elevationKm, loadRaster, type Raster } from './terrain';
+import {
+  extractChannel,
+  loadRaster,
+  buildTerrainChunk,
+  HORIZON_MIN_DEG,
+  HORIZON_MAX_DEG,
+  type Raster,
+} from './terrain';
 import { CLOUD_MAP_GLSL, type CloudMapUniforms } from './cloudMap';
-import { buildSeedChunks, buildChunkMesh, buildMergedCoarseSphere, type SeedChunk } from './icosphere';
+import { buildSeedChunks, buildMergedCoarseSphere, type SeedChunk } from './icosphere';
+import type { TerrainWorkerRequest, TerrainWorkerResult } from './terrainWorker';
 import { EARTH_RADIUS_KM } from '../types';
 import { CLOUD_GLSL } from './clouds';
 import topoUrl from '../assets/earth-topology.png';
 
 
 // --- LOD tuning ---------------------------------------------------------
-const SEED_LEVEL = 3; // 20 * 4^3 = 1280 seed chunks, stable indices
+const SEED_LEVEL = 3; // 20 * 4^3 = 1280 seed chunks (~880 km across), stable indices
 const COARSE_EXTRA_LEVELS = 2; // seed(3) + 2 = level 5 full sphere (20k tris), always resident, behind the horizon
 const COARSE_INSET_KM = 0.5; // below true radius, so layer 2 is never z-fought
-// Detail chunks share identical edge vertices (same subdivision, same CPU
-// displacement), so no skirts are needed between them; the coarse layer only
-// shows beyond the horizon.
-const SKIRT_DROP_KM = 0;
 // From 420 km orbit, horizon distance is ~2300 km; add margin for tall
 // exaggerated peaks poking over it. Hysteresis avoids flicker at the boundary.
 const DETAIL_ENTER_KM = 3300;
 const DETAIL_EXIT_KM = 3700;
-const BUILD_BUDGET_PER_FRAME = 6;
+// Inner (finer) ring, measured from the seed chunk's centre.
+const NEAR_ENTER_KM = 800;
+const NEAR_EXIT_KM = 1000;
+const BUILD_BUDGET_PER_FRAME = 6; // requests posted to the worker per frame
+const MAX_IN_FLIGHT = 12; // keeps the worker queue short (and re-prioritised)
 
-function readDetailLevel(): number {
+// Terrain lighting (review-2 §5-1). Local constants rather than palette
+// entries so this module can be tuned independently.
+const SHADE_BASE_SHARE = 0.6; // shadow facet = mix(coolShadow, base, this)
+const LIT_BASE_SHARE = 0.8; // sunlit facet = mix(warmLit, base, this)
+const FACET_SOFTNESS = 0.14; // rad of tilt (rel. to flat ground) for the lit/shade transition, low sun
+const FACET_SOFTNESS_HIGH = 0.24; // ... with the sun high (softer, less busy at midday)
+const FACET_BIAS = 0.03; // flat ground reads slightly more lit than shaded
+// Above ~17 deg sun elevation, slopes tilted away by less than about
+// (elevation - 17 deg) * 0.4 stay lit: midday relief is gentler (physically
+// they are still well lit), low-sun relief keeps the full gold/teal split.
+const FACET_BIAS_HIGH_SUN = 0.4;
+const SHADE_GAIN = 0.78; // value of the shade colour (lower = deeper shadows)
+const HORIZON_SOFT_DEG = 1.5; // cast-shadow edge softness
+
+function readDetailLevels(): { near: number; far: number } {
   try {
     const v = new URLSearchParams(location.search).get('detail');
-    if (v === '9') return 9;
-    if (v === '7') return 7;
+    if (v === '9') return { near: 9, far: 9 };
+    if (v === '8') return { near: 8, far: 8 };
+    if (v === '7') return { near: 8, far: 7 };
   } catch {
     /* location unavailable (non-browser); default */
   }
-  // Level 8 (~9 km facets, ~1k triangles per chunk) is the default for
-  // mobile; ?detail=9 quadruples the triangle count for strong GPUs.
-  return 8;
+  // Level 9 (~14 km facet edges) near the sub-station point, level 8
+  // (~28 km) out to the horizon: ~+30 % triangles over all-8.
+  return { near: 9, far: 8 };
 }
-const DETAIL_LEVEL = readDetailLevel();
-const DETAIL_EXTRA_LEVELS = DETAIL_LEVEL - SEED_LEVEL;
+const LEVELS = readDetailLevels();
 
 const VERTEX_SHADER = /* glsl */ `
 #include <common>
 #include <logdepthbuf_pars_vertex>
 
 varying vec3 vNormalObj;
+varying vec3 vNormalWorld; // geocentric up in WORLD space (orients the facet normal)
 varying vec3 vWorldPosition;
 varying float vGroundKm; // cloud shadows: ground altitude (displaced)
+attribute vec4 aHorizonA; // horizon angles, azimuths 0-3 (N, NE, E, SE), 0..1 encoded
+attribute vec4 aHorizonB; // azimuths 4-7 (S, SW, W, NW)
+uniform vec3 uSunDirObj;
+// Cast-shadow term, constant per triangle (flat = the provoking vertex's
+// value): shadows follow the facets, in keeping with the low-poly look,
+// instead of cutting jagged iso-lines through them.
+flat varying float vCastLit;
+
+// Cast shadow from the baked per-vertex horizon angles (terrain.ts
+// computeHorizons), evaluated per vertex: 1 = sun above the local horizon toward it, 0 = shadowed.
+// Tangent frame must match the bake: east = cross(+Y, n), north = cross(n, east),
+// azimuth k*45 deg clockwise from north.
+float horizonLit(vec3 n, vec3 sunObj, vec4 hA, vec4 hB) {
+  vec3 e = vec3(n.z, 0.0, -n.x);
+  float el = length(e);
+  e = el > 1e-5 ? e / el : vec3(1.0, 0.0, 0.0);
+  vec3 no = cross(n, e);
+  float sunElDeg = degrees(asin(clamp(dot(n, sunObj), -1.0, 1.0)));
+  float az = atan(dot(sunObj, e), dot(sunObj, no)) * (4.0 / PI); // -4..4, in 45-degree units
+  vec4 dA = abs(mod(az - vec4(0.0, 1.0, 2.0, 3.0) + 4.0, 8.0) - 4.0);
+  vec4 dB = abs(mod(az - vec4(4.0, 5.0, 6.0, 7.0) + 4.0, 8.0) - 4.0);
+  float hN = dot(clamp(1.0 - dA, 0.0, 1.0), hA) + dot(clamp(1.0 - dB, 0.0, 1.0), hB);
+  float hDeg = mix(${HORIZON_MIN_DEG.toFixed(1)}, ${HORIZON_MAX_DEG.toFixed(1)}, hN);
+  return smoothstep(hDeg - ${HORIZON_SOFT_DEG.toFixed(2)}, hDeg + ${HORIZON_SOFT_DEG.toFixed(2)}, sunElDeg);
+}
+
 
 // Positions arrive already displaced (terrain.ts, computed once per chunk).
 void main() {
   vNormalObj = normalize(position);
+  vNormalWorld = normalize(mat3(modelMatrix) * position);
+  vCastLit = horizonLit(vNormalObj, normalize(uSunDirObj), aHorizonA, aHorizonB);
   vGroundKm = length(position) - ${EARTH_RADIUS_KM.toFixed(1)};
   vec4 world = modelMatrix * vec4(position, 1.0);
   vWorldPosition = world.xyz;
@@ -109,8 +163,10 @@ uniform vec3 uHazeCool;
 uniform vec3 uHazeWarm;
 
 varying vec3 vNormalObj;
+varying vec3 vNormalWorld;
 varying vec3 vWorldPosition;
 varying float vGroundKm;
+flat varying float vCastLit;
 
 ${CLOUD_GLSL}
 ${CLOUD_MAP_GLSL}
@@ -171,13 +227,12 @@ void main() {
   // NaN cross product. Falling back to the smooth per-vertex normal there
   // (instead of propagating NaN into ndotl/nightMix) is what fixes the
   // jagged pale-grey patches that used to appear on the night side.
-  vec3 flatN = rawLen > 1e-6 ? rawFlatN / rawLen : n;
-  if (dot(flatN, n) < 0.0) flatN = -flatN;
-
-  // per-facet value jitter (stable hash of the flat normal, constant across
-  // one triangle) so neighbouring facets read as distinct even on gentle
-  // slopes, not just at hard mountain edges.
-  float grain = mix(0.82, 1.12, cloudHash(flatN * 97.0 + 3.0));
+  // Orient outward against the WORLD-space geocentric up: flatN is a world
+  // vector, and testing it against the object-space n flipped facets inward
+  // (dark) wherever the Earth's spin (gmst) had rotated the two frames apart.
+  vec3 upW = normalize(vNormalWorld);
+  vec3 flatN = rawLen > 1e-6 ? rawFlatN / rawLen : upW;
+  if (dot(flatN, upW) < 0.0) flatN = -flatN;
 
   vec3 sunW = normalize(uSunDirWorld);
   float ndotl = dot(flatN, sunW);
@@ -189,14 +244,30 @@ void main() {
   // facet/derivative precision issue as first suspected.
   float ndotlSmooth = dot(n, normalize(uSunDirObj));
 
-  // Split-tone lighting: MIX (not multiply) the base colour toward a cool
-  // teal/blue on shadow facets and a warm gold on lit facets, so shadows
-  // read as clearly blue even on orange/tan ground instead of muddy brown.
-  float wrap = clamp((ndotl + 0.35) / 1.35, 0.0, 1.0);
-  vec3 shadeColor = mix(uCoolShadow, base, 0.32) * 0.85;
-  vec3 litColor = mix(uWarmLit, base, 0.62) * 1.05;
-  vec3 lit = mix(shadeColor, litColor, wrap) * grain;
-  vec3 ambient = uSkyAmbient * (1.0 - clamp(ndotl, 0.0, 1.0)) * 0.14;
+  // Split-tone lighting relative to FLAT GROUND at this point (review-2
+  // §5-1). A wrapped Lambert term collapsed every facet to the same mid-tone
+  // at low sun (13 deg: flat 0.42, +-10 deg slopes +-0.13). Instead measure
+  // how far the facet is tilted toward/away from the sun compared to the
+  // local horizontal (ndotl - n0, divided by d(sin el)/d(el) = cos el so it
+  // is ~ the tilt in radians at any sun elevation) and switch between a warm
+  // gold "lit" and a cool teal "shade" colour: east slopes go gold and west
+  // slopes teal whether the sun is at 10 deg or 60 deg. Cast shadows (horizon
+  // angles) and the terminator force the shade colour; the night blend below
+  // is unchanged. MIX (not multiply) toward the tints, so shadows stay blue
+  // even on orange/tan ground instead of muddy brown.
+  vec3 sunObj = normalize(uSunDirObj);
+  float n0 = ndotlSmooth;
+  float rel = (ndotl - n0) / max(sqrt(max(1.0 - n0 * n0, 0.0)), 0.35);
+  float sunElRad = asin(clamp(n0, -1.0, 1.0));
+  float soft = mix(${FACET_SOFTNESS.toFixed(3)}, ${FACET_SOFTNESS_HIGH.toFixed(3)}, smoothstep(0.3, 1.0, sunElRad));
+  float bias = ${FACET_BIAS.toFixed(3)} + ${FACET_BIAS_HIGH_SUN.toFixed(2)} * max(sunElRad - 0.3, 0.0);
+  float facing = smoothstep(-soft, soft, rel + bias);
+  float dayLit = smoothstep(-0.01, 0.07, n0);
+  float litAmt = facing * vCastLit * dayLit;
+  vec3 shadeColor = mix(uCoolShadow, base, ${SHADE_BASE_SHARE.toFixed(2)}) * ${SHADE_GAIN.toFixed(2)};
+  vec3 litColor = mix(uWarmLit, base, ${LIT_BASE_SHARE.toFixed(2)}) * 1.05;
+  vec3 lit = mix(shadeColor, litColor, litAmt);
+  vec3 ambient = uSkyAmbient * (1.0 - litAmt) * 0.08;
   vec3 landColor = lit + ambient;
   // Water is flat: the gold/teal split toning (meant for facets) turned it
   // mauve. Plain diffuse with a little sky fill keeps it blue.
@@ -213,7 +284,7 @@ void main() {
   // cloud shadow: every cloud layer, offset toward the sun by its true
   // (rendered) height above this ground point (cloudMap.ts cloudShadow).
   float shadowAmt = cloudShadow(n, vGroundKm, normalize(uSunDirObj)) * (1.0 - nightMix);
-  color *= mix(1.0, 0.74, shadowAmt);
+  color *= mix(1.0, 0.62, shadowAmt);
 
   // stylized ocean sun glint: bright core + soft halo, water only, daylight only.
   vec3 viewDir = normalize(cameraPosition - vWorldPosition);
@@ -244,7 +315,7 @@ void main() {
   float distFactor = smoothstep(1400.0, 5200.0, distKm);
   float haze = clamp(grazing * 0.24 + distFactor * 0.22, 0.0, 1.0) * (1.0 - nightMix);
   vec3 hazeColor = mix(uHazeCool, uHazeWarm, smoothstep(0.05, 0.7, ndotl) * 0.5);
-  color = mix(color, hazeColor, haze * 0.3);
+  color = mix(color, hazeColor, haze * 0.15);
 
   gl_FragColor = vec4(color, 1.0);
   #include <colorspace_fragment>
@@ -254,7 +325,16 @@ void main() {
 export interface EarthStats {
   coarseTriangles: number;
   detailChunks: number;
+  /** Resident detail chunks per subdivision level, e.g. { 8: 80, 9: 7 }. */
+  detailChunksByLevel: Record<number, number>;
+  detailTriangles: number;
+  /** Kept for existing callers: same as detailTriangles. */
   detailTrianglesApprox: number;
+  /** Worker build time per chunk (ms) since start, per level. */
+  buildMs: Record<number, { count: number; avg: number; max: number }>;
+  pendingBuilds: number;
+  /** false if chunks are built on the main thread (worker unavailable). */
+  worker: boolean;
 }
 
 export interface EarthObjects {
@@ -271,37 +351,87 @@ export interface EarthObjects {
   setTime(seconds: number): void;
   /** Streams high-detail chunks in/out around the sub-station point (OBJECT
    *  space unit direction, already de-rotated by -gmstRad like the sun dir).
-   *  Call once per frame; builds at most a few chunks per call. */
+   *  Call once per frame; requests at most a few chunk builds per call (built
+   *  asynchronously in a worker, swapped in when ready). */
   updateLOD(subStationDirObject: THREE.Vector3): void;
   getStats(): EarthStats;
   dispose(): void;
 }
 
+interface DetailEntry {
+  level: number;
+  mesh: THREE.Mesh;
+  geometry: THREE.BufferGeometry;
+}
+
 export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
   const landMask = buildLandMask();
   const landTexture = landMask.texture;
-  const landRaster: Raster = { data: landMask.data, width: landMask.width, height: landMask.height, stride: 4 };
+  // Only the land/sea channel is needed for displacement; a compact copy is
+  // what goes to the worker.
+  const landRaster: Raster = extractChannel(
+    { data: landMask.data, width: landMask.width, height: landMask.height, stride: 4 },
+    0,
+  );
   const biomeTexture = buildBiomeTexture();
 
-  // Heightmap is only needed on the CPU (displacement is baked per chunk).
-  let heightRaster: Raster | null = null;
+  // --- Chunk builder: a module worker, or the main thread as a fallback ---
+  let worker: Worker | null = null;
+  try {
+    worker = new Worker(new URL('./terrainWorker.ts', import.meta.url), { type: 'module' });
+  } catch {
+    worker = null;
+  }
+  let workerReady = false; // rasters posted
+  let heightRaster: Raster | null = null; // main-thread fallback only
+  let nextRequestId = 1;
+  // seed index -> the request currently outstanding for it
+  const pending = new Map<number, { id: number; level: number }>();
+  const buildStats = new Map<number, { count: number; sum: number; max: number }>();
+
+  const useMainThread = (reason: unknown) => {
+    if (!worker) return;
+    console.warn('[terrain] worker unavailable, building chunks on the main thread', reason);
+    worker.terminate();
+    worker = null;
+    pending.clear();
+  };
+
+  // Heightmap: decoded on the main thread (needs a canvas), then its single
+  // channel is transferred to the worker once.
   // Retry: a flaky connection can fail the first decode, which would leave
   // the planet without relief for the whole session.
   const loadHeight = (attempt: number) => {
     loadRaster(topoUrl)
       .then((r) => {
-        heightRaster = r;
+        const h = extractChannel(r, 0);
+        if (worker) {
+          const land = { ...landRaster, data: landRaster.data.slice() };
+          const msg: TerrainWorkerRequest = { type: 'init', height: h, land };
+          worker.postMessage(msg, [h.data.buffer, land.data.buffer]);
+          workerReady = true;
+          // keep a main-thread copy only if we may need to fall back later
+          heightRaster = null;
+          fallbackHeightSource = r;
+        } else {
+          heightRaster = h;
+        }
       })
       .catch(() => {
         if (attempt < 4) setTimeout(() => loadHeight(attempt + 1), 1000 * (attempt + 1));
       });
   };
+  // RGBA raster kept by reference (no copy) in case the worker dies later.
+  let fallbackHeightSource: Raster | null = null;
   loadHeight(0);
 
   const material = new THREE.ShaderMaterial({
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
-    side: THREE.DoubleSide,
+    // FrontSide: every chunk is wound CCW from outside (icosphere.ts), and with
+    // a logarithmic depth buffer (no early-Z) back faces cost a full extra
+    // terrain-shader pass (review-2 §3.2).
+    side: THREE.FrontSide,
     uniforms: {
       uLandTex: { value: landTexture },
       uBiomeTex: { value: biomeTexture },
@@ -337,6 +467,10 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
   const coarseBuilt = buildMergedCoarseSphere(seeds, COARSE_EXTRA_LEVELS, EARTH_RADIUS_KM - COARSE_INSET_KM);
   const coarseGeometry = new THREE.BufferGeometry();
   coarseGeometry.setAttribute('position', new THREE.BufferAttribute(coarseBuilt.positions, 3));
+  // No relief, so no cast shadows: horizon = minimum everywhere.
+  const coarseVerts = coarseBuilt.positions.length / 3;
+  coarseGeometry.setAttribute('aHorizonA', new THREE.BufferAttribute(new Uint8Array(coarseVerts * 4), 4, true));
+  coarseGeometry.setAttribute('aHorizonB', new THREE.BufferAttribute(new Uint8Array(coarseVerts * 4), 4, true));
   coarseGeometry.setIndex(new THREE.BufferAttribute(coarseBuilt.indices, 1));
   coarseGeometry.computeBoundingSphere();
   const coarseMesh = new THREE.Mesh(coarseGeometry, material);
@@ -346,66 +480,115 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
   // --- Layer 2: streamed high-detail chunks -------------------------------
   const detailGroup = new THREE.Group();
   rotGroup.add(detailGroup);
-  const detailCache = new Map<number, { mesh: THREE.Mesh; geometry: THREE.BufferGeometry }>();
-  const trisPerDetailChunk = (2 ** DETAIL_EXTRA_LEVELS) ** 2; // border skirt tris are a small, ignored bonus
+  const detailCache = new Map<number, DetailEntry>();
+  // Target level per seed (0 = no detail), with hysteresis; updated every
+  // updateLOD, consulted when a build result arrives.
+  const desired = new Map<number, number>();
 
-  function displace(positions: Float32Array, height: Raster): void {
-    for (let i = 0; i < positions.length; i += 3) {
-      const x = positions[i];
-      const y = positions[i + 1];
-      const z = positions[i + 2];
-      const r = Math.hypot(x, y, z);
-      const nx = x / r;
-      const ny = y / r;
-      const nz = z / r;
-      const rr = r + elevationKm(height, landRaster, nx, ny, nz);
-      positions[i] = nx * rr;
-      positions[i + 1] = ny * rr;
-      positions[i + 2] = nz * rr;
+  function recordBuild(level: number, ms: number): void {
+    const b = buildStats.get(level) ?? { count: 0, sum: 0, max: 0 };
+    b.count++;
+    b.sum += ms;
+    b.max = Math.max(b.max, ms);
+    buildStats.set(level, b);
+  }
+
+  function install(seedIndex: number, level: number, c: {
+    positions: Float32Array;
+    indices: Uint16Array;
+    horizonA: Uint8Array;
+    horizonB: Uint8Array;
+  }): void {
+    if ((desired.get(seedIndex) ?? 0) !== level) return; // stale: the station moved on
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(c.positions, 3));
+    geometry.setAttribute('aHorizonA', new THREE.BufferAttribute(c.horizonA, 4, true));
+    geometry.setAttribute('aHorizonB', new THREE.BufferAttribute(c.horizonB, 4, true));
+    geometry.setIndex(new THREE.BufferAttribute(c.indices, 1));
+    geometry.computeBoundingSphere();
+    const mesh = new THREE.Mesh(geometry, material);
+    const old = detailCache.get(seedIndex);
+    if (old) {
+      detailGroup.remove(old.mesh);
+      old.geometry.dispose();
     }
+    detailGroup.add(mesh);
+    detailCache.set(seedIndex, { level, mesh, geometry });
+  }
+
+  if (worker) {
+    worker.onmessage = (e: MessageEvent<TerrainWorkerResult>) => {
+      const r = e.data;
+      const p = pending.get(r.seedIndex);
+      if (p && p.id === r.id) pending.delete(r.seedIndex);
+      recordBuild(r.level, r.ms);
+      install(r.seedIndex, r.level, r);
+    };
+    worker.onerror = (e) => useMainThread(e.message);
+  }
+
+  function requestBuild(seed: SeedChunk, level: number): void {
+    const snapBorder = level > LEVELS.far;
+    if (worker) {
+      const id = nextRequestId++;
+      pending.set(seed.index, { id, level });
+      const msg: TerrainWorkerRequest = {
+        type: 'build',
+        id,
+        seedIndex: seed.index,
+        corners: seed.corners,
+        seedLevel: SEED_LEVEL,
+        level,
+        radiusKm: EARTH_RADIUS_KM,
+        snapBorder,
+      };
+      worker.postMessage(msg);
+      return;
+    }
+    const t0 = performance.now();
+    const c = buildTerrainChunk(seed.corners, SEED_LEVEL, level, EARTH_RADIUS_KM, heightRaster!, landRaster, snapBorder);
+    recordBuild(level, performance.now() - t0);
+    install(seed.index, level, c);
   }
 
   function updateLOD(subDirObj: THREE.Vector3): void {
-    const height = heightRaster;
-    if (!height) return; // coarse sphere only until the heightmap has loaded
-    const toBuild: { seed: SeedChunk; d: number }[] = [];
-    const toRemove: number[] = [];
+    if (!worker && !heightRaster && fallbackHeightSource) heightRaster = extractChannel(fallbackHeightSource, 0);
+    if (worker ? !workerReady : !heightRaster) return; // coarse sphere only until the heightmap has loaded
 
+    const toBuild: { seed: SeedChunk; d: number; level: number }[] = [];
     for (const seed of seeds) {
       const [cx, cy, cz] = seed.center;
       const dot = cx * subDirObj.x + cy * subDirObj.y + cz * subDirObj.z;
-      const angle = Math.acos(THREE.MathUtils.clamp(dot, -1, 1));
-      const d = angle * EARTH_RADIUS_KM;
-      const built = detailCache.has(seed.index);
-      if (built) {
-        if (d > DETAIL_EXIT_KM) toRemove.push(seed.index);
-      } else if (d < DETAIL_ENTER_KM) {
-        toBuild.push({ seed, d });
-      }
-    }
+      const d = Math.acos(THREE.MathUtils.clamp(dot, -1, 1)) * EARTH_RADIUS_KM;
+      const prev = desired.get(seed.index) ?? 0;
+      let level: number;
+      if (d > (prev ? DETAIL_EXIT_KM : DETAIL_ENTER_KM)) level = 0;
+      else if (d < (prev === LEVELS.near ? NEAR_EXIT_KM : NEAR_ENTER_KM)) level = LEVELS.near;
+      else level = LEVELS.far;
+      if (level) desired.set(seed.index, level);
+      else desired.delete(seed.index);
 
-    for (const idx of toRemove) {
-      const entry = detailCache.get(idx);
-      if (!entry) continue;
-      detailGroup.remove(entry.mesh);
-      entry.geometry.dispose();
-      detailCache.delete(idx);
+      const entry = detailCache.get(seed.index);
+      if (!level) {
+        if (entry) {
+          detailGroup.remove(entry.mesh);
+          entry.geometry.dispose();
+          detailCache.delete(seed.index);
+        }
+        pending.delete(seed.index); // any late result is dropped by install()
+        continue;
+      }
+      if (entry?.level === level) continue;
+      const p = pending.get(seed.index);
+      if (p && p.level === level) continue;
+      // Unbuilt chunks (holes over the coarse sphere) first, then level
+      // changes of already-covered chunks; nearest first within each.
+      toBuild.push({ seed, d: d + (entry ? 1e5 : 0), level });
     }
 
     toBuild.sort((a, b) => a.d - b.d);
-    const budget = Math.min(BUILD_BUDGET_PER_FRAME, toBuild.length);
-    for (let i = 0; i < budget; i++) {
-      const seed = toBuild[i].seed;
-      const built = buildChunkMesh(seed, DETAIL_EXTRA_LEVELS, EARTH_RADIUS_KM, SKIRT_DROP_KM);
-      displace(built.positions, height);
-      const geometry = new THREE.BufferGeometry();
-      geometry.setAttribute('position', new THREE.BufferAttribute(built.positions, 3));
-      geometry.setIndex(new THREE.BufferAttribute(built.indices as Uint16Array, 1));
-      geometry.computeBoundingSphere();
-      const mesh = new THREE.Mesh(geometry, material);
-      detailGroup.add(mesh);
-      detailCache.set(seed.index, { mesh, geometry });
-    }
+    const cap = worker ? Math.min(BUILD_BUDGET_PER_FRAME, MAX_IN_FLIGHT - pending.size) : 1;
+    for (let i = 0; i < Math.min(cap, toBuild.length); i++) requestBuild(toBuild[i].seed, toBuild[i].level);
   }
 
   return {
@@ -423,13 +606,28 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
     },
     updateLOD,
     getStats(): EarthStats {
+      const byLevel: Record<number, number> = {};
+      let tris = 0;
+      for (const e of detailCache.values()) {
+        byLevel[e.level] = (byLevel[e.level] ?? 0) + 1;
+        tris += (e.geometry.index?.count ?? 0) / 3;
+      }
+      const buildMs: EarthStats['buildMs'] = {};
+      for (const [lvl, b] of buildStats) buildMs[lvl] = { count: b.count, avg: b.sum / b.count, max: b.max };
       return {
         coarseTriangles,
         detailChunks: detailCache.size,
-        detailTrianglesApprox: detailCache.size * trisPerDetailChunk,
+        detailChunksByLevel: byLevel,
+        detailTriangles: tris,
+        detailTrianglesApprox: tris,
+        buildMs,
+        pendingBuilds: pending.size,
+        worker: worker !== null,
       };
     },
     dispose() {
+      worker?.terminate();
+      worker = null;
       coarseGeometry.dispose();
       for (const entry of detailCache.values()) entry.geometry.dispose();
       material.dispose();

@@ -38,8 +38,16 @@ async function main(): Promise<void> {
 
   // ?t=<ISO time> pins the start time (for debugging / screenshots).
   const pinned = Date.parse(new URLSearchParams(location.search).get('t') ?? '');
-  let simTime = Number.isFinite(pinned) ? pinned : Date.now();
-  if (!Number.isFinite(pinned)) {
+  // Resume point after a GPU context loss (see below)
+  let resumeAt = Number.NaN;
+  try {
+    resumeAt = Number(sessionStorage.getItem('lt.resume') ?? 'NaN');
+    sessionStorage.removeItem('lt.resume');
+  } catch {
+    /* storage unavailable */
+  }
+  let simTime = Number.isFinite(pinned) ? pinned : Number.isFinite(resumeAt) ? resumeAt : Date.now();
+  if (!Number.isFinite(pinned) && !Number.isFinite(resumeAt)) {
     const sunrise0 = findNextSunrise(simTime);
     if (Number.isFinite(sunrise0)) simTime = sunrise0 - START_LEAD_MS;
   }
@@ -116,6 +124,19 @@ async function main(): Promise<void> {
     },
   });
   ui.setCamera(CAMERA_LABEL.cupola);
+
+  // GPU context loss (long background, memory pressure): our baked textures
+  // (clouds, Milky Way, LUTs) can't be rebuilt in place, so reload and resume
+  // at the same sim time instead of leaving a black screen.
+  canvas.addEventListener('webglcontextlost', (e) => e.preventDefault());
+  canvas.addEventListener('webglcontextrestored', () => {
+    try {
+      sessionStorage.setItem('lt.resume', String(simTime));
+    } catch {
+      /* ignore */
+    }
+    location.reload();
+  });
 
   const renderer = await createSceneRenderer(canvas);
   const resize = () =>
