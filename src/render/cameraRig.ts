@@ -5,16 +5,18 @@
 //   cupola : inside the Earth-facing window; frame in the foreground
 //   aft    : looking back over the truss and solar wings to the horizon
 //   limb   : telephoto on the horizon (atmosphere layers, sunrise)
+//   zenith : a round window on the top of the station, for the stars
 //   chase  : outside the station (the only view where the station is visible)
 import * as THREE from 'three';
 import { ChaseCameraController } from './cameraControl';
 
-export type CameraMode = 'cupola' | 'aft' | 'limb' | 'chase';
-export const CAMERA_ORDER: CameraMode[] = ['cupola', 'aft', 'limb', 'chase'];
+export type CameraMode = 'cupola' | 'aft' | 'limb' | 'zenith' | 'chase';
+export const CAMERA_ORDER: CameraMode[] = ['cupola', 'aft', 'limb', 'zenith', 'chase'];
 export const CAMERA_LABEL: Record<CameraMode, string> = {
   cupola: 'キューポラ',
   aft: '後方',
   limb: '地平線',
+  zenith: '天頂',
   chase: '外から',
 };
 
@@ -40,6 +42,7 @@ const LOOK: Record<Exclude<CameraMode, 'chase'>, LookParams> = {
   cupola: { tiltMin: 0, tiltMax: 80 * DEG, tiltDefault: 42 * DEG, fovMin: 40, fovMax: 75, fovDefault: 62 },
   aft: { azCenter: Math.PI, azMin: -60 * DEG, azMax: 60 * DEG, tiltMin: 55 * DEG, tiltMax: 100 * DEG, tiltDefault: 76 * DEG, fovMin: 30, fovMax: 75, fovDefault: 58 },
   limb: { azMin: -38 * DEG, azMax: 38 * DEG, tiltMin: HORIZON_TILT - 14 * DEG, tiltMax: HORIZON_TILT + 12 * DEG, tiltDefault: HORIZON_TILT + 1 * DEG, fovMin: 4, fovMax: 30, fovDefault: 14 },
+  zenith: { tiltMin: 135 * DEG, tiltMax: 180 * DEG, tiltDefault: 165 * DEG, fovMin: 40, fovMax: 85, fovDefault: 70 },
 };
 
 const DRAG_RAD_PER_PX = 0.0035;
@@ -145,93 +148,112 @@ class LookController {
   }
 }
 
-const FRAME_DIST = 0.002; // 2 m from the eye, in km
-const FRAME_COLOR = 0x15181f;
+// Cabin: a small dark sphere around the eye whose shader opens only the
+// window apertures (defined as angles in the station's LVLH frame). Unlike
+// flat frames, this has no edges to peek past at extreme pan angles.
+const CABIN_RADIUS_KM = 0.003; // 3 m
+const CABIN_MODE: Record<Exclude<CameraMode, 'chase'>, number> = { cupola: 0, aft: 1, limb: 2, zenith: 3 };
 
-function hexOutline(R: number): THREE.Shape {
-  const outer = new THREE.Shape();
-  for (let i = 0; i <= 6; i++) {
-    const a = (i / 6) * Math.PI * 2;
-    if (i === 0) outer.moveTo(Math.cos(a) * R, Math.sin(a) * R);
-    else outer.lineTo(Math.cos(a) * R, Math.sin(a) * R);
-  }
-  return outer;
+const CABIN_VERTEX = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_vertex>
+varying vec3 vDir;
+void main() {
+  vDir = normalize(position); // LVLH: x right, y forward, z up
+  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+  #include <logdepthbuf_vertex>
+}
+`;
+
+const CABIN_FRAGMENT = /* glsl */ `
+#include <common>
+#include <logdepthbuf_pars_fragment>
+uniform int uMode;
+uniform vec3 uWall;
+uniform vec3 uRim;
+varying vec3 vDir;
+
+// signed angular distance (radians) into a rounded rectangle window facing n
+float rectWindow(vec3 d, vec3 n, float halfW, float halfH, float corner) {
+  vec3 u = vec3(1.0, 0.0, 0.0);
+  vec3 v = normalize(cross(n, u));
+  float fz = dot(d, n);
+  if (fz <= 0.0) return -1.0;
+  vec2 a = vec2(atan(dot(d, u), fz), atan(dot(d, v), fz));
+  vec2 q = abs(a) - vec2(halfW, halfH) + corner;
+  float outside = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - corner;
+  return -outside;
 }
 
-function frameMesh(shape: THREE.Shape): THREE.Mesh {
-  const geometry = new THREE.ShapeGeometry(shape, 48);
-  geometry.translate(0, 0, -FRAME_DIST);
-  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: FRAME_COLOR, side: THREE.DoubleSide }));
+void main() {
+  #include <logdepthbuf_fragment>
+  vec3 d = normalize(vDir);
+  float open = -1.0; // >0 inside a window (radians of margin)
+  if (uMode == 0) {
+    // cupola: round centre window + six trapezoids with mullions
+    float nadir = acos(clamp(-d.z, -1.0, 1.0));
+    float centre = radians(34.0) - nadir;
+    float az = atan(d.y, d.x);
+    float seg = radians(60.0);
+    float rel = mod(az - radians(30.0), seg);
+    float mullion = min(rel, seg - rel) * sin(nadir) - radians(3.5);
+    float ring = min(nadir - radians(40.0), radians(68.0) - nadir);
+    open = max(centre, min(ring, mullion));
+  } else if (uMode == 1) {
+    float t = radians(76.0);
+    open = rectWindow(d, vec3(0.0, -sin(t), -cos(t)), radians(42.0), radians(24.0), radians(8.0));
+  } else if (uMode == 2) {
+    float t = radians(70.0);
+    open = rectWindow(d, vec3(0.0, sin(t), -cos(t)), radians(42.0), radians(24.0), radians(8.0));
+  } else {
+    float zen = acos(clamp(d.z, -1.0, 1.0));
+    open = radians(32.0) - zen;
+  }
+  float w = max(fwidth(open), 1e-4);
+  float inside = smoothstep(-w, w, open);
+  if (inside > 0.999) discard;
+  // a thin lighter rim just around each aperture, soft falloff into the wall
+  float rim = 1.0 - smoothstep(0.0, radians(2.5), -open);
+  vec3 wall = uWall * (0.85 + 0.25 * d.z);
+  vec3 col = mix(wall, uRim, rim * 0.6);
+  gl_FragColor = vec4(col, 1.0 - inside);
+  #include <colorspace_fragment>
+}
+`;
+
+function buildCabin(): THREE.Mesh {
+  const geometry = new THREE.SphereGeometry(CABIN_RADIUS_KM, 64, 48);
+  const material = new THREE.ShaderMaterial({
+    vertexShader: CABIN_VERTEX,
+    fragmentShader: CABIN_FRAGMENT,
+    uniforms: {
+      uMode: { value: 0 },
+      uWall: { value: new THREE.Color(0x15181f) },
+      uRim: { value: new THREE.Color(0x3a3f4a) },
+    },
+    side: THREE.BackSide,
+    transparent: true,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
   mesh.renderOrder = 10;
+  mesh.frustumCulled = false;
   return mesh;
-}
-
-const rAt = (deg: number) => FRAME_DIST * Math.tan(deg * DEG);
-
-/** Cupola: round centre window + six trapezoids. Plane faces nadir (-z in LVLH). */
-function buildCupolaFrame(): THREE.Mesh {
-  const outer = hexOutline(0.06);
-  const centre = new THREE.Path();
-  centre.absarc(0, 0, rAt(34), 0, Math.PI * 2, true);
-  outer.holes.push(centre);
-  const r1 = rAt(40);
-  const r2 = rAt(68);
-  const gap = 7 * DEG;
-  for (let i = 0; i < 6; i++) {
-    const a0 = (i / 6) * Math.PI * 2 + gap / 2 + Math.PI / 6;
-    const a1 = ((i + 1) / 6) * Math.PI * 2 - gap / 2 + Math.PI / 6;
-    const hole = new THREE.Path();
-    hole.moveTo(Math.cos(a0) * r1, Math.sin(a0) * r1);
-    hole.lineTo(Math.cos(a1) * r1, Math.sin(a1) * r1);
-    hole.lineTo(Math.cos(a1) * r2, Math.sin(a1) * r2);
-    hole.lineTo(Math.cos(a0) * r2, Math.sin(a0) * r2);
-    hole.closePath();
-    outer.holes.push(hole);
-  }
-  return frameMesh(outer);
-}
-
-/** Horizon: rounded rectangular window facing the forward horizon. */
-function buildRectWindowFrame(tiltFromNadir: number, aft: boolean): THREE.Object3D {
-  const outer = hexOutline(0.06);
-  const w = rAt(42);
-  const h = rAt(24);
-  const c = h * 0.35;
-  const hole = new THREE.Path();
-  hole.moveTo(-w + c, -h);
-  hole.lineTo(w - c, -h);
-  hole.quadraticCurveTo(w, -h, w, -h + c);
-  hole.lineTo(w, h - c);
-  hole.quadraticCurveTo(w, h, w - c, h);
-  hole.lineTo(-w + c, h);
-  hole.quadraticCurveTo(-w, h, -w, h - c);
-  hole.lineTo(-w, -h + c);
-  hole.quadraticCurveTo(-w, -h, -w + c, -h);
-  outer.holes.push(hole);
-  const mesh = frameMesh(outer);
-  // plane normal -z → rotate about x toward the forward (or aft) horizon
-  const holder = new THREE.Group();
-  holder.add(mesh);
-  mesh.rotation.x = aft ? -tiltFromNadir : tiltFromNadir;
-  return holder;
 }
 
 export class CameraRig {
   mode: CameraMode = 'cupola';
   readonly chase: ChaseCameraController;
   private readonly look: LookController;
-  /** Add to the scene: window frames, placed at the active eye in LVLH each frame. */
+  /** Add to the scene: the cabin around the active eye, in LVLH each frame. */
   readonly frames = new THREE.Group();
-  private readonly frameByMode: Partial<Record<CameraMode, THREE.Object3D>> = {};
+  private readonly cabin: THREE.Mesh;
   private readonly basis = new THREE.Matrix4();
 
   constructor(canvas: HTMLCanvasElement) {
     this.chase = new ChaseCameraController(canvas);
     this.look = new LookController(canvas);
-    this.frameByMode.cupola = buildCupolaFrame();
-    this.frameByMode.aft = buildRectWindowFrame(LOOK.aft.tiltDefault, true);
-    this.frameByMode.limb = buildRectWindowFrame(HORIZON_TILT, false);
-    for (const f of Object.values(this.frameByMode)) this.frames.add(f!);
+    this.cabin = buildCabin();
+    this.frames.add(this.cabin);
     this.setMode('cupola');
   }
 
@@ -240,7 +262,8 @@ export class CameraRig {
     this.chase.enabled = mode === 'chase';
     this.look.enabled = mode !== 'chase';
     if (mode !== 'chase') this.look.setParams(LOOK[mode]);
-    for (const [m, f] of Object.entries(this.frameByMode)) f!.visible = m === mode;
+    this.cabin.visible = mode !== 'chase';
+    if (mode !== 'chase') (this.cabin.material as THREE.ShaderMaterial).uniforms.uMode.value = CABIN_MODE[mode];
   }
 
   next(): CameraMode {

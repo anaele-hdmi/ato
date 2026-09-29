@@ -53,7 +53,7 @@ export interface StationObjects {
    *  `sunDir` (world-space, optional) rotates each solar wing about the truss axis to face the sun. */
   orient(stationPosDir: THREE.Vector3, stationVelDir: THREE.Vector3, sunDir?: THREE.Vector3): void;
   /** Eye points (station-local) for the interior views: the window each view looks through. */
-  eyes: { cupola: THREE.Vector3; aft: THREE.Vector3; limb: THREE.Vector3 };
+  eyes: { cupola: THREE.Vector3; aft: THREE.Vector3; limb: THREE.Vector3; zenith: THREE.Vector3 };
   dispose(): void;
 }
 
@@ -290,6 +290,8 @@ export function createStation(): StationObjects {
     aft: new THREE.Vector3(0, moduleY + CAPSULE_R + 0.009, noseZ),
     // under the capsule nose, looking forward to the horizon with nothing in front
     limb: new THREE.Vector3(0, moduleY - CAPSULE_R - 0.0008, noseZ),
+    // round window on top of the forward node, open to the sky
+    zenith: new THREE.Vector3(0, moduleY + NODE_R + 0.0008, node2Z),
   };
 
   return {

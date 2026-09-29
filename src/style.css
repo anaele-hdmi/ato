@@ -1,9 +1,9 @@
 :root {
   color-scheme: dark;
-  --ui-fg: rgba(235, 238, 245, 0.86);
-  --ui-fg-dim: rgba(235, 238, 245, 0.5);
-  --ui-bg: rgba(10, 12, 18, 0.38);
-  --ui-border: rgba(235, 238, 245, 0.14);
+  --ui-fg: rgba(240, 242, 248, 0.95);
+  --ui-fg-dim: rgba(240, 242, 248, 0.82);
+  --ui-bg: rgba(10, 12, 18, 0.62);
+  --ui-border: rgba(240, 242, 248, 0.24);
   --safe-t: env(safe-area-inset-top, 0px);
   --safe-r: env(safe-area-inset-right, 0px);
   --safe-b: env(safe-area-inset-bottom, 0px);
@@ -105,7 +105,7 @@ body {
 @keyframes lt-pulse {
   0%,
   100% {
-    opacity: 0.35;
+    opacity: 1;
   }
   50% {
     opacity: 0.9;
@@ -129,11 +129,13 @@ body {
   position: fixed;
   left: calc(1rem + var(--safe-l));
   bottom: calc(0.9rem + var(--safe-b));
-  font-size: 0.68rem;
-  font-weight: 300;
-  letter-spacing: 0.1em;
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.08em;
   line-height: 1.6;
   color: var(--ui-fg-dim);
+  /* legible over bright clouds and the limb */
+  text-shadow: 0 0 6px rgba(0, 0, 0, 0.85), 0 0 2px rgba(0, 0, 0, 0.9);
   white-space: pre-line;
   pointer-events: none;
   z-index: 20;
@@ -171,8 +173,8 @@ body {
   background: var(--ui-bg);
   color: var(--ui-fg);
   font-family: inherit;
-  font-weight: 300;
-  font-size: 0.66rem;
+  font-weight: 400;
+  font-size: 0.72rem;
   letter-spacing: 0.06em;
   padding: 0.45em 0.75em;
   border-radius: 999px;
@@ -195,7 +197,8 @@ body {
 /* fade group (auto-hide on inactivity) */
 
 .lt-fadeable.lt-dim {
-  opacity: 0.32;
+  /* per the client: keep controls readable even when idle */
+  opacity: 1;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -271,7 +274,7 @@ body {
 }
 
 .lt-globe.lt-globe--idle {
-  opacity: 0.35;
+  opacity: 1;
 }
 
 .lt-globe__canvas {
