@@ -8,6 +8,7 @@ import { createEarth } from './earth';
 import { createAtmosphere } from './atmosphere';
 import { createClouds } from './clouds';
 import { createStars } from './stars';
+import { createMilkyWay } from './milkyway';
 import { createStation } from './station';
 import { CameraRig, type CameraMode } from './cameraRig';
 import { createSun } from './sun';
@@ -80,8 +81,13 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   // script read live LOD stats via page.evaluate(() => window.__earthStats()).
   (window as unknown as { __earthStats?: () => unknown }).__earthStats = () => earth.getStats();
 
+  const milkyWay = createMilkyWay(renderer);
   const stars = createStars();
-  scene.add(stars.points);
+  scene.add(milkyWay.object, stars.object);
+  // Eye adaptation for the sky: 1 = dark-adapted (night side), low when the
+  // sunlit Earth or the Sun fills the view. Eased so it never pops.
+  let skyExposure = 1;
+  const camDir = new THREE.Vector3();
 
   const sun = createSun();
   scene.add(sun.sprite);
@@ -173,6 +179,20 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     eyeWorld.copy(station.eyes[rig.mode === 'chase' ? 'cupola' : rig.mode]).applyMatrix4(station.group.matrixWorld);
     rig.update(dtSec, camera, upDirVec, fwdDirVec, sunDirVec, eyeWorld);
 
+    camera.getWorldDirection(camDir);
+    let target = 1;
+    if (!frame.inShadow) {
+      // daylight: the lit Earth and the Sun dazzle; looking out to space helps a little
+      const towardEarth = THREE.MathUtils.smoothstep(camDir.dot(upDirVec) * -1, -0.45, 0.25);
+      const towardSun = THREE.MathUtils.smoothstep(camDir.dot(sunDirVec), 0.5, 0.95);
+      target = 0.22 * (1 - 0.85 * towardEarth) * (1 - 0.9 * towardSun);
+    }
+    skyExposure += (target - skyExposure) * Math.min(1, dtSec / 1.8);
+    milkyWay.setExposure(skyExposure);
+    stars.setExposure(skyExposure);
+    milkyWay.update(camera);
+    stars.update(camera);
+
     cloudMap.update(renderer, simSeconds);
     if (statsEl) renderer.info.reset();
     post.render();
@@ -224,6 +244,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     clouds.dispose();
     cloudMap.dispose();
     stars.dispose();
+    milkyWay.dispose();
     sun.dispose();
     station.dispose();
     sunLight.dispose();

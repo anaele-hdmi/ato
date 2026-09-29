@@ -110,3 +110,90 @@ export const RELIEF = {
   hazeWarm: new THREE.Color(0xfff0d8),
 };
 
+
+/** Physically structured single-scattering atmosphere (Rayleigh + Mie +
+ *  ozone, Hillaire 2020 / Bruneton style) used by atmosphere.ts. Coefficients
+ *  are real Earth values per km; `heightScale` stretches every altitude
+ *  (scale heights, ozone layer, top) so the limb reads thicker from orbit, in
+ *  keeping with the 8x terrain exaggeration. */
+export const ATMOSPHERE_SCATTER = {
+  heightScale: 1.5,
+  /** top of the atmosphere before heightScale, km */
+  topKm: 100,
+  rayleighScattering: new THREE.Vector3(5.802e-3, 13.558e-3, 33.1e-3),
+  rayleighHeightKm: 8,
+  mieScattering: 3.996e-3,
+  mieExtinction: 4.4e-3,
+  /** real ~1.2 km; raised so the low aerosol haze glows gold toward the Sun */
+  mieHeightKm: 3.2,
+  mieG: 0.8,
+  ozoneAbsorption: new THREE.Vector3(0.65e-3, 1.881e-3, 0.085e-3),
+  /** ozone density multiplier: the stretched layer is thicker, so thin it back
+   *  so the lit limb stays white rather than magenta */
+  ozoneStrength: 0.6,
+  ozoneCenterKm: 25,
+  ozoneHalfWidthKm: 15,
+  /** sunlight colour × illuminance (linear) */
+  sunColor: new THREE.Color(0xfff6ec),
+  /** radiance -> display: col = white * (1 - exp(-L * exposure / white)) —
+   *  linear slope `exposure` in the shadows, soft shoulder at `white` so the
+   *  sunlit limb glows without clipping into a bloom wash */
+  exposure: 13,
+  white: 0.9,
+  /** cheap multiple-scattering ambient (isotropic, scaled by local scattering) */
+  multiScatterColor: new THREE.Color(0x7fa8ff),
+  multiScatter: 0.12,
+  /** cos(sun zenith) range over which the multiple-scattering ambient fades in */
+  multiScatterMuLow: -0.12,
+  multiScatterMuHigh: 0.25,
+  /** soft Earth-shadow edge (half-width in cos units; sun disc ~0.0047 rad) */
+  shadowSoftness: 0.008,
+  /** aerial perspective over the disc (rays hitting the ground), relative to limb */
+  discHaze: 0.15,
+  /** closest-approach depth (km below the surface) over which disc haze ramps to full at grazing */
+  discGrazeKm: 15,
+  /** faint tall analytic glow above the lit limb (dark navy, not black) */
+  outerGlow: new THREE.Color(0x2b4a8a),
+  outerGlowStrength: 0.45,
+  outerGlowHeightKm: 70,
+};
+
+/** Night sky (stars.ts + milkyway.ts): catalogue stars as physically scaled
+ *  PSF points, a procedural galactic-frame Milky Way and faint unresolved
+ *  star grain. Linear values; the whole sky is scaled by setExposure(). */
+export const SKY = {
+  /** peak pixel intensity (linear) of a mag-6.5 star at full exposure */
+  faintPeak: 0.022,
+  /** flux exponent: 1 = true photometric ratio, <1 compresses the range */
+  fluxGamma: 1.0,
+  /** gaussian PSF sigma in device pixels */
+  psfSigmaPx: 0.7,
+  /** relative halo amplitude (only the brightest few dozen stars clear the threshold) */
+  haloStrength: 0.012,
+  /** halo scale radius, device pixels */
+  haloRadiusPx: 2.4,
+  /** 0 = true blackbody colours, 1 = white */
+  starDesaturate: 0.35,
+  /** Milky Way diffuse glow scale (linear) */
+  milkyWayIntensity: 0.075,
+  /** warm bulge / cool disc tints */
+  bulgeTint: new THREE.Color(1.0, 0.82, 0.62),
+  discTint: new THREE.Color(0.82, 0.88, 1.0),
+  /** number of synthetic faint (mag 6.5-9.2) grain stars following the band */
+  grainStars: 90000,
+};
+
+/** Layered cloud tones (clouds.ts): painterly bright tops, blue-grey / lavender
+ *  shaded sides and bases, translucent warm-white cirrus, and the low-sun
+ *  tints (gold → pink as the sun sets for that cloud's altitude). */
+export const CLOUD_LAYERS = {
+  lowLit: new THREE.Color(0xf6f3ee),
+  lowShade: new THREE.Color(0x8391ad),
+  lowDeep: new THREE.Color(0x5d6886),
+  midLit: new THREE.Color(0xe7e9ef),
+  midShade: new THREE.Color(0x8793ab),
+  highLit: new THREE.Color(0xfbf8f2),
+  highShade: new THREE.Color(0xa4aec4),
+  sunsetGold: new THREE.Color(0xffc98c),
+  sunsetPink: new THREE.Color(0xf09aa6),
+};
