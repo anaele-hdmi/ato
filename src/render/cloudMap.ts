@@ -79,7 +79,7 @@ float cloudShadow(vec3 n, float groundKm, vec3 L) {
   float sLow = smoothstep(-0.12, 0.3, fl.r) * 0.8 * (1.0 - smoothstep(CL_LOW_BASE, CL_LOW_TOP, g));
   float sCb = smoothstep(0.08, 0.45, max(fl.a, fu.a)) * 0.85;
   float sMid = smoothstep(-0.05, 0.4, fu.g) * 0.5 * (1.0 - smoothstep(CL_MID - 3.0, CL_MID + 1.0, g));
-  float sHigh = smoothstep(0.0, 0.35, fu.b) * mix(0.25, 0.7, smoothstep(0.35, 0.7, fu.b));
+  float sHigh = smoothstep(-0.1, 0.45, fu.b) * mix(0.06, 0.22, smoothstep(0.35, 0.7, fu.b)); // thin cirrus: faint
   return 1.0 - (1.0 - sLow) * (1.0 - sCb) * (1.0 - sMid) * (1.0 - sHigh);
 }
 `;

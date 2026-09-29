@@ -131,8 +131,32 @@ async function main(): Promise<void> {
   let readoutAcc = 1;
 
   let wasInShadow: boolean | null = null;
+  // Frame cap (battery / heat): 30 fps by default, 20 fps after 5 s without
+  // input, ?fps=N overrides (60 or more = uncapped). Driven by rAF timestamps;
+  // sim time advances by the real elapsed time between *rendered* frames.
+  const fpsParam = Number(new URLSearchParams(location.search).get('fps'));
+  const fpsOverride = Number.isFinite(fpsParam) && fpsParam > 0 ? fpsParam : 0;
+  const IDLE_AFTER_MS = 5000;
+  let lastInput = performance.now();
+  const noteInput = () => {
+    lastInput = performance.now();
+  };
+  for (const ev of ['pointerdown', 'pointermove', 'wheel', 'touchstart', 'keydown'])
+    window.addEventListener(ev, noteInput, { passive: true });
   let last = performance.now();
+  let nextDue = 0;
   const loop = (now: number) => {
+    const fps = fpsOverride || (now - lastInput > IDLE_AFTER_MS ? 20 : 30);
+    if (fps < 59) {
+      const interval = 1000 / fps;
+      if (now < nextDue - 2) {
+        requestAnimationFrame(loop);
+        return;
+      }
+      // keep the cadence (no drift); resync if we fell more than a frame behind
+      nextDue += interval;
+      if (nextDue < now) nextDue = now + interval;
+    }
     const dt = Math.min(0.1, (now - last) / 1000);
     last = now;
     simTime += dt * 1000 * rate;

@@ -95,6 +95,7 @@ uniform highp sampler3D uPuffTex;
 
 const float F_MASS = 120.0;   // cloud-mass cell scale (~53 km cells)
 const float F_DETAIL = 400.0; // cumulus texture inside the masses (~16 km)
+const float F_BIG = 45.0;     // large cloud-mass groups / gaps (~140 km cells)
 // the 2D low layer sits in the middle of the boundary-layer cloud slab
 const float LOW_LAYER = 0.5 * (CL_LOW_BASE + CL_DECK_TOP) + 1.0;
 
@@ -103,14 +104,19 @@ vec4 billowAt(vec3 q, float f) { return texture(uPuffTex, q * (f / 8.0) + cloudD
 
 // 2D low-layer density: the macro field sets coverage; masses and a detail
 // texture shape soft cloud fields inside it (EVE-style main + detail maps)
-float lowDensity(vec3 q, vec4 m, float fade, float fadeDetail) {
+float lowDensity(vec3 q, vec4 m, float fade, float fadeDetail, float fw_big) {
   float deck = smoothstep(0.3, 0.75, m.r);
   float mass = billowAt(q, F_MASS).a;
   float det = billowAt(q, F_DETAIL).a;
   // open cells behind cold fronts: cloud walls around clear centres
   float open = clamp(-m.a, 0.0, 1.0);
   mass = mix(mass, smoothstep(0.1, 0.8, 1.0 - mass), open * 0.8);
-  return m.r + (mass - 0.4) * 0.5 * fade + (det - 0.42) * mix(0.28, 0.18, deck) * fadeDetail;
+  // big/small rhythm: a coarse scale groups the masses into clusters and gaps
+  // and modulates how strongly the fine texture shows
+  float big = billowAt(q, F_BIG).a;
+  float bigFade = 1.0 - smoothstep(0.3, 0.8, fw_big);
+  return m.r + (big - 0.42) * 0.4 * bigFade * (1.0 - 0.5 * deck) + (mass - 0.4) * 0.5 * fade
+    + (det - 0.42) * mix(0.28, 0.18, deck) * fadeDetail * mix(0.65, 1.3, big);
 }
 
 // convective towers: height above CL_LOW_BASE (strong convection only,
@@ -191,7 +197,7 @@ void main() {
   } else {
     // 2D layer: soft coverage, sun-side brightening from an offset sample
     // toward the sun (density falling toward the sun = lit edge)
-    float d = lowDensity(q, m, fade, fadeDetail);
+    float d = lowDensity(q, m, fade, fadeDetail, fw * F_BIG);
     cov = smoothstep(0.0, mix(0.3, 0.45, 1.0 - fade), d);
     if (cov < 0.01) discard;
     // offset sample of the detail texture only (the masses barely change
@@ -206,11 +212,19 @@ void main() {
   // shade from mid deck / anvils / cirrus / tower clusters up-sun (one lookup)
   float shade = 1.0;
   if (sun.w > 0.01) {
+    // each layer's shadow is offset toward the sun by ITS OWN height above
+    // this cloud top; edges are widened by the pixel footprint so they never
+    // alias into hard streaks
     float k = 1.0 / (max(mu + clHorizonDip(hKm), 0.05) * CL_R0);
+    float soft = clamp(fw * F_MASS * 0.5, 0.0, 1.0);
     vec4 fm = cloudFieldsFast(normalize(q + tang * max(CL_MID - hKm, 0.0) * k));
     float occ = smoothstep(-0.05, 0.4, fm.g) * 0.45 * step(hKm, CL_MID);
-    occ = max(occ, smoothstep(0.0, 0.4, fm.b) * mix(0.2, 0.55, smoothstep(0.35, 0.7, fm.b)) * step(hKm, CL_HIGH));
     occ = max(occ, smoothstep(0.45, 0.85, fm.a) * 0.5 * step(hKm, CL_MID));
+    if (hKm < CL_HIGH) {
+      // cirrus is thin: a faint, very soft veil of shade, never a dark streak
+      vec4 fh = cloudFieldsFast(normalize(q + tang * max(CL_HIGH - hKm, 0.0) * k));
+      occ = max(occ, smoothstep(-0.1, 0.55 + 0.3 * soft, fh.b) * mix(0.05, 0.15, smoothstep(0.35, 0.7, fh.b)));
+    }
     shade = 1.0 - occ;
   }
 
@@ -286,8 +300,9 @@ vec4 highLayer(vec3 n, vec4 m, float fw, vec3 L, vec3 viewDir) {
   float fade2 = 1.0 - smoothstep(0.2, 0.6, fw * 240.0 * 5.0);
   float anvil = smoothstep(0.3, 0.65, m.b);
   // texture scales with B so the field stays continuous at the B = 0 cut
-  float dens = m.b * (1.0 + ((s1 - 0.4) * 2.2 + (s2 - 0.5) * 1.2 * fade2) * (1.0 - anvil * 0.65));
-  float cov = smoothstep(0.0, 0.06 + 0.1 * (1.0 - fade2), dens);
+  float dens = m.b * (1.0 + ((s1 - 0.4) * 1.5 + (s2 - 0.5) * 0.7 * fade2) * (1.0 - anvil * 0.65));
+  // wide soft edge: thin cirrus fades out, it does not cut hard streak-shaped holes
+  float cov = smoothstep(0.0, 0.22 + 0.12 * (1.0 - fade2), dens);
   float mu = dot(n, L);
   vec4 sun = sunAt(mu, CL_HIGH);
   float diffuse = clamp(0.6 + mu * 0.4 + (s1 - 0.5) * 0.3 * anvil, 0.0, 1.0) * sun.w;

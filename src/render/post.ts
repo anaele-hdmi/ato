@@ -7,8 +7,8 @@
 // ShaderPass (grade + vignette + fine animated grain) -> OutputPass (sRGB +
 // tone mapping handling, so colour management matches the non-post render).
 //
-// `?post=0` in the page URL, or opts.enabled === false, bypasses the whole
-// composer and falls back to a plain renderer.render(scene, camera) call.
+// `?post=0` in the page URL, or opts.enabled === false, drops bloom + grade
+// but keeps the MSAA render target and OutputPass (fair A/B).
 import * as THREE from 'three';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -48,7 +48,7 @@ const GradeShader = {
     uVignetteStrength: { value: 0.28 },
     uVignetteRadius: { value: 0.72 },
     uVignetteSoftness: { value: 0.62 },
-    uGrainAmount: { value: 0.008 },
+    uGrainAmount: { value: 0.004 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -121,21 +121,9 @@ export function createPost(
   camera: THREE.Camera,
   opts?: { enabled?: boolean },
 ): PostPipeline {
-  const enabled = (opts?.enabled ?? true) && !urlWantsPostDisabled();
-
-  if (!enabled) {
-    return {
-      render(): void {
-        renderer.render(scene, camera);
-      },
-      resize(): void {
-        // Sizing is owned by the caller's renderer.setSize/setPixelRatio.
-      },
-      dispose(): void {
-        // Nothing owned in the disabled path.
-      },
-    };
-  }
+  // ?post=0 skips bloom + grade but still renders through the SAME MSAA
+  // target and OutputPass, so A/B comparisons differ only by the effects.
+  const fx = (opts?.enabled ?? true) && !urlWantsPostDisabled();
 
   const size = new THREE.Vector2();
   renderer.getSize(size);
@@ -146,7 +134,11 @@ export function createPost(
   // and the station's thin trusses alias badly. 4x on WebGL2 (tile-based
   // mobile GPUs resolve it cheaply).
   const msaaTarget = new THREE.WebGLRenderTarget(Math.max(1, size.x * pixelRatio), Math.max(1, size.y * pixelRatio), {
-    type: THREE.HalfFloatType,
+    // 8-bit sRGB storage (hardware encode/decode, so darks keep precision):
+    // half the bandwidth of HalfFloat. Values > 1 (Sun sprite, glint) clip
+    // to 1, which still exceeds the 0.95 bloom threshold.
+    type: THREE.UnsignedByteType,
+    colorSpace: THREE.SRGBColorSpace,
     samples: 4,
   });
   const composer = new EffectComposer(renderer, msaaTarget);
@@ -156,27 +148,30 @@ export function createPost(
   const renderPass = new RenderPass(scene, camera);
   composer.addPass(renderPass);
 
-  // Half-resolution bloom target keeps this mobile-affordable: the blur
-  // chain runs at half the composer's pixel size regardless of the
-  // resolution vector passed here (UnrealBloomPass halves internally per
-  // mip already; we additionally halve the base target below).
+  // Quarter-resolution bloom keeps this mobile-affordable (see setSize override below).
+  const BLOOM_SCALE = 0.25; // quarter-resolution bloom (5 mips below that)
   const bloomResolution = new THREE.Vector2(
-    Math.max(1, Math.round(size.x * pixelRatio * 0.5)),
-    Math.max(1, Math.round(size.y * pixelRatio * 0.5)),
+    Math.max(1, Math.round(size.x * pixelRatio * BLOOM_SCALE)),
+    Math.max(1, Math.round(size.y * pixelRatio * BLOOM_SCALE)),
   );
-  const bloomPass = new UnrealBloomPass(bloomResolution, 0.35, 0.4, 0.86);
+  const bloomPass = new UnrealBloomPass(bloomResolution, 0.35, 0.4, 0.95);
+  // UnrealBloomPass halves whatever size it is given; halve once more so the
+  // whole blur chain runs at 1/4 of the frame resolution.
+  const bloomSetSize = bloomPass.setSize.bind(bloomPass);
+  bloomPass.setSize = (w: number, h: number) => bloomSetSize(w * 0.5, h * 0.5);
   // strength 0.35: subtle — a soft glow on the Sun/limb, not a glaze over the
   //   whole frame.
   // radius 0.4: small, keeps the halo tight instead of a diffuse wash.
-  // threshold 0.86: high — only the Sun sprite, the sunlit limb highlight and
+  // threshold 0.95: high — only the Sun sprite, the sunlit limb highlight and
   //   ocean glint (all near-1.0 luma) trigger it; the flat-shaded/toon Earth
   //   and station stay untouched so the "posterized" look from
   //   docs/art-direction.md survives.
-  composer.addPass(bloomPass);
-
   const gradePass = new ShaderPass(GradeShader);
   gradePass.uniforms.uResolution.value.set(size.x * pixelRatio, size.y * pixelRatio);
-  composer.addPass(gradePass);
+  if (fx) {
+    composer.addPass(bloomPass);
+    composer.addPass(gradePass);
+  }
 
   const outputPass = new OutputPass();
   composer.addPass(outputPass);
@@ -191,7 +186,7 @@ export function createPost(
   function resize(width: number, height: number, pr: number): void {
     composer.setPixelRatio(pr);
     composer.setSize(width, height);
-    bloomPass.resolution.set(Math.max(1, Math.round(width * pr * 0.5)), Math.max(1, Math.round(height * pr * 0.5)));
+    bloomPass.resolution.set(Math.max(1, Math.round(width * pr * BLOOM_SCALE)), Math.max(1, Math.round(height * pr * BLOOM_SCALE)));
     gradePass.uniforms.uResolution.value.set(width * pr, height * pr);
   }
 

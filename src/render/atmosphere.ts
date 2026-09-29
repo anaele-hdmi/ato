@@ -5,7 +5,7 @@
 // - A transmittance LUT (height x cos sun-zenith) is computed once on the CPU
 //   (atmosphereLut.ts). Per view sample the sun transmittance is ONE texture
 //   fetch; there is no inner light march.
-// - The view ray is marched with 14 steps through the shell, with a quadratic
+// - The view ray is marched with 14 steps (6 for rays that end on the ground) through the shell, with a quadratic
 //   warp that clusters samples around the ray's closest approach to Earth's
 //   centre (the densest point for a limb ray; the ground end for a ray that
 //   hits the disc), so the thin limb doesn't band.
@@ -89,7 +89,8 @@ uniform float uAirglowW;
 varying vec3 vWorldPosition;
 varying vec3 vCenter;
 
-#define STEPS 14
+#define STEPS 14      // limb rays
+#define STEPS_GROUND 6  // rays that end on the ground (haze is faint there)
 
 // Transmittance LUT lookup (Bruneton parameterisation, see atmosphereLut.ts).
 vec3 sunTransmittance(float r, float mu) {
@@ -179,8 +180,13 @@ void main() {
 
   vec3 L = vec3(0.0);
   vec3 od = vec3(0.0);   // view optical depth accumulated so far
-  float ds = 1.0 / float(STEPS);
+  // fewer steps for rays that end on the ground (most of the screen); the
+  // last ~uDiscGraze km of tangent depth keep the full count so the horizon
+  // stays seamless
+  int steps = (hitsGround && hc < -uDiscGraze) ? STEPS_GROUND : STEPS;
+  float ds = 1.0 / float(steps);
   for (int i = 0; i < STEPS; i++) {
+    if (i >= steps) break;
     float s = (float(i) + 0.5) * ds;
     float t, dt;
     if (s < f) {

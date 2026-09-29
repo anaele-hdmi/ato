@@ -120,7 +120,7 @@ export const RELIEF = {
  *  (scale heights, ozone layer, top) so the limb reads thicker from orbit, in
  *  keeping with the 8x terrain exaggeration. */
 export const ATMOSPHERE_SCATTER = {
-  heightScale: 1.5,
+  heightScale: 1.15,
   /** top of the atmosphere before heightScale, km */
   topKm: 100,
   rayleighScattering: new THREE.Vector3(5.802e-3, 13.558e-3, 33.1e-3),
@@ -141,8 +141,8 @@ export const ATMOSPHERE_SCATTER = {
   /** radiance -> display: col = white * (1 - exp(-L * exposure / white)) —
    *  linear slope `exposure` in the shadows, soft shoulder at `white` so the
    *  sunlit limb glows without clipping into a bloom wash */
-  exposure: 13,
-  white: 0.9,
+  exposure: 8,
+  white: 1.0,
   /** cheap multiple-scattering ambient (isotropic, scaled by local scattering) */
   multiScatterColor: new THREE.Color(0x7fa8ff),
   multiScatter: 0.12,
@@ -152,7 +152,7 @@ export const ATMOSPHERE_SCATTER = {
   /** soft Earth-shadow edge (half-width in cos units; sun disc ~0.0047 rad) */
   shadowSoftness: 0.008,
   /** aerial perspective over the disc (rays hitting the ground), relative to limb */
-  discHaze: 0.15,
+  discHaze: 0.08,
   /** closest-approach depth (km below the surface) over which disc haze ramps to full at grazing */
   discGrazeKm: 15,
   /** faint tall analytic glow above the lit limb (dark navy, not black) */
