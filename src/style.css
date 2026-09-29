@@ -161,6 +161,8 @@ body {
   display: flex;
   gap: 0.4rem;
   z-index: 5;
+  /* #ui passes touches through to the canvas; the toolbar must take them */
+  pointer-events: auto;
 }
 
 .lt-btn {

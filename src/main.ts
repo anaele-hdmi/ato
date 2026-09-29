@@ -64,13 +64,18 @@ async function main(): Promise<void> {
       await ui.fadeFromBlack(450);
       switching = false;
     },
+    // Each audio control is a user gesture: (re)start the context here too,
+    // since iOS only unlocks audio inside a gesture.
     onMusicToggle(on) {
+      void audio.start();
       audio.setMusicEnabled(on);
     },
     onMuteToggle(m) {
+      void audio.start();
       audio.setMuted(m);
     },
     onTrackFile(file) {
+      void audio.start();
       if (trackUrl) URL.revokeObjectURL(trackUrl);
       trackUrl = file ? URL.createObjectURL(file) : null;
       audio.setTrack(trackUrl);
