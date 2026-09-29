@@ -28,12 +28,19 @@ export function createAudio(): AudioEngine {
   let music = true, muted = false, volume = 0.8, scene: SoundScene = 'interior', track: string | null = null;
 
   const resume = () => {
-    if (!ctx || disposed) return;
+    if (!ctx || disposed || document.visibilityState === 'hidden') return;
     // 'interrupted' is Safari-only (phone call, Siri, etc.)
     const st = ctx.state as string;
     if (st === 'suspended' || st === 'interrupted') ctx.resume().catch(() => { /* needs gesture; retried */ });
   };
-  const onVisibility = () => { if (document.visibilityState === 'visible') resume(); };
+  // Leaving the app (home screen, app switcher, lock) must silence it: a
+  // home-screen web app on iOS otherwise keeps playing in the background.
+  const onVisibility = () => {
+    if (!ctx || disposed) return;
+    if (document.visibilityState === 'visible') resume();
+    else ctx.suspend().catch(() => { /* ignore */ });
+  };
+  const onPageHide = () => { ctx?.suspend().catch(() => { /* ignore */ }); };
   const onGesture = () => { if (ctx && ctx.state !== 'running') resume(); };
 
   const start = async () => {
@@ -58,6 +65,7 @@ export function createAudio(): AudioEngine {
       ctx.addEventListener('statechange', resume);
       document.addEventListener('visibilitychange', onVisibility);
       window.addEventListener('pageshow', onVisibility);
+      window.addEventListener('pagehide', onPageHide);
       // Any later gesture retries a resume if iOS left us suspended.
       for (const ev of ['pointerdown', 'touchend', 'click']) document.addEventListener(ev, onGesture, { passive: true });
       timer = window.setInterval(() => { if (ctx && graph && ctx.state === 'running') graph.pump(ctx.currentTime + LOOKAHEAD); }, 1000);
@@ -79,6 +87,7 @@ export function createAudio(): AudioEngine {
       if (timer !== undefined) clearInterval(timer);
       document.removeEventListener('visibilitychange', onVisibility);
       window.removeEventListener('pageshow', onVisibility);
+      window.removeEventListener('pagehide', onPageHide);
       for (const ev of ['pointerdown', 'touchend', 'click']) document.removeEventListener(ev, onGesture);
       graph?.dispose();
       ctx?.close().catch(() => { /* ignore */ });

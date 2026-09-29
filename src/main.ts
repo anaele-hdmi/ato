@@ -11,8 +11,8 @@ import { createGlobe } from './ui/globe';
 
 // Skips land this long before the event so the moment itself is watched, not jumped over.
 const SKIP_LEAD_MS = 90_000;
-// Initial session starts 2 minutes before sunrise (design §13).
-const START_LEAD_MS = 120_000;
+// Initial session starts 1 minute before sunrise (design §13).
+const START_LEAD_MS = 60_000;
 
 function nextEvent(target: SkipTarget, t: number): number {
   return target === 'sunrise' ? findNextSunrise(t) : findNextSunset(t);

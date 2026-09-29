@@ -31,7 +31,7 @@ import { createTransmittanceLut, TRANSMITTANCE_LUT_WIDTH, TRANSMITTANCE_LUT_HEIG
 const SHELL_HEIGHT_KM = 330;
 /** Airglow layer (night side), km — kept from the analytic model. */
 const AIRGLOW_H_KM = 95;
-const AIRGLOW_W_KM = 5;
+const AIRGLOW_W_KM = 2.5;
 
 const VERTEX_SHADER = /* glsl */ `
 #include <common>

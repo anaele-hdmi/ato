@@ -37,7 +37,7 @@ export const ATMOSPHERE = {
   nightAirglow: new THREE.Color(0x3f9a72),
   dayIntensity: 0.6,
   duskIntensity: 0.75,
-  nightIntensity: 0.06,
+  nightIntensity: 0.025,
   /** haze over the Earth disc relative to the limb */
   discHaze: 0.5,
   /** faint tall glow: the sky just above the limb reads dark navy, not black */
