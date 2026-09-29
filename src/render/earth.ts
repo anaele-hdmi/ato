@@ -24,7 +24,7 @@ import * as THREE from 'three';
 import { EARTH_COLORS, BIOMES, GLINT, RELIEF } from './palette';
 import { buildLandMask, buildBiomeTexture } from './landmask';
 import { elevationKm, loadRaster, type Raster } from './terrain';
-import { CLOUD_MAP_GLSL } from './cloudMap';
+import { CLOUD_MAP_GLSL, type CloudMapUniforms } from './cloudMap';
 import { buildSeedChunks, buildChunkMesh, buildMergedCoarseSphere, type SeedChunk } from './icosphere';
 import { EARTH_RADIUS_KM } from '../types';
 import { CLOUD_GLSL } from './clouds';
@@ -217,10 +217,15 @@ void main() {
   vec3 viewDir = normalize(cameraPosition - vWorldPosition);
   vec3 halfDir = normalize(viewDir + sunW);
   float spec = max(dot(flatN, halfDir), 0.0);
-  float core = smoothstep(0.985, 0.996, spec);
-  float halo = smoothstep(0.9, 0.985, spec) * 0.22;
-  float glint = max(core, halo) * (1.0 - land) * clamp(ndotl * 3.0, 0.0, 1.0) * (1.0 - shadowAmt * 0.6) * (1.0 - nightMix);
-  color = mix(color, uGlintColor, glint * 0.6);
+  // Sun glint: a tight bright core plus a broad sheen (two Blinn lobes),
+  // added on top so it can bloom; water only, sunlit only, dimmed under
+  // cloud shadow.
+  float water = (1.0 - land) * clamp(ndotl * 4.0, 0.0, 1.0) * (1.0 - nightMix) * (1.0 - shadowAmt * 0.7);
+  float glint = (pow(spec, 1500.0) * 1.4 + pow(spec, 110.0) * 0.32) * water;
+  // grazing-angle sky reflection (Fresnel) gives the sea a sheen toward the horizon
+  float fres = pow(1.0 - clamp(dot(flatN, viewDir), 0.0, 1.0), 5.0);
+  color += uSkyAmbient * fres * 0.35 * water;
+  color += uGlintColor * glint;
 
   // aerial perspective: pale blue-white haze toward the horizon (grazing
   // view angle) and with distance from the camera -- stronger than a
@@ -263,7 +268,7 @@ export interface EarthObjects {
   dispose(): void;
 }
 
-export function createEarth(cloudMap: THREE.Texture): EarthObjects {
+export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
   const landMask = buildLandMask();
   const landTexture = landMask.texture;
   const landRaster: Raster = { data: landMask.data, width: landMask.width, height: landMask.height, stride: 4 };
@@ -291,7 +296,7 @@ export function createEarth(cloudMap: THREE.Texture): EarthObjects {
     uniforms: {
       uLandTex: { value: landTexture },
       uBiomeTex: { value: biomeTexture },
-      uCloudMap: { value: cloudMap },
+      ...cloudMap,
       uSunDirObj: { value: new THREE.Vector3(1, 0, 0) },
       uSunDirWorld: { value: new THREE.Vector3(1, 0, 0) },
       uTime: { value: 0 },

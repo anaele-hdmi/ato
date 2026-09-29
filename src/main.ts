@@ -1,10 +1,12 @@
 import './style.css';
 import type { SkipTarget, TimeRate } from './types';
+import { EARTH_RADIUS_KM } from './types';
 import { computeFrame, findNextSunrise, findNextSunset } from './sim/orbit';
 import { createSceneRenderer } from './render/index';
 import { mountUI } from './ui/index';
 import { initMobileShell } from './ui/mobile';
 import { CAMERA_LABEL } from './render/cameraRig';
+import { createAudio } from './audio';
 
 // Skips land this long before the event so the moment itself is watched, not jumped over.
 const SKIP_LEAD_MS = 90_000;
@@ -42,6 +44,8 @@ async function main(): Promise<void> {
   }
 
   let rate: TimeRate = 1;
+  const audio = createAudio();
+  let trackUrl: string | null = null;
   let skipping = false;
   let switching = false;
 
@@ -56,8 +60,20 @@ async function main(): Promise<void> {
       await ui.fadeToBlack(250);
       const mode = renderer.nextCamera();
       ui.setCamera(CAMERA_LABEL[mode]);
+      audio.setScene(mode === 'chase' ? 'exterior' : 'interior');
       await ui.fadeFromBlack(450);
       switching = false;
+    },
+    onMusicToggle(on) {
+      audio.setMusicEnabled(on);
+    },
+    onMuteToggle(m) {
+      audio.setMuted(m);
+    },
+    onTrackFile(file) {
+      if (trackUrl) URL.revokeObjectURL(trackUrl);
+      trackUrl = file ? URL.createObjectURL(file) : null;
+      audio.setTrack(trackUrl);
     },
     async onSkip(target) {
       if (skipping) return;
@@ -90,6 +106,7 @@ async function main(): Promise<void> {
   let nextSet = findNextSunset(simTime);
   let readoutAcc = 1;
 
+  let wasInShadow: boolean | null = null;
   let last = performance.now();
   const loop = (now: number) => {
     const dt = Math.min(0.1, (now - last) / 1000);
@@ -97,6 +114,9 @@ async function main(): Promise<void> {
     simTime += dt * 1000 * rate;
 
     const frame = computeFrame(simTime);
+    // orbital sunrise: one soft chord
+    if (wasInShadow && !frame.inShadow) audio.onSunrise();
+    wasInShadow = frame.inShadow;
     renderer.update(frame, dt);
 
     readoutAcc += dt;
@@ -106,13 +126,22 @@ async function main(): Promise<void> {
       if (!(nextSet > simTime)) nextSet = findNextSunset(simTime);
       const [label, t] = frame.inShadow ? ['日の出まで', nextRise] : ['日の入りまで', nextSet];
       const eta = Number.isFinite(t) ? formatCountdown(t - simTime) : '--:--';
-      ui.setReadout(`${formatLatLon(frame.latDeg, frame.lonDeg)}  ·  ${label} ${eta}`);
+      const p = frame.stationPos;
+      const v = frame.stationVel;
+      const altKm = Math.hypot(p.x, p.y, p.z) - EARTH_RADIUS_KM;
+      const speedKms = Math.hypot(v.x, v.y, v.z);
+      ui.setReadout(
+        `高度 ${altKm.toFixed(0)} km  ·  秒速 ${speedKms.toFixed(2)} km\n` +
+          `${formatLatLon(frame.latDeg, frame.lonDeg)}  ·  ${label} ${eta}`,
+      );
     }
     requestAnimationFrame(loop);
   };
   requestAnimationFrame(loop);
 
   await ui.waitForStart();
+  audio.setScene('interior');
+  void audio.start();
   shell.onStarted();
   ui.notify('ドラッグで見回す ・ ピンチで寄る');
   if (wakeLockUnsupported) setTimeout(() => ui.notify('画面が自動で消灯する場合があります'), 5000);

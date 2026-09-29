@@ -70,9 +70,9 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   const camera = new THREE.PerspectiveCamera(50, initialAspect, CAMERA_NEAR_KM, CAMERA_FAR_KM);
 
   const cloudMap = createCloudMap();
-  const earth = createEarth(cloudMap.texture);
+  const earth = createEarth(cloudMap.uniforms);
   const atmosphere = createAtmosphere();
-  const clouds = createClouds(cloudMap.texture);
+  const clouds = createClouds(cloudMap.uniforms);
   earth.rotGroup.add(clouds.mesh);
   earth.pivot.add(atmosphere.mesh);
   scene.add(earth.pivot);
@@ -125,7 +125,8 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   let statsAcc = 0;
 
   const rig = new CameraRig(canvas);
-  scene.add(rig.cupolaFrame);
+  scene.add(rig.frames);
+  const eyeWorld = new THREE.Vector3();
 
   const stationPosVec = new THREE.Vector3();
   const stationVelVec = new THREE.Vector3();
@@ -167,8 +168,10 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     rotateYInverse(upDirVec, frame.gmstRad, upDirObjVec);
     earth.updateLOD(upDirObjVec);
 
-    station.group.visible = rig.mode === 'chase';
-    rig.update(dtSec, camera, upDirVec, fwdDirVec, sunDirVec);
+    // the station is always there; interior views look out from one of its windows
+    station.group.updateMatrixWorld();
+    eyeWorld.copy(station.eyes[rig.mode === 'chase' ? 'cupola' : rig.mode]).applyMatrix4(station.group.matrixWorld);
+    rig.update(dtSec, camera, upDirVec, fwdDirVec, sunDirVec, eyeWorld);
 
     cloudMap.update(renderer, simSeconds);
     if (statsEl) renderer.info.reset();

@@ -7,7 +7,7 @@
 // stay nearly flat so they don't read as crumpled paper.
 
 const MAX_ELEV_KM = 8.8;
-export const EXAGGERATION = 8.0;
+export const EXAGGERATION = 5.0;
 
 function fract(x: number): number {
   return x - Math.floor(x);

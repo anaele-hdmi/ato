@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { CLOUDS, RELIEF } from './palette';
 import { EARTH_RADIUS_KM } from '../types';
 import { NOISE_GLSL } from './noiseGlsl';
-import { CLOUD_MAP_GLSL } from './cloudMap';
+import { CLOUD_MAP_GLSL, type CloudMapUniforms } from './cloudMap';
 
 /** Kept for earth.ts, which splices the same noise into its shaders. */
 export const CLOUD_GLSL = NOISE_GLSL;
@@ -113,7 +113,7 @@ export interface CloudObjects {
   dispose(): void;
 }
 
-export function createClouds(cloudMap: THREE.Texture): CloudObjects {
+export function createClouds(cloudMap: CloudMapUniforms): CloudObjects {
   const geometry = new THREE.SphereGeometry(EARTH_RADIUS_KM + SHELL_HEIGHT_KM, 128, 96);
   const material = new THREE.ShaderMaterial({
     vertexShader: VERTEX_SHADER,
@@ -121,7 +121,7 @@ export function createClouds(cloudMap: THREE.Texture): CloudObjects {
     uniforms: {
       uSunDirObj: { value: new THREE.Vector3(1, 0, 0) },
       uTime: { value: 0 },
-      uCloudMap: { value: cloudMap },
+      ...cloudMap,
       uLit: { value: CLOUDS.lit },
       uShade: { value: CLOUDS.shade },
       uTwilight: { value: CLOUDS.twilight },

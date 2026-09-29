@@ -4,6 +4,10 @@ export interface UIHandlers {
   onRateChange(rate: TimeRate): void;
   onSkip(target: SkipTarget): void;
   onNextCamera(): void;
+  onMusicToggle(on: boolean): void;
+  onMuteToggle(muted: boolean): void;
+  /** User picked an audio file to use as BGM (null = back to the built-in drone). */
+  onTrackFile(file: File | null): void;
 }
 
 export interface UIController {
@@ -97,10 +101,69 @@ export function mountUI(root: HTMLElement, handlers: UIHandlers): UIController {
 
   controls.append(camBtn, rateBtn, sunriseBtn, sunsetBtn);
 
+  // ---------- audio toolbar (top right, always present, dims when idle) ----------
+  const audioBar = document.createElement('div');
+  audioBar.className = 'lt-audio lt-fadeable';
+  let musicOn = true;
+  let muted = false;
+  const musicBtn = document.createElement('button');
+  musicBtn.type = 'button';
+  musicBtn.className = 'lt-btn';
+  const muteBtn = document.createElement('button');
+  muteBtn.type = 'button';
+  muteBtn.className = 'lt-btn';
+  const trackBtn = document.createElement('button');
+  trackBtn.type = 'button';
+  trackBtn.className = 'lt-btn';
+  const trackInput = document.createElement('input');
+  trackInput.type = 'file';
+  trackInput.accept = 'audio/*';
+  trackInput.style.display = 'none';
+  let usingFile = false;
+  const renderAudio = () => {
+    musicBtn.textContent = musicOn ? '音楽 オン' : '音楽 オフ';
+    musicBtn.setAttribute('aria-pressed', String(musicOn));
+    muteBtn.textContent = muted ? '消音中' : '音 あり';
+    muteBtn.setAttribute('aria-pressed', String(!muted));
+    trackBtn.textContent = usingFile ? '曲 戻す' : '曲を選ぶ';
+  };
+  renderAudio();
+  musicBtn.addEventListener('click', () => {
+    musicOn = !musicOn;
+    renderAudio();
+    handlers.onMusicToggle(musicOn);
+    wake();
+  });
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    renderAudio();
+    handlers.onMuteToggle(muted);
+    wake();
+  });
+  trackBtn.addEventListener('click', () => {
+    if (usingFile) {
+      usingFile = false;
+      renderAudio();
+      handlers.onTrackFile(null);
+    } else {
+      trackInput.click();
+    }
+    wake();
+  });
+  trackInput.addEventListener('change', () => {
+    const f = trackInput.files?.[0];
+    if (!f) return;
+    usingFile = true;
+    renderAudio();
+    handlers.onTrackFile(f);
+    trackInput.value = '';
+  });
+  audioBar.append(musicBtn, muteBtn, trackBtn, trackInput);
+
   const notifyEl = document.createElement('div');
   notifyEl.className = 'lt-notify';
 
-  root.append(fadeOverlay, readout, controls, notifyEl, startScreen);
+  root.append(fadeOverlay, readout, controls, audioBar, notifyEl, startScreen);
 
   // ---------- rate toggle ----------
 
@@ -138,11 +201,13 @@ export function mountUI(root: HTMLElement, handlers: UIHandlers): UIController {
   function showFadeables(): void {
     readout.classList.remove('lt-dim');
     controls.classList.remove('lt-dim');
+    audioBar.classList.remove('lt-dim');
   }
 
   function hideFadeables(): void {
     readout.classList.add('lt-dim');
     controls.classList.add('lt-dim');
+    audioBar.classList.add('lt-dim');
   }
 
   function wake(): void {

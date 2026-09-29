@@ -154,6 +154,15 @@ body {
   transition: opacity 700ms ease;
 }
 
+.lt-audio {
+  position: fixed;
+  right: calc(1rem + var(--safe-r));
+  top: calc(0.8rem + var(--safe-t, 0px));
+  display: flex;
+  gap: 0.4rem;
+  z-index: 5;
+}
+
 .lt-btn {
   appearance: none;
   border: 1px solid var(--ui-border);
@@ -184,7 +193,7 @@ body {
 /* fade group (auto-hide on inactivity) */
 
 .lt-fadeable.lt-dim {
-  opacity: 0;
+  opacity: 0.32;
 }
 
 @media (prefers-reduced-motion: reduce) {

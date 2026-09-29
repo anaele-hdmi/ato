@@ -52,6 +52,8 @@ export interface StationObjects {
   /** Orients the group LVLH: local -Z = forward (velocity), local +Y = up (away from Earth).
    *  `sunDir` (world-space, optional) rotates each solar wing about the truss axis to face the sun. */
   orient(stationPosDir: THREE.Vector3, stationVelDir: THREE.Vector3, sunDir?: THREE.Vector3): void;
+  /** Eye points (station-local) for the interior views: the window each view looks through. */
+  eyes: { cupola: THREE.Vector3; nadir: THREE.Vector3; limb: THREE.Vector3 };
   dispose(): void;
 }
 
@@ -202,11 +204,11 @@ export function createStation(): StationObjects {
 
   const node1Z = stackCyl(NODE_R, NODE_LEN, STATION.hull);
   zc -= 0.0008;
-  stackCyl(LAB_R, LAB_LEN, STATION.hull);
+  const labZ = stackCyl(LAB_R, LAB_LEN, STATION.hull);
   zc -= 0.0008;
   const node2Z = stackCyl(NODE_R, NODE_LEN, STATION.hull);
   zc -= 0.0008;
-  stackCyl(LAB2_R, LAB2_LEN, STATION.hull);
+  const lab2Z = stackCyl(LAB2_R, LAB2_LEN, STATION.hull);
   zc -= 0.0006;
 
   // docking ring + capsule at the forward-most port
@@ -215,6 +217,7 @@ export function createStation(): StationObjects {
   place(body, unitCylFine, STATION.hull, [0, moduleY, zc - CAPSULE_LEN / 2], [CAPSULE_R * 2, CAPSULE_LEN, CAPSULE_R * 2], [Math.PI / 2, 0, 0]);
   zc -= CAPSULE_LEN;
   place(body, unitCone, STATION.frame, [0, moduleY, zc - CAPSULE_NOSE_LEN / 2], [CAPSULE_R * 1.9, CAPSULE_NOSE_LEN, CAPSULE_R * 1.9], [-Math.PI / 2, 0, 0]);
+  const noseZ = zc - CAPSULE_NOSE_LEN * 0.5;
 
   // side modules off the first node (fictional lab spurs)
   for (const s of [1, -1]) {
@@ -279,8 +282,18 @@ export function createStation(): StationObjects {
   const mT = new THREE.Matrix4();
   const localSun = new THREE.Vector3();
 
+  // Interior views sit just outside the hull at each window, so the rest of
+  // the station stays in the scene (and in view where the geometry allows).
+  const eyes = {
+    cupola: new THREE.Vector3(0, moduleY - NODE_R - CUPOLA_R * 1.7, cupolaZ),
+    nadir: new THREE.Vector3(0, moduleY - LAB_R - 0.0006, labZ),
+    // under the capsule nose, looking forward to the horizon with nothing in front
+    limb: new THREE.Vector3(0, moduleY - CAPSULE_R - 0.0008, noseZ),
+  };
+
   return {
     group,
+    eyes,
     orient(stationPosDir: THREE.Vector3, stationVelDir: THREE.Vector3, sunDir?: THREE.Vector3) {
       forwardTarget.copy(stationVelDir).normalize();
       upDir.copy(stationPosDir).normalize();

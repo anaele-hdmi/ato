@@ -1,8 +1,9 @@
 // The large-scale cloud field, baked on the GPU into a small equirectangular
 // texture instead of being evaluated per fragment every frame (performance:
 // the macro field is ~10 noise lookups; the ground's cloud shadows and the
-// cloud shell both need it). It drifts slowly, so re-baking every couple of
-// simulated minutes is invisible.
+// cloud shell both need it). Two keyframes (A at tA, B at tA+PERIOD) are
+// cross-faded by the sim clock, so the clouds morph continuously — a single
+// re-baked map made them jump to a new shape every rebake.
 //
 // Stored value: r = clamp(field * 0.5 + 0.5). field > 0 = cloud, < 0 = clear.
 import * as THREE from 'three';
@@ -10,17 +11,21 @@ import { NOISE_GLSL as CLOUD_GLSL } from './noiseGlsl';
 
 const WIDTH = 1024;
 const HEIGHT = 512;
-/** Re-bake when the sim clock has moved this far (seconds) since the last bake. */
-const REBAKE_SIM_SECONDS = 90;
+/** Sim seconds between keyframes. */
+const PERIOD_S = 120;
 
 /** GLSL for consumers: `cloudMacro(n)` returns the signed macro field for an object-space unit vector. */
 export const CLOUD_MAP_GLSL = /* glsl */ `
-uniform sampler2D uCloudMap;
+uniform sampler2D uCloudMapA;
+uniform sampler2D uCloudMapB;
+uniform float uCloudMix;
 float cloudMacro(vec3 n) {
   float lat = asin(clamp(n.y, -1.0, 1.0));
   float lon = atan(-n.z, n.x);
   vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
-  return texture2D(uCloudMap, uv).r * 2.0 - 1.0;
+  float a = texture2D(uCloudMapA, uv).r;
+  float b = texture2D(uCloudMapB, uv).r;
+  return mix(a, b, uCloudMix) * 2.0 - 1.0;
 }
 `;
 
@@ -79,14 +84,22 @@ void main() {
 }
 `;
 
+export interface CloudMapUniforms {
+  uCloudMapA: { value: THREE.Texture };
+  uCloudMapB: { value: THREE.Texture };
+  uCloudMix: { value: number };
+  [key: string]: THREE.IUniform;
+}
+
 export interface CloudMap {
-  texture: THREE.Texture;
-  /** Re-bakes if the sim clock moved enough. Call before rendering the frame. */
+  /** Spread into any ShaderMaterial that uses CLOUD_MAP_GLSL (shared objects: updates propagate). */
+  uniforms: CloudMapUniforms;
+  /** Bakes keyframes as needed and updates the cross-fade. Call before rendering the frame. */
   update(renderer: THREE.WebGLRenderer, shaderTimeSec: number): void;
   dispose(): void;
 }
 
-export function createCloudMap(): CloudMap {
+function makeTarget(): THREE.WebGLRenderTarget {
   const target = new THREE.WebGLRenderTarget(WIDTH, HEIGHT, {
     type: THREE.UnsignedByteType,
     format: THREE.RGBAFormat,
@@ -98,6 +111,12 @@ export function createCloudMap(): CloudMap {
     generateMipmaps: false,
   });
   target.texture.colorSpace = THREE.NoColorSpace;
+  return target;
+}
+
+export function createCloudMap(): CloudMap {
+  let targetA = makeTarget();
+  let targetB = makeTarget();
 
   const material = new THREE.ShaderMaterial({
     vertexShader: BAKE_VERTEX,
@@ -112,21 +131,45 @@ export function createCloudMap(): CloudMap {
   scene.add(quad);
   const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-  let lastBake = Number.NaN;
+  const uniforms: CloudMapUniforms = {
+    uCloudMapA: { value: targetA.texture },
+    uCloudMapB: { value: targetB.texture },
+    uCloudMix: { value: 0 },
+  };
+
+  let tA = Number.NaN;
+
+  function bake(renderer: THREE.WebGLRenderer, target: THREE.WebGLRenderTarget, t: number): void {
+    material.uniforms.uTime.value = t;
+    const prev = renderer.getRenderTarget();
+    renderer.setRenderTarget(target);
+    renderer.render(scene, camera);
+    renderer.setRenderTarget(prev);
+  }
 
   return {
-    texture: target.texture,
+    uniforms,
     update(renderer, t) {
-      if (Number.isFinite(lastBake) && Math.abs(t - lastBake) < REBAKE_SIM_SECONDS) return;
-      lastBake = t;
-      material.uniforms.uTime.value = t;
-      const prev = renderer.getRenderTarget();
-      renderer.setRenderTarget(target);
-      renderer.render(scene, camera);
-      renderer.setRenderTarget(prev);
+      const keyA = Math.floor(t / PERIOD_S) * PERIOD_S;
+      if (keyA !== tA) {
+        if (keyA === tA + PERIOD_S) {
+          // normal forward step: B becomes A, bake the next B (one bake)
+          [targetA, targetB] = [targetB, targetA];
+          bake(renderer, targetB, keyA + PERIOD_S);
+        } else {
+          // first frame, a skip or a wrap: bake both
+          bake(renderer, targetA, keyA);
+          bake(renderer, targetB, keyA + PERIOD_S);
+        }
+        tA = keyA;
+        uniforms.uCloudMapA.value = targetA.texture;
+        uniforms.uCloudMapB.value = targetB.texture;
+      }
+      uniforms.uCloudMix.value = (t - tA) / PERIOD_S;
     },
     dispose() {
-      target.dispose();
+      targetA.dispose();
+      targetB.dispose();
       material.dispose();
       quad.geometry.dispose();
     },

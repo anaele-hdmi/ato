@@ -23,6 +23,9 @@ const DEG = Math.PI / 180;
 const HORIZON_TILT = 70 * DEG;
 
 interface LookParams {
+  /** azimuth limits relative to the window's facing (radians); omit = free */
+  azMin?: number;
+  azMax?: number;
   tiltMin: number;
   tiltMax: number;
   tiltDefault: number;
@@ -32,9 +35,9 @@ interface LookParams {
 }
 
 const LOOK: Record<Exclude<CameraMode, 'chase'>, LookParams> = {
-  cupola: { tiltMin: 0, tiltMax: 62 * DEG, tiltDefault: 42 * DEG, fovMin: 40, fovMax: 75, fovDefault: 62 },
+  cupola: { tiltMin: 0, tiltMax: 80 * DEG, tiltDefault: 42 * DEG, fovMin: 40, fovMax: 75, fovDefault: 62 },
   nadir: { tiltMin: 0, tiltMax: 25 * DEG, tiltDefault: 0, fovMin: 20, fovMax: 70, fovDefault: 55 },
-  limb: { tiltMin: HORIZON_TILT - 14 * DEG, tiltMax: HORIZON_TILT + 12 * DEG, tiltDefault: HORIZON_TILT + 1 * DEG, fovMin: 4, fovMax: 30, fovDefault: 14 },
+  limb: { azMin: -38 * DEG, azMax: 38 * DEG, tiltMin: HORIZON_TILT - 14 * DEG, tiltMax: HORIZON_TILT + 12 * DEG, tiltDefault: HORIZON_TILT + 1 * DEG, fovMin: 4, fovMax: 30, fovDefault: 14 },
 };
 
 const DRAG_RAD_PER_PX = 0.0035;
@@ -63,6 +66,12 @@ class LookController {
     this.params = p;
     this.tilt = p.tiltDefault;
     this.fov = p.fovDefault;
+    this.azimuth = this.clampAz(0);
+  }
+
+  clampAz(a: number): number {
+    const { azMin, azMax } = this.params;
+    return azMin === undefined || azMax === undefined ? a : THREE.MathUtils.clamp(a, azMin, azMax);
   }
 
   private pinchDistance(): number {
@@ -86,7 +95,7 @@ class LookController {
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
     if (this.pointers.size === 1) {
       const k = DRAG_RAD_PER_PX * (this.fov / 60);
-      this.azimuth -= (e.clientX - prev.x) * k;
+      this.azimuth = this.clampAz(this.azimuth - (e.clientX - prev.x) * k);
       this.tilt = THREE.MathUtils.clamp(this.tilt - (e.clientY - prev.y) * k, this.params.tiltMin, this.params.tiltMax);
     } else if (this.pointers.size === 2 && this.pinchStart > 0) {
       const f = this.pinchFov * (this.pinchStart / Math.max(1, this.pinchDistance()));
@@ -104,17 +113,17 @@ class LookController {
     this.fov = THREE.MathUtils.clamp(this.fov * Math.exp(e.deltaY * 0.001), this.params.fovMin, this.params.fovMax);
   };
 
-  /** Writes the pose. Camera sits at the station (scene origin). */
-  apply(camera: THREE.PerspectiveCamera, up: THREE.Vector3, fwd: THREE.Vector3): void {
+  /** Writes the pose. Camera sits at the given window (eye) position. */
+  apply(camera: THREE.PerspectiveCamera, up: THREE.Vector3, fwd: THREE.Vector3, eye: THREE.Vector3): void {
     const right = new THREE.Vector3().crossVectors(fwd, up).normalize();
     const horiz = fwd.clone().multiplyScalar(Math.cos(this.azimuth)).addScaledVector(right, Math.sin(this.azimuth));
     const dir = up.clone().multiplyScalar(-Math.cos(this.tilt)).addScaledVector(horiz, Math.sin(this.tilt));
     // screen-up = away from Earth, except when looking nearly straight down,
     // where it becomes the look azimuth (travel direction at the top).
     const screenUp = up.clone().multiplyScalar(Math.sin(this.tilt)).addScaledVector(horiz, Math.cos(this.tilt));
-    camera.position.set(0, 0, 0);
+    camera.position.copy(eye);
     camera.up.copy(screenUp);
-    camera.lookAt(dir);
+    camera.lookAt(eye.x + dir.x, eye.y + dir.y, eye.z + dir.z);
     if (camera.fov !== this.fov) {
       camera.fov = this.fov;
       camera.updateProjectionMatrix();
@@ -130,24 +139,37 @@ class LookController {
   }
 }
 
-/** Cupola window frame: dark hull with a round centre window and six
- *  trapezoid windows around it, fixed to the station (so it parallaxes as
- *  you look around). Lives in the LVLH frame: x = right, y = forward, z = up. */
-function buildCupolaFrame(): THREE.Mesh {
-  const d = 0.002; // 2 m below the eye, in km
-  const r = (deg: number) => d * Math.tan(deg * DEG);
+const FRAME_DIST = 0.002; // 2 m from the eye, in km
+const FRAME_COLOR = 0x15181f;
+
+function hexOutline(R: number): THREE.Shape {
   const outer = new THREE.Shape();
-  const R = 0.06;
   for (let i = 0; i <= 6; i++) {
     const a = (i / 6) * Math.PI * 2;
     if (i === 0) outer.moveTo(Math.cos(a) * R, Math.sin(a) * R);
     else outer.lineTo(Math.cos(a) * R, Math.sin(a) * R);
   }
+  return outer;
+}
+
+function frameMesh(shape: THREE.Shape): THREE.Mesh {
+  const geometry = new THREE.ShapeGeometry(shape, 48);
+  geometry.translate(0, 0, -FRAME_DIST);
+  const mesh = new THREE.Mesh(geometry, new THREE.MeshBasicMaterial({ color: FRAME_COLOR, side: THREE.DoubleSide }));
+  mesh.renderOrder = 10;
+  return mesh;
+}
+
+const rAt = (deg: number) => FRAME_DIST * Math.tan(deg * DEG);
+
+/** Cupola: round centre window + six trapezoids. Plane faces nadir (-z in LVLH). */
+function buildCupolaFrame(): THREE.Mesh {
+  const outer = hexOutline(0.06);
   const centre = new THREE.Path();
-  centre.absarc(0, 0, r(34), 0, Math.PI * 2, true);
+  centre.absarc(0, 0, rAt(34), 0, Math.PI * 2, true);
   outer.holes.push(centre);
-  const r1 = r(40);
-  const r2 = r(68);
+  const r1 = rAt(40);
+  const r2 = rAt(68);
   const gap = 7 * DEG;
   for (let i = 0; i < 6; i++) {
     const a0 = (i / 6) * Math.PI * 2 + gap / 2 + Math.PI / 6;
@@ -160,26 +182,59 @@ function buildCupolaFrame(): THREE.Mesh {
     hole.closePath();
     outer.holes.push(hole);
   }
-  const geometry = new THREE.ShapeGeometry(outer, 48);
-  geometry.translate(0, 0, -d);
-  const material = new THREE.MeshBasicMaterial({ color: 0x15181f, side: THREE.DoubleSide });
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.renderOrder = 10;
-  return mesh;
+  return frameMesh(outer);
+}
+
+/** Nadir: one round porthole in the lab floor. */
+function buildPortholeFrame(): THREE.Mesh {
+  const outer = hexOutline(0.06);
+  const hole = new THREE.Path();
+  hole.absarc(0, 0, rAt(33), 0, Math.PI * 2, true);
+  outer.holes.push(hole);
+  return frameMesh(outer);
+}
+
+/** Horizon: rounded rectangular window facing the forward horizon. */
+function buildHorizonFrame(): THREE.Object3D {
+  const outer = hexOutline(0.06);
+  const w = rAt(42);
+  const h = rAt(24);
+  const c = h * 0.35;
+  const hole = new THREE.Path();
+  hole.moveTo(-w + c, -h);
+  hole.lineTo(w - c, -h);
+  hole.quadraticCurveTo(w, -h, w, -h + c);
+  hole.lineTo(w, h - c);
+  hole.quadraticCurveTo(w, h, w - c, h);
+  hole.lineTo(-w + c, h);
+  hole.quadraticCurveTo(-w, h, -w, h - c);
+  hole.lineTo(-w, -h + c);
+  hole.quadraticCurveTo(-w, -h, -w + c, -h);
+  outer.holes.push(hole);
+  const mesh = frameMesh(outer);
+  // plane normal -z → point it at the forward horizon (70° from nadir toward +y)
+  const holder = new THREE.Group();
+  holder.add(mesh);
+  mesh.rotation.x = HORIZON_TILT;
+  return holder;
 }
 
 export class CameraRig {
   mode: CameraMode = 'cupola';
   readonly chase: ChaseCameraController;
   private readonly look: LookController;
-  /** Add to the scene; oriented to LVLH each frame. */
-  readonly cupolaFrame: THREE.Mesh;
+  /** Add to the scene: window frames, placed at the active eye in LVLH each frame. */
+  readonly frames = new THREE.Group();
+  private readonly frameByMode: Partial<Record<CameraMode, THREE.Object3D>> = {};
   private readonly basis = new THREE.Matrix4();
 
   constructor(canvas: HTMLCanvasElement) {
     this.chase = new ChaseCameraController(canvas);
     this.look = new LookController(canvas);
-    this.cupolaFrame = buildCupolaFrame();
+    this.frameByMode.cupola = buildCupolaFrame();
+    this.frameByMode.nadir = buildPortholeFrame();
+    this.frameByMode.limb = buildHorizonFrame();
+    for (const f of Object.values(this.frameByMode)) this.frames.add(f!);
     this.setMode('cupola');
   }
 
@@ -188,7 +243,7 @@ export class CameraRig {
     this.chase.enabled = mode === 'chase';
     this.look.enabled = mode !== 'chase';
     if (mode !== 'chase') this.look.setParams(LOOK[mode]);
-    this.cupolaFrame.visible = mode === 'cupola';
+    for (const [m, f] of Object.entries(this.frameByMode)) f!.visible = m === mode;
   }
 
   next(): CameraMode {
@@ -204,15 +259,23 @@ export class CameraRig {
   }
   private aimPending = false;
 
-  update(dt: number, camera: THREE.PerspectiveCamera, up: THREE.Vector3, fwd: THREE.Vector3, sunDir: THREE.Vector3): void {
+  update(
+    dt: number,
+    camera: THREE.PerspectiveCamera,
+    up: THREE.Vector3,
+    fwd: THREE.Vector3,
+    sunDir: THREE.Vector3,
+    eye: THREE.Vector3,
+  ): void {
     const right = new THREE.Vector3().crossVectors(fwd, up).normalize();
     if (this.aimPending) {
       this.aimPending = false;
-      this.look.azimuth = Math.atan2(sunDir.dot(right), sunDir.dot(fwd));
+      this.look.azimuth = this.look.clampAz(Math.atan2(sunDir.dot(right), sunDir.dot(fwd)));
     }
-    // cupola frame follows the station's LVLH attitude
+    // window frames follow the station's LVLH attitude, at the active eye
     this.basis.makeBasis(right, fwd, up);
-    this.cupolaFrame.quaternion.setFromRotationMatrix(this.basis);
+    this.frames.quaternion.setFromRotationMatrix(this.basis);
+    this.frames.position.copy(eye);
 
     if (this.mode === 'chase') {
       if (camera.fov !== CHASE_FOV) {
@@ -221,14 +284,18 @@ export class CameraRig {
       }
       this.chase.update(dt, camera, up, fwd, sunDir);
     } else {
-      this.look.apply(camera, up, fwd);
+      this.look.apply(camera, up, fwd, eye);
     }
   }
 
   dispose(): void {
     this.chase.dispose();
     this.look.dispose();
-    this.cupolaFrame.geometry.dispose();
-    (this.cupolaFrame.material as THREE.Material).dispose();
+    this.frames.traverse((o) => {
+      if (o instanceof THREE.Mesh) {
+        o.geometry.dispose();
+        (o.material as THREE.Material).dispose();
+      }
+    });
   }
 }
