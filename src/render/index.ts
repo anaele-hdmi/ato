@@ -74,6 +74,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   const earth = createEarth(cloudMap.uniforms);
   const atmosphere = createAtmosphere();
   const clouds = createClouds(cloudMap.uniforms);
+  cloudMap.setSurface(earth.material.uniforms.uLandTex.value, earth.material.uniforms.uBiomeTex.value);
   earth.rotGroup.add(clouds.mesh);
   earth.pivot.add(atmosphere.mesh);
   scene.add(earth.pivot);
@@ -193,6 +194,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     milkyWay.update(camera);
     stars.update(camera);
 
+    cloudMap.setClimate(frame.timeMs, sunDirObjVec);
     cloudMap.update(renderer, simSeconds);
     if (statsEl) renderer.info.reset();
     post.render();

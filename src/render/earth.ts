@@ -66,10 +66,12 @@ const VERTEX_SHADER = /* glsl */ `
 
 varying vec3 vNormalObj;
 varying vec3 vWorldPosition;
+varying float vGroundKm; // cloud shadows: ground altitude (displaced)
 
 // Positions arrive already displaced (terrain.ts, computed once per chunk).
 void main() {
   vNormalObj = normalize(position);
+  vGroundKm = length(position) - ${EARTH_RADIUS_KM.toFixed(1)};
   vec4 world = modelMatrix * vec4(position, 1.0);
   vWorldPosition = world.xyz;
   gl_Position = projectionMatrix * viewMatrix * world;
@@ -108,6 +110,7 @@ uniform vec3 uHazeWarm;
 
 varying vec3 vNormalObj;
 varying vec3 vWorldPosition;
+varying float vGroundKm;
 
 ${CLOUD_GLSL}
 ${CLOUD_MAP_GLSL}
@@ -207,11 +210,10 @@ void main() {
   float nightMix = 1.0 - smoothstep(-0.28, -0.02, ndotlSmooth);
   color = mix(color, nightColor, nightMix);
 
-  // cloud shadow: sample the same field the cloud shell uses, offset toward
-  // the sun (cheap parallax stand-in for its altitude), darken the ground.
-  vec3 shadowN = normalize(n + normalize(uSunDirObj) * 0.004);
-  float shadowAmt = smoothstep(0.0, 0.12, cloudMacro(shadowN)) * (1.0 - nightMix);
-  color *= mix(1.0, 0.8, shadowAmt);
+  // cloud shadow: every cloud layer, offset toward the sun by its true
+  // (rendered) height above this ground point (cloudMap.ts cloudShadow).
+  float shadowAmt = cloudShadow(n, vGroundKm, normalize(uSunDirObj)) * (1.0 - nightMix);
+  color *= mix(1.0, 0.74, shadowAmt);
 
   // stylized ocean sun glint: bright core + soft halo, water only, daylight only.
   vec3 viewDir = normalize(cameraPosition - vWorldPosition);
