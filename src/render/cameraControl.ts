@@ -29,6 +29,8 @@ interface PointerInfo {
 }
 
 export class ChaseCameraController {
+  /** Input is ignored while another view is active. */
+  enabled = true;
   private yaw = 0;
   private pitch = DEFAULT_PITCH;
   private distance = DEFAULT_DISTANCE_KM;
@@ -45,6 +47,7 @@ export class ChaseCameraController {
   private pinchStartDistanceKm = DEFAULT_DISTANCE_KM;
 
   private readonly onPointerDown = (ev: PointerEvent) => {
+    if (!this.enabled) return;
     (ev.target as Element).setPointerCapture?.(ev.pointerId);
     this.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
     if (this.pointers.size === 1) {
@@ -59,6 +62,7 @@ export class ChaseCameraController {
   };
 
   private readonly onPointerMove = (ev: PointerEvent) => {
+    if (!this.enabled) return;
     if (!this.pointers.has(ev.pointerId)) return;
     this.pointers.set(ev.pointerId, { x: ev.clientX, y: ev.clientY });
 
@@ -101,6 +105,7 @@ export class ChaseCameraController {
   };
 
   private readonly onWheel = (ev: WheelEvent) => {
+    if (!this.enabled) return;
     ev.preventDefault();
     const factor = Math.exp(ev.deltaY * WHEEL_ZOOM_SPEED);
     this.distance = THREE.MathUtils.clamp(this.distance * factor, MIN_DISTANCE_KM, MAX_DISTANCE_KM);

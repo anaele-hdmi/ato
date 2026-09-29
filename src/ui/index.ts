@@ -3,6 +3,7 @@ import type { SkipTarget, TimeRate } from '../types';
 export interface UIHandlers {
   onRateChange(rate: TimeRate): void;
   onSkip(target: SkipTarget): void;
+  onNextCamera(): void;
 }
 
 export interface UIController {
@@ -10,6 +11,8 @@ export interface UIController {
   waitForStart(): Promise<void>;
   setReadout(text: string): void; // e.g. "北緯 34.2°  東経 135.1°  · 日の出まで 01:52"
   setRate(rate: TimeRate): void;
+  /** Shows the current viewpoint's name on the view button. */
+  setCamera(label: string): void;
   setSkipEnabled(target: SkipTarget, enabled: boolean): void;
   fadeToBlack(ms: number): Promise<void>;
   fadeFromBlack(ms: number): Promise<void>;
@@ -69,6 +72,14 @@ export function mountUI(root: HTMLElement, handlers: UIHandlers): UIController {
   const controls = document.createElement('div');
   controls.className = 'lt-controls lt-fadeable';
 
+  const camBtn = document.createElement('button');
+  camBtn.type = 'button';
+  camBtn.className = 'lt-btn';
+  camBtn.addEventListener('click', () => {
+    handlers.onNextCamera();
+    wake();
+  });
+
   const rateBtn = document.createElement('button');
   rateBtn.type = 'button';
   rateBtn.className = 'lt-btn';
@@ -84,7 +95,7 @@ export function mountUI(root: HTMLElement, handlers: UIHandlers): UIController {
   sunsetBtn.className = 'lt-btn';
   sunsetBtn.textContent = '次の日の入りへ';
 
-  controls.append(rateBtn, sunriseBtn, sunsetBtn);
+  controls.append(camBtn, rateBtn, sunriseBtn, sunsetBtn);
 
   const notifyEl = document.createElement('div');
   notifyEl.className = 'lt-notify';
@@ -96,7 +107,8 @@ export function mountUI(root: HTMLElement, handlers: UIHandlers): UIController {
   let currentRate: TimeRate = 1;
 
   function renderRate(): void {
-    rateBtn.textContent = currentRate === 1 ? '×1 / ×10' : '×10 / ×1';
+    // shows the current speed; tapping toggles
+    rateBtn.textContent = currentRate === 1 ? '速度 ×1' : '速度 ×10';
     rateBtn.setAttribute('aria-pressed', String(currentRate === 10));
   }
   renderRate();
@@ -180,6 +192,10 @@ export function mountUI(root: HTMLElement, handlers: UIHandlers): UIController {
     renderRate();
   }
 
+  function setCamera(label: string): void {
+    camBtn.textContent = `視点 ${label}`;
+  }
+
   function setSkipEnabled(target: SkipTarget, enabled: boolean): void {
     const btn = target === 'sunrise' ? sunriseBtn : sunsetBtn;
     btn.disabled = !enabled;
@@ -229,6 +245,7 @@ export function mountUI(root: HTMLElement, handlers: UIHandlers): UIController {
     waitForStart,
     setReadout,
     setRate,
+    setCamera,
     setSkipEnabled,
     fadeToBlack,
     fadeFromBlack,

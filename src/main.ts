@@ -4,6 +4,7 @@ import { computeFrame, findNextSunrise, findNextSunset } from './sim/orbit';
 import { createSceneRenderer } from './render/index';
 import { mountUI } from './ui/index';
 import { initMobileShell } from './ui/mobile';
+import { CAMERA_LABEL } from './render/cameraRig';
 
 // Skips land this long before the event so the moment itself is watched, not jumped over.
 const SKIP_LEAD_MS = 90_000;
@@ -42,11 +43,21 @@ async function main(): Promise<void> {
 
   let rate: TimeRate = 1;
   let skipping = false;
+  let switching = false;
 
   const ui = mountUI(uiRoot, {
     onRateChange(r) {
       rate = r;
       ui.setRate(r);
+    },
+    async onNextCamera() {
+      if (switching) return;
+      switching = true;
+      await ui.fadeToBlack(250);
+      const mode = renderer.nextCamera();
+      ui.setCamera(CAMERA_LABEL[mode]);
+      await ui.fadeFromBlack(450);
+      switching = false;
     },
     async onSkip(target) {
       if (skipping) return;
@@ -64,6 +75,7 @@ async function main(): Promise<void> {
     },
   });
   ui.setRate(rate);
+  ui.setCamera(CAMERA_LABEL.cupola);
 
   const renderer = await createSceneRenderer(canvas);
   const resize = () =>
@@ -102,7 +114,8 @@ async function main(): Promise<void> {
 
   await ui.waitForStart();
   shell.onStarted();
-  if (wakeLockUnsupported) ui.notify('画面が自動で消灯する場合があります');
+  ui.notify('ドラッグで見回す ・ ピンチで寄る');
+  if (wakeLockUnsupported) setTimeout(() => ui.notify('画面が自動で消灯する場合があります'), 5000);
 }
 
 main();

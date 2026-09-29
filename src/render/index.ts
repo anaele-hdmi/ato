@@ -9,7 +9,7 @@ import { createAtmosphere } from './atmosphere';
 import { createClouds } from './clouds';
 import { createStars } from './stars';
 import { createStation } from './station';
-import { ChaseCameraController } from './cameraControl';
+import { CameraRig, type CameraMode } from './cameraRig';
 import { createSun } from './sun';
 import { createPost } from './post';
 import { createCloudMap } from './cloudMap';
@@ -20,6 +20,8 @@ export interface SceneRenderer {
   resize(width: number, height: number, dpr: number): void;
   /** Swing the chase camera so the Sun's direction (above or below the horizon) is in frame. */
   aimAtSun(): void;
+  /** Switches to the next viewpoint and returns it. */
+  nextCamera(): CameraMode;
   dispose(): void;
 }
 
@@ -122,7 +124,8 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   }
   let statsAcc = 0;
 
-  const cameraControl = new ChaseCameraController(canvas);
+  const rig = new CameraRig(canvas);
+  scene.add(rig.cupolaFrame);
 
   const stationPosVec = new THREE.Vector3();
   const stationVelVec = new THREE.Vector3();
@@ -164,7 +167,8 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     rotateYInverse(upDirVec, frame.gmstRad, upDirObjVec);
     earth.updateLOD(upDirObjVec);
 
-    cameraControl.update(dtSec, camera, upDirVec, fwdDirVec, sunDirVec);
+    station.group.visible = rig.mode === 'chase';
+    rig.update(dtSec, camera, upDirVec, fwdDirVec, sunDirVec);
 
     cloudMap.update(renderer, simSeconds);
     if (statsEl) renderer.info.reset();
@@ -211,7 +215,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   }
 
   function dispose(): void {
-    cameraControl.dispose();
+    rig.dispose();
     earth.dispose();
     atmosphere.dispose();
     clouds.dispose();
@@ -224,5 +228,5 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     renderer.dispose();
   }
 
-  return { update, resize, aimAtSun: () => cameraControl.aimAtSun(), dispose };
+  return { update, resize, aimAtSun: () => rig.aimAtSun(), nextCamera: () => rig.next(), dispose };
 }
