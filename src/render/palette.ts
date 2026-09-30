@@ -54,6 +54,39 @@ export const SPACE = {
 export const SUN = {
   color: new THREE.Color(0xfff3e0),
   intensity: 2.2,
+  /** saturated disc colour (white; the 8-bit target clips it) */
+  disc: new THREE.Color(0xfffcf4),
+  /** angular radius of the disc, degrees (0.53 deg diameter) */
+  discRadiusDeg: 0.2665,
+  /** limb extinction: T = exp(-tauScale * exp(-h/scaleHeightKm) * beta) per channel, h = tangent height of the ray */
+  extinctionBeta: new THREE.Vector3(0.35, 0.8, 1.8),
+  extinctionTau: 1.6,
+  extinctionScaleKm: 6,
+  /** refraction flattening of the disc at h = 0 (vertical axis squashed by this fraction) */
+  flattenMax: 0.5,
+  flattenScaleKm: 9,
+};
+
+/** Lens flare / glare: screen-space sprites around the Sun (flare.ts). All gains are additive radiance. */
+export const FLARE = {
+  /** thin 8-point diffraction spikes */
+  spike: 0.85,
+  /** wide soft veil and faint fine streaks */
+  halo: 0.30,
+  /** close glow around the disc */
+  core: 0.9,
+  /** ghost gain (multiplies each ghost's own gain) */
+  ghost: 1.0,
+  /** how much the auto exposure closes when the Sun fills the view (0..1) */
+  exposureDip: 0.5,
+  /** ghosts: t = position along the Sun->screen-centre axis (1 = Sun, 0 = centre, -1 = opposite), size = screen-height fraction */
+  ghosts: [
+    { t: 0.62, size: 0.10, ring: 0.0, gain: 0.05, color: new THREE.Color(0xf2d6b0) },
+    { t: 0.30, size: 0.17, ring: 1.0, gain: 0.035, color: new THREE.Color(0xa8c8ee) },
+    { t: -0.30, size: 0.09, ring: 0.0, gain: 0.05, color: new THREE.Color(0xc0e8cc) },
+    { t: -0.62, size: 0.26, ring: 1.0, gain: 0.03, color: new THREE.Color(0xe8b8d0) },
+    { t: -1.05, size: 0.14, ring: 0.0, gain: 0.04, color: new THREE.Color(0xb0b8ee) },
+  ],
 };
 
 /** Station: matte warm light grey body, cooler grey trim, dark slate details,

@@ -192,7 +192,7 @@ export function createPost(
     Math.max(1, Math.round(size.x * pixelRatio * BLOOM_SCALE)),
     Math.max(1, Math.round(size.y * pixelRatio * BLOOM_SCALE)),
   );
-  const bloomPass = new UnrealBloomPass(bloomResolution, 0.35, 0.4, 0.95);
+  const bloomPass = new UnrealBloomPass(bloomResolution, 0.5, 0.55, 0.95);
   // UnrealBloomPass halves whatever size it is given; halve once more so the
   // whole blur chain runs at 1/4 of the frame resolution.
   const bloomSetSize = bloomPass.setSize.bind(bloomPass);
