@@ -9,6 +9,7 @@ import * as THREE from 'three';
 import { ConvexGeometry } from 'three/examples/jsm/geometries/ConvexGeometry.js';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { STATION } from './palette';
+import { circleLoop, fillPolygon, sweepFrame, type LoopPt, type Mapper, type ProfileStep } from './windowFrame';
 
 // ---- dimensions (km); 1 m = 0.001 ------------------------------------------
 const M = 0.001;
@@ -29,7 +30,14 @@ const NECK_BOTTOM = -7.0 * M;
 const POD_APOTHEM = 3.1 * M;
 const POD_MID = -8.9 * M; // light upper half / dark lower half
 const POD_BOTTOM = -10.7 * M;
-const POD_BOTTOM_APOTHEM = 1.75 * M;
+// Earth-facing cupola under the pod: a hexagonal frustum with six trapezoid
+// windows on its slopes and one round window in its floor (as on the ISS).
+const CUP_TOP_Y = POD_MID - 0.55 * M;
+const CUP_R_TOP = 3.0 * M; // hexagon circumradius (= side length)
+const CUP_R_BOTTOM = 1.5 * M;
+const CUP_BODY_PULL = 0.16 * M; // body sits this much (circumradius) inside the frame plane
+const CUP_MARGIN = 0.4 * M; // window inset from the face edge
+const CUP_GLASS_H = -0.04 * M;
 
 const ARM_ROOT = HUB_APOTHEM;
 const ARRAY_INNER = 11.4 * M; // x of the array's inner frame edge (pivot)
@@ -190,6 +198,31 @@ function paint(geo: THREE.BufferGeometry, color: THREE.Color, jitter = 0): THREE
   return g;
 }
 
+/** DOF mask: the station writes alpha 0 into the (otherwise unused) alpha
+ *  channel of the MSAA target; every other opaque surface leaves it at 1.
+ *  post.ts reads it in the chase view only. RGB output is unchanged.
+ *  Apply to every material that draws part of the station. */
+export function markStationMaterial(material: THREE.Material): void {
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <opaque_fragment>',
+      '#include <opaque_fragment>\n  gl_FragColor.a = 0.0;',
+    );
+  };
+}
+
+// exterior window frame cross-section (metres -> km): glass seat, seal, step, chamfer, lip, bevel to the body
+const CUP_PROFILE: ProfileStep[] = (
+  [
+    [0, -0.04, 0.5, 0],
+    [0.05, -0.04, 0.55, 0],
+    [0.05, 0.03, 0.75, 0.4],
+    [0.13, 0.07, 0.92, 1],
+    [0.19, 0.07, 1, 1],
+    [0.26, -0.1, 0.85, 1],
+  ] as const
+).map(([off, h, ao, tone]) => ({ off: off * M, h: h * M, ao, tone }));
+
 export function createStation(): StationObjects {
   const group = new THREE.Group();
   const geometries: THREE.BufferGeometry[] = [];
@@ -201,15 +234,7 @@ export function createStation(): StationObjects {
 
   // Matte, faceted: flat-shaded Lambert, colour per vertex.
   const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, flatShading: true });
-  // DOF mask: the station writes alpha 0 into the (otherwise unused) alpha
-  // channel of the MSAA target; every other opaque surface leaves it at 1.
-  // post.ts reads it in the chase view only. RGB output is unchanged.
-  material.onBeforeCompile = (shader) => {
-    shader.fragmentShader = shader.fragmentShader.replace(
-      '#include <opaque_fragment>',
-      '#include <opaque_fragment>\n  gl_FragColor.a = 0.0;',
-    );
-  };
+  markStationMaterial(material);
 
   const _m = new THREE.Matrix4();
   const _q = new THREE.Quaternion();
@@ -233,6 +258,92 @@ export function createStation(): StationObjects {
   }
 
   const hull: THREE.BufferGeometry[] = [];
+
+  /** sweep output -> hull geometry: per-vertex colour from (ao, tone) */
+  function colorFrame(g: THREE.BufferGeometry): THREE.BufferGeometry {
+    const ng = g.toNonIndexed();
+    g.dispose();
+    const m = ng.attributes.aMat;
+    const col = new Float32Array(m.count * 3);
+    for (let i = 0; i < m.count; i++) {
+      _c.copy(dark).lerp(STATION.bodyShade, m.getY(i)).multiplyScalar(0.55 + 0.45 * m.getX(i));
+      col.set([_c.r, _c.g, _c.b], i * 3);
+    }
+    ng.deleteAttribute('aMat');
+    ng.setAttribute('color', new THREE.BufferAttribute(col, 3));
+    return ng;
+  }
+
+  /** Cupola: hex frustum body, six trapezoid windows + a round floor window,
+   *  each with a chamfered frame, dark glass, and opened shutters on the slopes.
+   *  Frames/shutters go into `hull`; returns the glass panes. */
+  function buildCupola(hullList: THREE.BufferGeometry[], bodyCol: THREE.Color): THREE.BufferGeometry[] {
+    const glass: THREE.BufferGeometry[] = [];
+    const ring = (k: number, r: number, y: number) => new THREE.Vector3(Math.cos((k * Math.PI) / 3) * r, y, Math.sin((k * Math.PI) / 3) * r);
+    const bottomY = POD_BOTTOM;
+    // body: slightly inside the frame planes so the glass sits proud of it
+    const pts: THREE.Vector3[] = [];
+    for (let k = 0; k < 6; k++) {
+      pts.push(ring(k, CUP_R_TOP - CUP_BODY_PULL, CUP_TOP_Y + 0.05 * M), ring(k, CUP_R_BOTTOM - CUP_BODY_PULL, bottomY + 0.1 * M));
+    }
+    hullList.push(paint(new ConvexGeometry(pts), bodyCol, 0.05));
+
+    for (let k = 0; k < 6; k++) {
+      const T0 = ring(k, CUP_R_TOP, CUP_TOP_Y);
+      const T1 = ring(k + 1, CUP_R_TOP, CUP_TOP_Y);
+      const B0 = ring(k, CUP_R_BOTTOM, bottomY);
+      const B1 = ring(k + 1, CUP_R_BOTTOM, bottomY);
+      const Tm = T0.clone().add(T1).multiplyScalar(0.5);
+      const Bm = B0.clone().add(B1).multiplyScalar(0.5);
+      const u = T1.clone().sub(T0).normalize();
+      const v = Bm.clone().sub(Tm);
+      const s = v.length();
+      v.normalize();
+      const n = new THREE.Vector3().crossVectors(u, v).normalize();
+      if (n.x * Tm.x + n.z * Tm.z < 0) n.negate();
+      const map: Mapper = (x, y, h) => Tm.clone().addScaledVector(u, x).addScaledVector(v, y).addScaledVector(n, h);
+      const halfAt = (y: number) => CUP_R_TOP / 2 - ((CUP_R_TOP - CUP_R_BOTTOM) / 2) * (y / s);
+      const slope = (CUP_R_TOP - CUP_R_BOTTOM) / 2 / s;
+      const edge = CUP_MARGIN * Math.sqrt(1 + slope * slope);
+      const y0 = CUP_MARGIN;
+      const y1 = s - CUP_MARGIN;
+      const w0 = halfAt(y0) - edge;
+      const w1 = halfAt(y1) - edge;
+      const loop: LoopPt[] = [
+        { x: -w0, y: y0, corner: true },
+        { x: w0, y: y0, corner: true },
+        { x: w1, y: y1, corner: true },
+        { x: -w1, y: y1, corner: true },
+      ];
+      const viewer = Tm.clone().addScaledVector(n, 50);
+      hullList.push(colorFrame(sweepFrame(loop, CUP_PROFILE, map, viewer)));
+      glass.push(fillPolygon(loop, map, CUP_GLASS_H, n));
+
+      // shutter: a slab hinged above the window, swung open away from the glass
+      const pad = 0.1 * M;
+      const hingeY = y0 - 0.16 * M;
+      const shape = new THREE.Shape();
+      shape.moveTo(-(w0 + pad), 0);
+      shape.lineTo(w0 + pad, 0);
+      shape.lineTo(w1 + pad, y1 + pad - hingeY);
+      shape.lineTo(-(w1 + pad), y1 + pad - hingeY);
+      shape.closePath();
+      const slab = new THREE.ExtrudeGeometry(shape, { depth: 0.05 * M, bevelEnabled: false });
+      const open = (80 * Math.PI) / 180;
+      const d = v.clone().multiplyScalar(Math.cos(open)).addScaledVector(n, Math.sin(open));
+      const basis = new THREE.Matrix4().makeBasis(u, d, new THREE.Vector3().crossVectors(u, d));
+      basis.setPosition(Tm.clone().addScaledVector(v, hingeY).addScaledVector(n, 0.16 * M));
+      slab.applyMatrix4(basis);
+      hullList.push(paint(slab, STATION.shutter, 0.05));
+    }
+
+    // round window in the floor
+    const floor: Mapper = (x, z, h) => new THREE.Vector3(x, bottomY - h, z);
+    const round = circleLoop(0.8 * M, 24);
+    hullList.push(colorFrame(sweepFrame(round, CUP_PROFILE, floor, new THREE.Vector3(0, bottomY - 50, 0))));
+    glass.push(fillPolygon(round, floor, CUP_GLASS_H, new THREE.Vector3(0, -1, 0)));
+    return glass;
+  }
 
   // ---- central hub: octagonal prism with strongly chamfered ends -----------
   put(
@@ -322,14 +433,14 @@ export function createStation(): StationObjects {
     hull,
     octStack([
       [POD_MID + 0.01 * M, POD_APOTHEM + 0.04 * M],
-      [POD_MID - 0.55 * M, POD_APOTHEM + 0.04 * M],
-      [POD_BOTTOM, POD_BOTTOM_APOTHEM],
+      [CUP_TOP_Y, POD_APOTHEM + 0.04 * M],
     ]),
     podDark,
     [0, 0, 0],
     [0, 0, 0],
     0.06,
   );
+  const glassParts = buildCupola(hull, podDark);
 
   // ---- arms: chunky segmented blocks with joint collars, to a mount block --
   for (const side of [-1, 1]) {
@@ -361,6 +472,19 @@ export function createStation(): StationObjects {
   geometries.push(hullGeo);
   const hullMesh = new THREE.Mesh(hullGeo, material);
   group.add(hullMesh);
+  // dark glass that catches the Sun (one merged mesh, one extra draw call)
+  const glassGeo = mergeGeometries(glassParts, false)!;
+  for (const g of glassParts) g.dispose();
+  geometries.push(glassGeo);
+  const glassMaterial = new THREE.MeshPhongMaterial({
+    color: STATION.glass,
+    specular: STATION.glassSpecular,
+    shininess: 80,
+    flatShading: true,
+    side: THREE.DoubleSide,
+  });
+  markStationMaterial(glassMaterial);
+  group.add(new THREE.Mesh(glassGeo, glassMaterial));
 
   // ---- solar arrays: frame + 2x2 faceted panels, one mesh per array --------
   const arrays: THREE.Object3D[] = [];
@@ -455,6 +579,7 @@ export function createStation(): StationObjects {
     dispose() {
       for (const g of geometries) g.dispose();
       material.dispose();
+      glassMaterial.dispose();
     },
   };
 }
