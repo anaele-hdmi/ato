@@ -263,6 +263,34 @@ export async function loadBathTexture(url: string): Promise<THREE.DataTexture> {
   return tex;
 }
 
+/** Single-channel (R8) mipmapped equirectangular texture from an image (city lights). */
+export async function loadR8Texture(url: string): Promise<THREE.DataTexture> {
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = url;
+  await img.decode();
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(img, 0, 0);
+  const rgba = ctx.getImageData(0, 0, w, h).data;
+  const r = new Uint8Array(w * h);
+  for (let i = 0; i < w * h; i++) r[i] = rgba[i * 4];
+  const tex = new THREE.DataTexture(r, w, h, THREE.RedFormat, THREE.UnsignedByteType);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.minFilter = THREE.LinearMipmapLinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = true;
+  tex.flipY = false;
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
 // --- Sea ice ------------------------------------------------------------------
 // Simple climatological model (NOT derived from a data file: hand-placed from
 // the well-known mean ice edges, so treat it as an illustration). For each

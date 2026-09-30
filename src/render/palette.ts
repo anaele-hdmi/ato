@@ -320,3 +320,43 @@ export const SURFACE = {
   /** seasonal sea ice: a touch bluer than the land ice */
   seaIce: new THREE.Color(0xdbe6ec),
 };
+
+/** Night-side city lights (earth.ts, from assets/city-lights.webp = NASA Black
+ *  Marble). Linear colours; the texture value picks orange (suburbs) -> white (cores). */
+export const CITY_LIGHTS = {
+  /** sodium-lamp orange of the outskirts */
+  suburb: new THREE.Color(1.0, 0.5, 0.16),
+  /** the white-hot core of a big city */
+  core: new THREE.Color(1.0, 0.86, 0.66),
+  /** texture value (0..1) is raised to this power: suppresses the faint scatter of hamlets */
+  gamma: 1.8,
+  /** overall brightness. Sized so that only the biggest cores pass the 0.95 bloom threshold. */
+  gain: 0.6,
+  /** sun elevation (deg) where the lights are fully on / fully off (twilight fade-in) */
+  fullDeg: -10,
+  offDeg: -4,
+  /** per-extra-airmass extinction (r, g, b): distant lights near the horizon dim and redden */
+  extinction: new THREE.Vector3(0.05, 0.11, 0.24),
+  /** how much a full cloud cover dims the lights beneath it (the rest glows through, blurred) */
+  cloudBlock: 0.8,
+};
+
+/** Moonlight on the night side (earth.ts surface + glint, clouds.ts). `illum` is
+ *  FrameState.moon.illuminance (full moon at mean distance = 1); it is
+ *  compressed with moonlightLevel() so a quarter moon is still faintly visible. */
+export const MOONLIGHT = {
+  /** cool blue-white tint of moonlit ground (multiplies the daytime albedo) */
+  surface: new THREE.Color(0.42, 0.55, 0.85),
+  surfaceGain: 0.11,
+  /** moonlit cloud tops */
+  cloud: new THREE.Color(0.5, 0.62, 0.9),
+  cloudGain: 0.13,
+  /** silver reflection on the sea (same slope distribution as the sun glint) */
+  glint: new THREE.Color(0.7, 0.82, 1.0),
+  glintGain: 2.4,
+};
+
+/** Perceptual compression of the moonlight illuminance: new moon = 0, quarter ~0.24, full = 1. */
+export function moonlightLevel(illum: number): number {
+  return Math.pow(Math.min(Math.max(illum, 0), 1.3), 0.6);
+}

@@ -33,8 +33,8 @@
 // (normalize(position)) so the land mask / biome / cloud-shadow lookups stay
 // correct regardless of LOD or displacement.
 import * as THREE from 'three';
-import { EARTH_COLORS, BIOMES, GLINT, RELIEF, SURFACE } from './palette';
-import { buildLandMask, buildBiomeTexture, buildSeaIceTexture, buildDummyBathTexture, loadBathTexture } from './landmask';
+import { EARTH_COLORS, BIOMES, GLINT, RELIEF, SURFACE, CITY_LIGHTS, MOONLIGHT, moonlightLevel } from './palette';
+import { buildLandMask, buildBiomeTexture, buildSeaIceTexture, buildDummyBathTexture, loadBathTexture, loadR8Texture } from './landmask';
 import {
   extractChannel,
   loadRaster,
@@ -56,6 +56,7 @@ import { EARTH_RADIUS_KM } from '../types';
 import { CLOUD_GLSL } from './clouds';
 import topoUrl from '../assets/earth-topology.png';
 import bathUrl from '../assets/dem/bath.webp';
+import cityUrl from '../assets/city-lights.webp';
 
 // Hi-res DEM tiles (scripts/build-dem.mjs): elev_<col>_<row>.webp, URLs
 // resolved by the bundler.
@@ -219,6 +220,15 @@ uniform vec3 uCoolShadow;
 uniform vec3 uSkyAmbient;
 uniform vec3 uHazeCool;
 uniform vec3 uHazeWarm;
+uniform sampler2D uCityTex; // R8 mipmapped night lights (NASA Black Marble)
+uniform vec4 uCity;         // x,y: sin(sun elevation) fully on / off; z: gamma; w: gain
+uniform vec3 uCitySub;
+uniform vec3 uCityCore;
+uniform vec3 uCityExt;      // extinction per extra airmass (r,g,b)
+uniform vec4 uMoonWorld;    // xyz: moon direction (world), w: moonlight level (0 = new moon)
+uniform vec3 uMoonObj;      // moon direction (object space)
+uniform vec3 uMoonSurface;  // moonlit ground tint * gain
+uniform vec3 uMoonGlint;    // moon glint colour * gain
 
 varying vec3 vNormalObj;
 varying vec3 vNormalWorld;
@@ -280,6 +290,19 @@ void main() {
   float lon = atan(-n.z, n.x);
   vec2 uv = vec2(lon / (2.0 * PI) + 0.5, 0.5 - lat / PI);
   vec3 mask = texture2D(uLandTex, uv).rgb;
+  // uv gradients for the mip-mapped city-light lookup: the longitude seam of
+  // atan() would pick the lowest mip in one column, so take the smaller of the
+  // gradients of uv and of the half-turn-shifted uv (derivatives outside branches)
+  vec2 cgx = dFdx(uv);
+  vec2 cgy = dFdy(uv);
+  float fpKm = length(fwidth(vWorldPosition));
+  vec2 uvS = vec2(fract(uv.x + 0.5), uv.y);
+  vec2 sgx = dFdx(uvS);
+  vec2 sgy = dFdy(uvS);
+  if (dot(sgx, sgx) + dot(sgy, sgy) < dot(cgx, cgx) + dot(cgy, cgy)) {
+    cgx = sgx;
+    cgy = sgy;
+  }
 
   float land = aaStep(0.5, mask.r);
   float absLat = abs(lat) * 57.2958;
@@ -416,6 +439,47 @@ void main() {
   color += uSkyAmbient * fres * 0.35 * water;
   color += uGlintColor * glint;
 
+  // ---- night side: moonlight, the moon's glint on the sea, city lights ----
+  if (nightMix > 0.002) {
+    // cloud cover above this point (one lookup): blocks the lights and the
+    // moon glint; the clouds themselves are lit in clouds.ts
+    vec4 cf = cloudFieldsFast(n);
+    float cover = 1.0 - (1.0 - smoothstep(-0.12, 0.3, cf.r) * 0.85) * (1.0 - smoothstep(0.08, 0.45, cf.a) * 0.9)
+      * (1.0 - smoothstep(-0.05, 0.4, cf.g) * 0.6) * (1.0 - smoothstep(-0.1, 0.45, cf.b) * 0.15);
+
+    vec3 moonW = normalize(uMoonWorld.xyz);
+    float moonI = uMoonWorld.w * nightMix * smoothstep(-0.02, 0.14, dot(n, uMoonObj));
+    if (moonI > 0.001) {
+      float mdl = max(dot(flatN, moonW), 0.0);
+      // moonlit ground is nearly colourless: pull the daytime albedo toward grey
+      vec3 moonAlbedo = mix(vec3(dot(base, vec3(0.3, 0.55, 0.15))), base, 0.4);
+      color += moonAlbedo * uMoonSurface * moonI * mix(0.3, 1.0, mdl) * (1.0 - 0.7 * cover);
+      float specM = max(dot(flatN, normalize(viewDir + moonW)), 0.0);
+      float c2m = max(specM * specM, 1e-4);
+      float pdfM = exp(-(1.0 - c2m) / c2m / SIGMA2) / (SIGMA2 * c2m * c2m);
+      float waterM = (1.0 - land) * (1.0 - seaIce) * clamp(mdl * 4.0, 0.0, 1.0) * moonI * uMoonWorld.w * (1.0 - 0.85 * cover); // ~ level^2: a thin crescent gives no glint
+      color += uMoonGlint * (pdfM / (4.0 * nv) * 0.012 + pow(specM, 4000.0) * 1.2) * waterM;
+    }
+
+    float cityOn = 1.0 - smoothstep(uCity.x, uCity.y, ndotlSmooth);
+    if (cityOn > 0.002) {
+      // under cloud the lights are read from a coarser mip: a soft glow
+      float blur = 1.0 + cover * 5.0;
+      float v = textureGrad(uCityTex, uv, cgx * blur, cgy * blur).r;
+      float cityI = pow(v, uCity.z) * uCity.w;
+      // the 19 km texels are too coarse for a lit area: break them into
+      // patchy street-scale detail near the ground (fades with the pixel footprint)
+      float nz = 0.6 * cloudNoise(n * 700.0) + 0.4 * cloudNoise(n * 2100.0 + 5.0);
+      float fine = 1.0 - smoothstep(2.0, 8.0, fpKm);
+      cityI *= mix(1.0, mix(0.3, 1.6, nz), fine * (1.0 - smoothstep(0.55, 1.0, v) * 0.7));
+      vec3 cityC = mix(uCitySub, uCityCore, smoothstep(0.45, 0.95, v));
+      // long slant paths through the air: dimmer and redder toward the horizon
+      float airmass = 1.0 / nv;
+      cityC *= exp(-(airmass - 1.0) * uCityExt);
+      color += cityC * cityI * cityOn * (1.0 - ${CITY_LIGHTS.cloudBlock.toFixed(2)} * cover);
+    }
+  }
+
   // aerial perspective: pale blue-white haze toward the horizon (grazing
   // view angle) and with distance from the camera -- stronger than a
   // realistic haze, per the reference images, and gated off on the night side.
@@ -458,6 +522,8 @@ export interface EarthObjects {
   setSunDirObject(v: THREE.Vector3): void;
   /** Sets the sun direction in WORLD (scene) space, for lighting + the ocean glint. */
   setSunDirWorld(v: THREE.Vector3): void;
+  /** Moon direction in world and object space, and its illuminance (see FrameState.moon). */
+  setMoon(dirWorld: THREE.Vector3, dirObject: THREE.Vector3, illum: number): void;
   /** Simulation clock, seconds — kept in sync with the cloud shell's drift. */
   setTime(seconds: number): void;
   /** Simulation date (epoch ms): drives the sea-ice season. */
@@ -632,6 +698,23 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
       /* no shallow-water / lake colours; everything else works */
     });
 
+  // City lights (NASA Black Marble): a 1x1 black texture until the image arrives.
+  let cityTexture: THREE.Texture = new THREE.DataTexture(new Uint8Array([0]), 1, 1, THREE.RedFormat, THREE.UnsignedByteType);
+  cityTexture.needsUpdate = true;
+  loadR8Texture(cityUrl)
+    .then((tex) => {
+      if (disposed) {
+        tex.dispose();
+        return;
+      }
+      cityTexture.dispose();
+      cityTexture = tex;
+      material.uniforms.uCityTex.value = tex;
+    })
+    .catch(() => {
+      /* no city lights; everything else works */
+    });
+
   const material = new THREE.ShaderMaterial({
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
@@ -671,6 +754,22 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
       uSkyAmbient: { value: RELIEF.skyAmbient },
       uHazeCool: { value: RELIEF.hazeCool },
       uHazeWarm: { value: RELIEF.hazeWarm },
+      uCityTex: { value: cityTexture as THREE.Texture },
+      uCity: {
+        value: new THREE.Vector4(
+          Math.sin((CITY_LIGHTS.fullDeg * Math.PI) / 180),
+          Math.sin((CITY_LIGHTS.offDeg * Math.PI) / 180),
+          CITY_LIGHTS.gamma,
+          CITY_LIGHTS.gain,
+        ),
+      },
+      uCitySub: { value: CITY_LIGHTS.suburb },
+      uCityCore: { value: CITY_LIGHTS.core },
+      uCityExt: { value: CITY_LIGHTS.extinction },
+      uMoonWorld: { value: new THREE.Vector4(1, 0, 0, 0) },
+      uMoonObj: { value: new THREE.Vector3(1, 0, 0) },
+      uMoonSurface: { value: MOONLIGHT.surface.clone().multiplyScalar(MOONLIGHT.surfaceGain) },
+      uMoonGlint: { value: MOONLIGHT.glint.clone().multiplyScalar(MOONLIGHT.glintGain) },
     },
   });
 
@@ -849,6 +948,10 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
     setSunDirWorld(v: THREE.Vector3) {
       (material.uniforms.uSunDirWorld.value as THREE.Vector3).copy(v);
     },
+    setMoon(dirWorld: THREE.Vector3, dirObject: THREE.Vector3, illum: number) {
+      (material.uniforms.uMoonWorld.value as THREE.Vector4).set(dirWorld.x, dirWorld.y, dirWorld.z, moonlightLevel(illum));
+      (material.uniforms.uMoonObj.value as THREE.Vector3).copy(dirObject);
+    },
     setTime(seconds: number) {
       material.uniforms.uTime.value = seconds;
     },
@@ -890,6 +993,7 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
       biomeTexture.dispose();
       seaIceTexture.dispose();
       bathTexture.dispose();
+      cityTexture.dispose();
     },
   };
 }

@@ -108,6 +108,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   scene.add(moon.mesh);
   const moonInfo = { dirWorld: new THREE.Vector3(1, 0, 0), illum: 0 };
   const moonPosVec = new THREE.Vector3();
+  const moonObjVec = new THREE.Vector3();
   const aurora = createAurora();
   earth.rotGroup.add(aurora.group);
   const meteors = createMeteors();
@@ -222,6 +223,9 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     const moonToStation = moonPosVec.sub(stationPosVec);
     moonInfo.dirWorld.copy(moonToStation).normalize();
     moonInfo.illum = frame.moon.illuminance;
+    rotateYInverse(moonInfo.dirWorld, frame.gmstRad, moonObjVec);
+    earth.setMoon(moonInfo.dirWorld, moonObjVec, moonInfo.illum);
+    clouds.setMoon(moonObjVec, moonInfo.illum);
     moon.setExposure(skyExposure);
     moon.update(camera, {
       dirWorld: moonInfo.dirWorld,

@@ -27,7 +27,7 @@
 // upper 2–4; cloudy low pixels ~6 fetches (+4–5 where towers are possible);
 // no per-pixel hash noise.
 import * as THREE from 'three';
-import { CLOUD_LAYERS, CLOUD_FORM, LIGHTNING, RELIEF } from './palette';
+import { CLOUD_LAYERS, CLOUD_FORM, LIGHTNING, RELIEF, MOONLIGHT, moonlightLevel } from './palette';
 import { NOISE_GLSL } from './noiseGlsl';
 import { CLOUD_MAP_GLSL, type CloudMapUniforms } from './cloudMap';
 import { CLOUD_ALT } from './cloudLayers';
@@ -84,13 +84,15 @@ vec3 cloudHaze(vec3 col, vec3 n, vec3 viewDir, float mu) {
 }
 
 uniform vec3 uLightningColor; // flash colour * peak intensity (palette LIGHTNING)
+uniform vec4 uMoon;           // xyz: moon direction (object space), w: moonlight level
+uniform vec3 uMoonCloud;      // moonlit cloud colour * gain (palette MOONLIGHT)
 uniform vec2 uLightning;      // x: flash rate per cell per slot, y: debug hold
 uniform float uFlashTime;     // wall-clock seconds (independent of the sim speed)
 
 // ---------------------------------------------------------------------------
 // Night-side light on clouds. cloudNightLight() is the one hook for light that
 // still reaches a cloud after the sun has set for it: today the lightning
-// inside convective cells (lit towers and anvils); moonlight joins here too.
+// inside convective cells (lit towers and anvils) and moonlight (palette MOONLIGHT).
 // rgb: emissive (added after the day tone, not dimmed by night);
 // a: how much it makes an otherwise dark cloud show up (alpha floor).
 
@@ -150,13 +152,19 @@ float lightningFlash(vec3 q, float act, float evening) {
 
 vec4 cloudNightLight(vec3 q, vec3 L, float mu, float hKm, float mA, float thick, float puff) {
   float dark = 1.0 - smoothstep(-0.02, 0.06, mu + clHorizonDip(hKm));
+  if (dark < 0.01) return vec4(0.0);
+  // moonlight: the moon above this cloud's own horizon, on the thick tops and puffs
+  float moonUp = smoothstep(-0.02, 0.14, dot(q, uMoon.xyz) + clHorizonDip(hKm));
+  float mI = uMoon.w * moonUp * dark;
+  float mShape = mix(0.45, 1.0, thick) * (0.6 + 0.8 * puff);
+  vec4 res = vec4(uMoonCloud * (mI * mShape), clamp(mI * mShape * 2.2, 0.0, 0.85));
   float act = smoothstep(0.45, 0.9, mA);
-  if (dark < 0.01 || act < 0.01) return vec4(0.0);
+  if (act < 0.01) return res;
   float e = lightningFlash(q, act, ltEvening(q, L)) * dark;
-  if (e < 0.004) return vec4(0.0);
+  if (e < 0.004) return res;
   // lit from inside: strongest where the cloud is thick, on the puffs
   float body = e * mix(0.5, 1.0, thick) * (0.55 + 0.9 * puff);
-  return vec4(uLightningColor * body, clamp(body * 1.3, 0.0, 1.0));
+  return vec4(res.rgb + uLightningColor * body, max(res.a, clamp(body * 1.3, 0.0, 1.0)));
 }
 `;
 
@@ -470,6 +478,8 @@ export interface CloudObjects {
   mesh: THREE.Object3D;
   setSunDirObject(v: THREE.Vector3): void;
   setSunDirWorld(v: THREE.Vector3): void;
+  /** Moon direction in Earth object space and its illuminance (see FrameState.moon). */
+  setMoon(dirObject: THREE.Vector3, illum: number): void;
   setTime(seconds: number): void;
   dispose(): void;
 }
@@ -486,6 +496,8 @@ export function createClouds(cloudMap: CloudMapUniforms): CloudObjects {
     uFlashTime: { value: 0 },
     uLightningColor: { value: new THREE.Vector3(LIGHTNING.color.r, LIGHTNING.color.g, LIGHTNING.color.b).multiplyScalar(LIGHTNING.intensity) },
     uLightning: { value: new THREE.Vector2(LIGHTNING.rate, LIGHTNING.hold) },
+    uMoon: { value: new THREE.Vector4(1, 0, 0, 0) },
+    uMoonCloud: { value: MOONLIGHT.cloud.clone().multiplyScalar(MOONLIGHT.cloudGain) },
     uHazeCool: { value: RELIEF.hazeCool },
     uHazeWarm: { value: RELIEF.hazeWarm },
     uSunsetGold: { value: CLOUD_LAYERS.sunsetGold },
@@ -559,6 +571,9 @@ export function createClouds(cloudMap: CloudMapUniforms): CloudObjects {
     },
     setSunDirWorld() {
       /* lighting is done in object space; kept for API compatibility */
+    },
+    setMoon(dirObject, illum) {
+      shared.uMoon.value.set(dirObject.x, dirObject.y, dirObject.z, moonlightLevel(illum));
     },
     setTime(seconds) {
       shared.uTime.value = seconds;
