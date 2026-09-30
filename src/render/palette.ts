@@ -89,26 +89,47 @@ export const FLARE = {
   ],
 };
 
-/** Station: matte warm light grey body, cooler grey trim, dark slate details,
- *  navy solar panels, light array frames. Albedos are chosen so the sunlit
- *  body reads ~#bdb8ae and the shaded side a cooler ~#7d828c under the
- *  cool ambient fill (earthshine) below. */
+/** Station hull under space lighting. There is no sky scatter: the only
+ *  lights are the Sun (hard, strong), earthshine (blue-white, from below,
+ *  strong only over the day side) and a very faint moon / starlight. The lit
+ *  side reads bright, the unlit side is nearly black (a faint blue when the
+ *  Earth below is sunlit). Albedos are for the lit side under `sunIntensity`. */
 export const STATION = {
-  body: new THREE.Color(0xc2bda6),
-  /** collars, joints, mount blocks, seam bands */
-  bodyShade: new THREE.Color(0xa9a79f),
+  /** white insulation blankets (matte) */
+  body: new THREE.Color(0xd3d1c8),
+  /** collars, joints, mount blocks, seam bands (metal) */
+  bodyShade: new THREE.Color(0xa3a5a8),
   /** windows, antenna, cupola underside (lifted a little toward bodyShade) */
   dark: new THREE.Color(0x30353f),
-  panel: new THREE.Color(0x323c52),
+  panel: new THREE.Color(0x2a3656),
   frame: new THREE.Color(0xd2cfc6),
-  /** ambient fill so the unlit side reads as a cooler mid grey, not black */
-  ambient: new THREE.Color(0xc2d1ff),
-  ambientIntensity: 2.17,
-  /** exterior cupola window glass: near black, reflects the sun */
-  glass: new THREE.Color(0x070b13),
-  glassSpecular: new THREE.Color(0xa9bbd8),
-  /** opened window shutters */
-  shutter: new THREE.Color(0x9c9a94),
+  /** exterior cupola window glass: near black, reflects the sun sharply */
+  glass: new THREE.Color(0x05080e),
+  glassSpecular: new THREE.Color(0xc8d4ee),
+  glassShininess: 140,
+  /** opened window shutters (white insulation) and their raised ribs */
+  shutter: new THREE.Color(0xe2e0d6),
+  shutterRib: new THREE.Color(0xb9b6ac),
+  /** metal trim: mild reflection */
+  metalSpecular: new THREE.Color(0x4a4e57),
+  metalShininess: 28,
+  /** solar cells: faint mirror sheen */
+  panelSpecular: new THREE.Color(0x5f76ad),
+  panelShininess: 60,
+  /** Sun as seen by the hull (linear radiance multiplier; the bright side must stay under clipping) */
+  sunIntensity: 3.3,
+  /** earthshine: Earth albedo ~0.3 gives roughly a sixth of the Sun on
+   *  Earth-facing surfaces over the day side; ~0 on the night side */
+  earthshine: new THREE.Color(0x9dbcff),
+  earthshineDay: 0.9,
+  /** soft fill from the Earth's wide disc for surfaces that only graze it (fraction of earthshineDay) */
+  earthshineWide: 0.4,
+  /** moonlight on the hull, x relative illuminance (full moon = 1); night side only */
+  moonlight: new THREE.Color(0xdde4f5),
+  moonlightIntensity: 0.1,
+  /** airglow / starlight floor so a night-side silhouette is not perfectly flat */
+  starlight: new THREE.Color(0x8a9cc8),
+  starlightIntensity: 0.03,
 };
 
 /** Interior window frames (cabin.ts). Lighting is analytic: a little ambient,
