@@ -77,7 +77,7 @@ function buildCoastDistanceField(landBinary: Float32Array, width: number, height
   return field;
 }
 
-/** Builds the equirectangular land-mask canvas (R = land, G = coastal band,
+/** Builds the equirectangular land-mask canvas (R = land, G unused,
  * B = coast-distance field for land-biome selection). */
 export function buildLandMaskCanvas(): HTMLCanvasElement {
   const canvas = document.createElement('canvas');
@@ -104,12 +104,9 @@ export function buildLandMaskCanvas(): HTMLCanvasElement {
       }
     }
   }
-  // G: coastal band (stroked outline) → shallow ocean; R: land.
+  // R: land. (The shallow-water band that used to be a 3 px stroke in G is now
+  // depth-based, from the bathymetry texture: see buildBathTexture below.)
   ctx.globalCompositeOperation = 'lighter';
-  ctx.strokeStyle = '#00ff00';
-  ctx.lineJoin = 'round';
-  ctx.lineWidth = 3; // narrow continental-shelf band (7 px read as a stripe on the sea)
-  ctx.stroke();
   ctx.fillStyle = '#ff0000';
   ctx.fill('evenodd');
   ctx.globalCompositeOperation = 'source-over';
@@ -222,4 +219,107 @@ export function buildBiomeTexture(): THREE.CanvasTexture {
   paint(ARID, 'r');
   paint(RAINFOREST, 'g');
   return textureFromCanvas(canvas);
+}
+
+// --- Bathymetry / lakes (scripts/build-dem.mjs -> assets/dem/bath.webp) -------
+// RG8, 3600x1800: R = shallow-sea depth code (255 * sqrt(depth / capM), land
+// pixels filled from the nearest sea), G = lake coverage (Natural Earth 1:50m).
+// earth.ts turns R into shelf tint / turquoise shallows and G into lake colour.
+
+/** 2x1 stand-in (deep sea, no lake) bound until the real bathymetry texture has decoded. */
+export function buildDummyBathTexture(): THREE.DataTexture {
+  const t = new THREE.DataTexture(new Uint8Array([255, 0, 255, 0]), 2, 1, THREE.RGFormat, THREE.UnsignedByteType);
+  t.needsUpdate = true;
+  return t;
+}
+
+export async function loadBathTexture(url: string): Promise<THREE.DataTexture> {
+  const img = new Image();
+  img.decoding = 'async';
+  img.src = url;
+  await img.decode();
+  const w = img.naturalWidth;
+  const h = img.naturalHeight;
+  const canvas = document.createElement('canvas');
+  canvas.width = w;
+  canvas.height = h;
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })!;
+  ctx.drawImage(img, 0, 0);
+  const rgba = ctx.getImageData(0, 0, w, h).data;
+  const rg = new Uint8Array(w * h * 2);
+  for (let i = 0; i < w * h; i++) {
+    rg[i * 2] = rgba[i * 4];
+    rg[i * 2 + 1] = rgba[i * 4 + 1];
+  }
+  const tex = new THREE.DataTexture(rg, w, h, THREE.RGFormat, THREE.UnsignedByteType);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.minFilter = THREE.LinearFilter;
+  tex.magFilter = THREE.LinearFilter;
+  tex.generateMipmaps = false;
+  tex.flipY = false;
+  tex.colorSpace = THREE.NoColorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+// --- Sea ice ------------------------------------------------------------------
+// Simple climatological model (NOT derived from a data file: hand-placed from
+// the well-known mean ice edges, so treat it as an illustration). For each
+// longitude: the latitude (degrees, absolute) of the ice edge at the seasonal
+// maximum and minimum extent; ice lies poleward of it, over ocean only (land
+// is drawn over it). 91 = no ice at all. The shader blends the two by time of
+// year (Arctic max mid-March / min mid-September, Antarctic max late
+// September / min late February).
+type EdgeTable = [lon: number, max: number, min: number][];
+const ARCTIC_EDGE: EdgeTable = [
+  [-180, 60, 80], [-165, 62, 78], [-150, 70, 78], [-125, 70, 76], [-105, 68, 75],
+  [-95, 53, 91], [-80, 53, 91], [-68, 58, 74], [-58, 48, 76], [-45, 58, 78],
+  [-30, 66, 76], [-15, 70, 77], [0, 76, 81], [12, 77, 81], [25, 74, 81],
+  [40, 68, 80], [60, 68, 80], [90, 70, 80], [120, 68, 80], [135, 47, 79],
+  [150, 52, 79], [158, 52, 79], [164, 61, 79], [172, 60, 80],
+];
+const ANTARCTIC_EDGE: EdgeTable = [
+  [-180, 64, 74], [-150, 65, 72], [-120, 66, 73], [-100, 66, 72], [-85, 63, 70],
+  [-70, 61, 68], [-58, 58, 64], [-45, 56, 62], [-30, 56, 66], [-15, 57, 70],
+  [0, 58, 70], [20, 59, 70], [45, 60, 69], [70, 60, 68], [90, 61, 66],
+  [110, 62, 66], [130, 62, 67], [150, 63, 68], [165, 64, 72], [180, 64, 74],
+];
+
+function edgeAt(table: EdgeTable, lon: number): [number, number] {
+  // periodic linear interpolation; the table spans -180..~172 and wraps
+  const n = table.length;
+  for (let i = 0; i < n; i++) {
+    const a = table[i];
+    const b = table[(i + 1) % n];
+    const lonA = a[0];
+    const lonB = i + 1 < n ? b[0] : b[0] + 360;
+    if (lon >= lonA && lon <= lonB) {
+      const t = (lon - lonA) / (lonB - lonA || 1);
+      return [a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    }
+  }
+  return [table[0][1], table[0][2]];
+}
+
+/** 360x1 RGBA8 (1 degree of longitude per texel from -180): N max, N min, S max, S min edge latitude, (deg - 40) / 60. */
+export function buildSeaIceTexture(): THREE.DataTexture {
+  const w = 360;
+  const data = new Uint8Array(w * 4);
+  const enc = (deg: number) => Math.round(Math.max(0, Math.min(1, (deg - 40) / 60)) * 255);
+  for (let i = 0; i < w; i++) {
+    const lon = -180 + i + 0.5;
+    const [nMax, nMin] = edgeAt(ARCTIC_EDGE, lon);
+    const [sMax, sMin] = edgeAt(ANTARCTIC_EDGE, lon);
+    data.set([enc(nMax), enc(nMin), enc(sMax), enc(sMin)], i * 4);
+  }
+  const t = new THREE.DataTexture(data, w, 1, THREE.RGBAFormat, THREE.UnsignedByteType);
+  t.wrapS = THREE.RepeatWrapping;
+  t.wrapT = THREE.ClampToEdgeWrapping;
+  t.minFilter = THREE.LinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = false;
+  t.colorSpace = THREE.NoColorSpace;
+  t.needsUpdate = true;
+  return t;
 }

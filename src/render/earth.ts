@@ -13,6 +13,15 @@
 // border vertices onto their level-8 neighbours' edges, so the rings meet
 // without cracks.
 //
+// Elevation comes from a high-resolution DEM (NOAA ETOPO 2022, 0.05 deg =
+// 5.6 km, 18 lazily loaded 60-degree tiles: assets/dem/elev_*.webp) with the
+// old 2048x1024 heightmap as fallback (?hires=0, or a tile that failed to
+// load). A chunk is only built once every tile around it has arrived, so
+// terrain never changes shape after it has appeared. Colours also come from
+// the data: bathymetry (bath.webp) tints shelves and turns shallow banks
+// turquoise, Natural Earth lakes get a lake colour, snow sits above a
+// latitude-dependent snow line, and sea ice follows a seasonal edge model.
+//
 // Positions arrive displaced (DEM + ridged/rolling micro-relief, terrain.ts).
 // Each vertex also carries 8 baked horizon elevation angles (aHorizonA/B) for
 // cast shadows. The fragment shader derives a flat per-triangle normal from
@@ -24,14 +33,20 @@
 // (normalize(position)) so the land mask / biome / cloud-shadow lookups stay
 // correct regardless of LOD or displacement.
 import * as THREE from 'three';
-import { EARTH_COLORS, BIOMES, GLINT, RELIEF } from './palette';
-import { buildLandMask, buildBiomeTexture } from './landmask';
+import { EARTH_COLORS, BIOMES, GLINT, RELIEF, SURFACE } from './palette';
+import { buildLandMask, buildBiomeTexture, buildSeaIceTexture, buildDummyBathTexture, loadBathTexture } from './landmask';
 import {
   extractChannel,
   loadRaster,
   buildTerrainChunk,
+  createHiDem,
+  installHiTile,
+  EXAGGERATION,
+  HI_TILE_COLS,
+  HI_TILE_ROWS,
   HORIZON_MIN_DEG,
   HORIZON_MAX_DEG,
+  type HiDem,
   type Raster,
 } from './terrain';
 import { CLOUD_MAP_GLSL, type CloudMapUniforms } from './cloudMap';
@@ -40,6 +55,25 @@ import type { TerrainWorkerRequest, TerrainWorkerResult } from './terrainWorker'
 import { EARTH_RADIUS_KM } from '../types';
 import { CLOUD_GLSL } from './clouds';
 import topoUrl from '../assets/earth-topology.png';
+import bathUrl from '../assets/dem/bath.webp';
+
+// Hi-res DEM tiles (scripts/build-dem.mjs): elev_<col>_<row>.webp, URLs
+// resolved by the bundler.
+const TILE_URLS: string[] = new Array(HI_TILE_COLS * HI_TILE_ROWS).fill('');
+{
+  const found = import.meta.glob('../assets/dem/elev_*.webp', { query: '?url', import: 'default', eager: true }) as Record<
+    string,
+    string
+  >;
+  for (const [key, url] of Object.entries(found)) {
+    const m = /elev_(\d+)_(\d+)\.webp$/.exec(key);
+    if (m) TILE_URLS[Number(m[2]) * HI_TILE_COLS + Number(m[1])] = url;
+  }
+}
+const MAX_TILE_LOADS = 3; // concurrent tile fetch+decodes
+// A chunk needs DEM coverage this far beyond its own footprint (chunk radius
+// ~450 km + the 300 km horizon march), in degrees of arc.
+const TILE_PAD_DEG = 9;
 
 
 // --- LOD tuning ---------------------------------------------------------
@@ -70,6 +104,10 @@ const FACET_BIAS_HIGH_SUN = 0.4;
 const SHADE_GAIN = 0.78; // value of the shade colour (lower = deeper shadows)
 const HORIZON_SOFT_DEG = 1.5; // cast-shadow edge softness
 
+// Surface colour rules driven by the DEM / bathymetry (all colours: palette.ts SURFACE).
+const BATH_CAP_M = 400; // bath.webp depth code: 255 * sqrt(depth / cap), must match scripts/build-dem.mjs
+const BATH_FADE_MS = 1600; // shallow-water / lake colours fade in when bath.webp arrives
+
 function readDetailLevels(): { near: number; far: number } {
   try {
     const v = new URLSearchParams(location.search).get('detail');
@@ -84,6 +122,16 @@ function readDetailLevels(): { near: number; far: number } {
   return { near: 9, far: 8 };
 }
 const LEVELS = readDetailLevels();
+
+/** ?hires=0 keeps the coarse 2048x1024 DEM only (weak devices, A/B checks). */
+function readHiRes(): boolean {
+  try {
+    return new URLSearchParams(location.search).get('hires') !== '0';
+  } catch {
+    return true;
+  }
+}
+const HI_RES = readHiRes();
 
 const VERTEX_SHADER = /* glsl */ `
 #include <common>
@@ -155,6 +203,16 @@ uniform vec3 uDesert;
 uniform vec3 uTemperateForest;
 uniform vec3 uTundra;
 
+uniform sampler2D uBathTex; // RG8: R = shallow-sea depth code, G = lake mask
+uniform sampler2D uSeaIceTex; // 360x1 RGBA8: sea-ice edge latitudes, (deg - 40) / 60: N max, N min, S max, S min
+uniform float uBathReady;
+uniform float uSeason; // fraction of the year, 0 = Jan 1
+uniform float uSnowOn; // 0 with the coarse DEM (its altitudes are not in metres)
+uniform vec3 uTurquoise;
+uniform vec3 uLake;
+uniform vec3 uSnow;
+uniform vec3 uSeaIce;
+
 uniform vec3 uGlintColor;
 uniform vec3 uWarmLit;
 uniform vec3 uCoolShadow;
@@ -194,6 +252,26 @@ vec3 biomeColor(float absLat, vec2 uv, vec3 n) {
   return c;
 }
 
+// Snow line altitude (km, true elevation) by absolute latitude: ~5.3 km in the
+// subtropics (Himalaya, Andes), 3 km in the Alps, ~1.4 km at 60 deg, sea level
+// toward the poles.
+float snowLineKm(float a) {
+  float s = mix(5.2, 5.5, smoothstep(0.0, 22.0, a));
+  s = mix(s, 5.0, smoothstep(22.0, 36.0, a));
+  s = mix(s, 3.0, smoothstep(36.0, 46.0, a));
+  s = mix(s, 1.4, smoothstep(46.0, 60.0, a));
+  s = mix(s, 0.2, smoothstep(60.0, 74.0, a));
+  return s;
+}
+
+// Sea-ice extent through the year: 0 = seasonal minimum, 1 = maximum. Slow
+// growth from the minimum (fMin) to the maximum (fMax), faster retreat.
+float seasonT(float f, float fMin, float fMax) {
+  float x = fract(f - fMin);
+  float span = fract(fMax - fMin);
+  return x < span ? smoothstep(0.0, 1.0, x / span) : 1.0 - smoothstep(0.0, 1.0, (x - span) / (1.0 - span));
+}
+
 void main() {
   #include <logdepthbuf_fragment>
 
@@ -204,13 +282,44 @@ void main() {
   vec3 mask = texture2D(uLandTex, uv).rgb;
 
   float land = aaStep(0.5, mask.r);
-  float coast = aaStep(0.35, mask.g);
   float absLat = abs(lat) * 57.2958;
 
-  vec3 ocean = mix(uDeepOcean, uShallowOcean, coast);
+  // Bathymetry (ETOPO 2022): the continental shelf tints the sea a little
+  // lighter, and shallow banks/reefs (Bahamas, Red Sea, Great Barrier Reef...)
+  // go turquoise by depth. G = major lakes (Natural Earth).
+  vec2 bath = texture2D(uBathTex, uv).rg;
+  float depthM = ${BATH_CAP_M.toFixed(1)} * bath.r * bath.r;
+  float shelf = (1.0 - smoothstep(70.0, 260.0, depthM)) * uBathReady;
+  float turq = (1.0 - smoothstep(10.0, 42.0, depthM)) * uBathReady;
+  float lake = smoothstep(0.3, 0.7, bath.g) * uBathReady;
+  vec3 ocean = mix(uDeepOcean, uShallowOcean, shelf);
+  ocean = mix(ocean, uTurquoise, turq * 0.85);
+  ocean = mix(ocean, uLake, lake); // lakes that the land polygons leave as holes (Caspian, Great Lakes)
+
+  // Seasonal sea ice: per-longitude edge latitudes (max / min extent) blended
+  // by the time of year; Arctic peaks in March, Antarctic in September.
+  float iceEdge = 99.0;
+  float iceJit = 0.0;
+  if (absLat > 42.0) {
+    vec4 ie = textureLod(uSeaIceTex, vec2(uv.x, 0.5), 0.0) * 60.0 + 40.0;
+    iceEdge = lat > 0.0
+      ? mix(ie.g, ie.r, seasonT(uSeason, 0.71, 0.18))
+      : mix(ie.a, ie.b, seasonT(uSeason, 0.13, 0.72));
+    iceJit = (cloudNoise(n * 6.0 + 11.0) - 0.5) * 5.0; // ragged edge
+  }
+  float seaIce = aaStep(iceEdge, absLat + iceJit);
+  ocean = mix(ocean, uSeaIce, seaIce);
+
   vec3 ground = biomeColor(absLat, uv, n);
+  // Snow above the (latitude-dependent) snow line; vGroundKm carries the
+  // exaggerated relief, so undo it to compare with true altitudes.
+  float elevKm = max(vGroundKm, 0.0) / ${EXAGGERATION.toFixed(1)};
+  if (elevKm > 0.15 && uSnowOn > 0.5) {
+    float snowLine = snowLineKm(absLat) + (cloudNoise(n * 40.0) - 0.5) * 0.5;
+    ground = mix(ground, uSnow, smoothstep(-0.1, 0.3, elevKm - snowLine));
+  }
   ground = mix(ground, uIce, aaStep(70.0, absLat));
-  ocean = mix(ocean, uIce, aaStep(74.0, absLat));
+  ground = mix(ground, uLake, lake);
   vec3 base = mix(ocean, ground, land);
 
   // Faceted relief: flat per-triangle normal from screen-space derivatives
@@ -272,7 +381,7 @@ void main() {
   // Water is flat: the gold/teal split toning (meant for facets) turned it
   // mauve. Plain diffuse with a little sky fill keeps it blue.
   vec3 waterColor = base * (0.45 + 0.6 * clamp(ndotl, 0.0, 1.0)) + uSkyAmbient * 0.05;
-  vec3 color = mix(waterColor, landColor, land);
+  vec3 color = mix(waterColor, landColor, land * (1.0 - lake)); // lakes are flat water, not facets
 
   vec3 nightColor = mix(uNightOcean, uNightLand, land);
   // NB: edges must stay ascending here -- smoothstep with edge0 > edge1 is
@@ -294,7 +403,7 @@ void main() {
   // field of tilted facets, so the glint is a broad soft patch centred on
   // the specular point (tens to hundreds of km from orbit), not a pinpoint.
   // sigma^2 ~ mean-square wave slope (moderate wind).
-  float water = (1.0 - land) * clamp(ndotl * 4.0, 0.0, 1.0) * (1.0 - nightMix) * (1.0 - shadowAmt * 0.8);
+  float water = (1.0 - land) * (1.0 - seaIce) * clamp(ndotl * 4.0, 0.0, 1.0) * (1.0 - nightMix) * (1.0 - shadowAmt * 0.8);
   float c2 = max(spec * spec, 1e-4);
   float tan2 = (1.0 - c2) / c2;
   const float SIGMA2 = 0.035;
@@ -333,6 +442,8 @@ export interface EarthStats {
   /** Worker build time per chunk (ms) since start, per level. */
   buildMs: Record<number, { count: number; avg: number; max: number }>;
   pendingBuilds: number;
+  /** Hi-res DEM tiles installed / total (tiles are fetched lazily near the station). */
+  hiTiles: { loaded: number; total: number };
   /** false if chunks are built on the main thread (worker unavailable). */
   worker: boolean;
 }
@@ -349,6 +460,8 @@ export interface EarthObjects {
   setSunDirWorld(v: THREE.Vector3): void;
   /** Simulation clock, seconds — kept in sync with the cloud shell's drift. */
   setTime(seconds: number): void;
+  /** Simulation date (epoch ms): drives the sea-ice season. */
+  setDate(epochMs: number): void;
   /** Streams high-detail chunks in/out around the sub-station point (OBJECT
    *  space unit direction, already de-rotated by -gmstRad like the sun dir).
    *  Call once per frame; requests at most a few chunk builds per call (built
@@ -374,6 +487,12 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
     0,
   );
   const biomeTexture = buildBiomeTexture();
+  const seaIceTexture = buildSeaIceTexture();
+  // Until bath.webp has decoded, a 1x1 stand-in (uBathReady = 0 keeps the
+  // shallow-water / lake colours off); then the real texture, faded in.
+  let bathTexture: THREE.Texture = buildDummyBathTexture();
+  let bathFadeStart = -1; // performance.now() when bath.webp arrived
+  let disposed = false;
 
   // --- Chunk builder: a module worker, or the main thread as a fallback ---
   let worker: Worker | null = null;
@@ -425,6 +544,94 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
   let fallbackHeightSource: Raster | null = null;
   loadHeight(0);
 
+  // --- Hi-res DEM tiles (lazy) ------------------------------------------
+  // 0 = not requested, 1 = loading, 2 = installed, 3 = gave up (coarse DEM used).
+  const tileState = new Uint8Array(HI_TILE_COLS * HI_TILE_ROWS);
+  const tileTries = new Uint8Array(HI_TILE_COLS * HI_TILE_ROWS);
+  let tilesLoading = 0;
+  let hiMain: HiDem | null = null; // main-thread fallback only
+  const useMainThreadHi = () => (hiMain ??= createHiDem());
+
+  function loadTile(idx: number): void {
+    const url = TILE_URLS[idx];
+    if (!url || !HI_RES) {
+      tileState[idx] = 3;
+      return;
+    }
+    tileState[idx] = 1;
+    tilesLoading++;
+    loadRaster(url)
+      .then((r) => {
+        const data = extractChannel(r, 0).data as Uint8Array;
+        const col = idx % HI_TILE_COLS;
+        const row = Math.floor(idx / HI_TILE_COLS);
+        if (disposed) return;
+        if (worker) {
+          const msg: TerrainWorkerRequest = { type: 'tile', col, row, data };
+          worker.postMessage(msg, [data.buffer]);
+        } else {
+          installHiTile(useMainThreadHi(), col, row, data);
+        }
+        tileState[idx] = 2;
+      })
+      .catch(() => {
+        tileTries[idx]++;
+        if (tileTries[idx] < 3) {
+          setTimeout(() => {
+            if (!disposed && tileState[idx] === 1) tileState[idx] = 0;
+          }, 1500 * tileTries[idx]);
+        } else tileState[idx] = 3;
+      })
+      .finally(() => {
+        tilesLoading--;
+      });
+  }
+
+  // Tiles that must be resolved (installed or given up) before a seed chunk
+  // is built; computed once per seed from its centre.
+  const seedTiles = new Map<number, number[]>();
+  function tilesForSeed(seed: SeedChunk): number[] {
+    let t = seedTiles.get(seed.index);
+    if (t) return t;
+    const [cx, cy, cz] = seed.center;
+    const lat = (Math.asin(THREE.MathUtils.clamp(cy, -1, 1)) * 180) / Math.PI;
+    const lon = (Math.atan2(-cz, cx) * 180) / Math.PI;
+    const latLo = Math.max(-90, lat - TILE_PAD_DEG);
+    const latHi = Math.min(90, lat + TILE_PAD_DEG);
+    const cosLat = Math.cos((Math.min(89, Math.max(Math.abs(latLo), Math.abs(latHi))) * Math.PI) / 180);
+    const lonPad = TILE_PAD_DEG / Math.max(cosLat, 0.02);
+    const rowOf = (la: number) => Math.min(HI_TILE_ROWS - 1, Math.max(0, Math.floor(((90 - la) / 180) * HI_TILE_ROWS)));
+    t = [];
+    const r0 = rowOf(latHi);
+    const r1 = rowOf(latLo);
+    const cols: number[] = [];
+    if (lonPad >= 180) for (let c = 0; c < HI_TILE_COLS; c++) cols.push(c);
+    else {
+      const c0 = Math.floor(((lon - lonPad + 180) / 360) * HI_TILE_COLS);
+      const c1 = Math.floor(((lon + lonPad + 180) / 360) * HI_TILE_COLS);
+      for (let c = c0; c <= c1; c++) cols.push(((c % HI_TILE_COLS) + HI_TILE_COLS) % HI_TILE_COLS);
+    }
+    for (let r = r0; r <= r1; r++) for (const c of cols) if (!t.includes(r * HI_TILE_COLS + c)) t.push(r * HI_TILE_COLS + c);
+    seedTiles.set(seed.index, t);
+    return t;
+  }
+
+  // Bathymetry / lake texture: small, loaded once at start.
+  loadBathTexture(bathUrl)
+    .then((tex) => {
+      if (disposed) {
+        tex.dispose();
+        return;
+      }
+      bathTexture.dispose();
+      bathTexture = tex;
+      material.uniforms.uBathTex.value = tex;
+      bathFadeStart = performance.now();
+    })
+    .catch(() => {
+      /* no shallow-water / lake colours; everything else works */
+    });
+
   const material = new THREE.ShaderMaterial({
     vertexShader: VERTEX_SHADER,
     fragmentShader: FRAGMENT_SHADER,
@@ -449,6 +656,15 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
       uDesert: { value: BIOMES.desert },
       uTemperateForest: { value: BIOMES.temperateForest },
       uTundra: { value: BIOMES.tundra },
+      uBathTex: { value: bathTexture as THREE.Texture },
+      uSeaIceTex: { value: seaIceTexture },
+      uBathReady: { value: 0 },
+      uSeason: { value: 0 },
+      uSnowOn: { value: HI_RES ? 1 : 0 },
+      uTurquoise: { value: SURFACE.turquoise },
+      uLake: { value: SURFACE.lake },
+      uSnow: { value: SURFACE.snow },
+      uSeaIce: { value: SURFACE.seaIce },
       uGlintColor: { value: GLINT.color },
       uWarmLit: { value: RELIEF.warmLit },
       uCoolShadow: { value: RELIEF.coolShadow },
@@ -546,12 +762,32 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
       return;
     }
     const t0 = performance.now();
-    const c = buildTerrainChunk(seed.corners, SEED_LEVEL, level, EARTH_RADIUS_KM, heightRaster!, landRaster, snapBorder);
+    const c = buildTerrainChunk(seed.corners, SEED_LEVEL, level, EARTH_RADIUS_KM, heightRaster!, landRaster, snapBorder, hiMain ?? undefined);
     recordBuild(level, performance.now() - t0);
     install(seed.index, level, c);
   }
 
+  // The first time the station's position is known, start fetching every tile
+  // the initial view needs, without waiting for the coarse DEM (which gates
+  // chunk builds): the tiles then usually arrive before the first chunk is due.
+  let prefetched = false;
+  function prefetchTiles(subDirObj: THREE.Vector3): void {
+    prefetched = true;
+    for (const seed of seeds) {
+      const [cx, cy, cz] = seed.center;
+      const d = Math.acos(THREE.MathUtils.clamp(cx * subDirObj.x + cy * subDirObj.y + cz * subDirObj.z, -1, 1)) * EARTH_RADIUS_KM;
+      if (d > DETAIL_ENTER_KM) continue;
+      for (const ti of tilesForSeed(seed)) if (tileState[ti] === 0) loadTile(ti);
+    }
+  }
+
   function updateLOD(subDirObj: THREE.Vector3): void {
+    if (!prefetched) prefetchTiles(subDirObj);
+    if (bathFadeStart >= 0) {
+      const t = Math.min(1, (performance.now() - bathFadeStart) / BATH_FADE_MS);
+      material.uniforms.uBathReady.value = t * t * (3 - 2 * t);
+      if (t >= 1) bathFadeStart = -2; // done
+    }
     if (!worker && !heightRaster && fallbackHeightSource) heightRaster = extractChannel(fallbackHeightSource, 0);
     if (worker ? !workerReady : !heightRaster) return; // coarse sphere only until the heightmap has loaded
 
@@ -588,7 +824,19 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
 
     toBuild.sort((a, b) => a.d - b.d);
     const cap = worker ? Math.min(BUILD_BUDGET_PER_FRAME, MAX_IN_FLIGHT - pending.size) : 1;
-    for (let i = 0; i < Math.min(cap, toBuild.length); i++) requestBuild(toBuild[i].seed, toBuild[i].level);
+    let posted = 0;
+    for (let i = 0; i < toBuild.length && posted < cap; i++) {
+      // Build only once the hi-res DEM covering the chunk has arrived (or
+      // been given up on): tiles are fetched nearest-chunk-first.
+      let ready = true;
+      for (const ti of tilesForSeed(toBuild[i].seed)) {
+        if (tileState[ti] === 0 && tilesLoading < MAX_TILE_LOADS) loadTile(ti);
+        if (tileState[ti] < 2) ready = false;
+      }
+      if (!ready) continue;
+      requestBuild(toBuild[i].seed, toBuild[i].level);
+      posted++;
+    }
   }
 
   return {
@@ -603,6 +851,11 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
     },
     setTime(seconds: number) {
       material.uniforms.uTime.value = seconds;
+    },
+    setDate(epochMs: number) {
+      const y = new Date(epochMs).getUTCFullYear();
+      const t0 = Date.UTC(y, 0, 1);
+      material.uniforms.uSeason.value = (epochMs - t0) / (Date.UTC(y + 1, 0, 1) - t0);
     },
     updateLOD,
     getStats(): EarthStats {
@@ -622,10 +875,12 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
         detailTrianglesApprox: tris,
         buildMs,
         pendingBuilds: pending.size,
+        hiTiles: { loaded: tileState.filter((v) => v === 2).length, total: tileState.length },
         worker: worker !== null,
       };
     },
     dispose() {
+      disposed = true;
       worker?.terminate();
       worker = null;
       coarseGeometry.dispose();
@@ -633,6 +888,8 @@ export function createEarth(cloudMap: CloudMapUniforms): EarthObjects {
       material.dispose();
       landTexture.dispose();
       biomeTexture.dispose();
+      seaIceTexture.dispose();
+      bathTexture.dispose();
     },
   };
 }

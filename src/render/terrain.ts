@@ -7,6 +7,7 @@
 // stay nearly flat so they don't read as crumpled paper.
 
 import { buildChunkMesh, borderSnapTriples, type SeedChunk } from './icosphere';
+import demMeta from '../assets/dem/meta.json';
 
 const MAX_ELEV_KM = 8.8;
 export const EXAGGERATION = 5.0;
@@ -98,6 +99,63 @@ export function extractChannel(r: Raster, channel: number): Raster {
   return { data: out, width: r.width, height: r.height, stride: 1 };
 }
 
+// --- High-resolution DEM (ETOPO 2022, 0.05 deg) ---------------------------
+// A global 8-bit raster assembled from lazily loaded tiles (scripts/build-dem.mjs
+// writes them; code = 255 * sqrt(metres / capM)). Until a tile has arrived its
+// area falls back to the coarse DEM, and earth.ts does not build chunks over
+// missing tiles, so the two are never mixed inside a chunk.
+export const HI_TILE_COLS: number = demMeta.tileCols;
+export const HI_TILE_ROWS: number = demMeta.tileRows;
+export const HI_TILE_SIZE: number = demMeta.tileSize;
+const HI_W = HI_TILE_COLS * HI_TILE_SIZE;
+const HI_H = HI_TILE_ROWS * HI_TILE_SIZE;
+const HI_CAP_KM = demMeta.elevCapM / 1000;
+const HI_LUT = new Float32Array(256);
+for (let i = 0; i < 256; i++) HI_LUT[i] = HI_CAP_KM * (i / 255) * (i / 255);
+
+export interface HiDem {
+  /** HI_W x HI_H codes, zero until the tile covering them is installed. */
+  data: Uint8Array;
+  /** 1 per tile once installed (index = row * HI_TILE_COLS + col). */
+  loaded: Uint8Array;
+}
+
+export function createHiDem(): HiDem {
+  return { data: new Uint8Array(HI_W * HI_H), loaded: new Uint8Array(HI_TILE_COLS * HI_TILE_ROWS) };
+}
+
+export function installHiTile(hi: HiDem, col: number, row: number, tile: Uint8Array): void {
+  const ts = HI_TILE_SIZE;
+  for (let y = 0; y < ts; y++) {
+    hi.data.set(tile.subarray(y * ts, (y + 1) * ts), (row * ts + y) * HI_W + col * ts);
+  }
+  hi.loaded[row * HI_TILE_COLS + col] = 1;
+}
+
+// Bilinear elevation in km from the hi-res DEM, or -1 if the tile is missing.
+function sampleHiKm(hi: HiDem, uN: number, vN: number): number {
+  const u = uN * HI_W - 0.5;
+  const v = vN * HI_H - 0.5;
+  const x0 = Math.floor(u);
+  const y0 = Math.max(0, Math.min(HI_H - 1, Math.floor(v)));
+  const y1 = Math.min(HI_H - 1, y0 + 1);
+  const fx = u - x0;
+  const fy = Math.max(0, Math.min(1, v - y0));
+  const xa = ((x0 % HI_W) + HI_W) % HI_W;
+  const xb = xa + 1 === HI_W ? 0 : xa + 1;
+  if (!hi.loaded[Math.floor(y0 / HI_TILE_SIZE) * HI_TILE_COLS + Math.floor(xa / HI_TILE_SIZE)]) return -1;
+  const d = hi.data;
+  const r0 = y0 * HI_W;
+  const r1 = y1 * HI_W;
+  const a00 = HI_LUT[d[r0 + xa]];
+  const a10 = HI_LUT[d[r0 + xb]];
+  const a01 = HI_LUT[d[r1 + xa]];
+  const a11 = HI_LUT[d[r1 + xb]];
+  const top = a00 + (a10 - a00) * fx;
+  const bot = a01 + (a11 - a01) * fx;
+  return top + (bot - top) * fy;
+}
+
 // Bilinear sample of channel 0 at precomputed equirect pixel coords (u, v).
 // Both rasters are sampled at the same lat/lon, so the (costly) asin/atan2 is
 // done once per elevation evaluation in elevationKm.
@@ -131,6 +189,8 @@ function sampleUV(r: Raster, uN: number, vN: number): number {
 const RIDGE_FREQ = 130;
 const RIDGE_GAIN = 4.0 / 3.0;
 const ROLL_FREQ = 140;
+/** Micro-relief amplitude factor where the hi-res DEM is present. */
+const MICRO_SCALE_HI = 0.3;
 
 /** Elevation above sea level in km (already exaggerated) at a unit direction.
  *  `height` and `land` are single-channel or RGBA rasters (channel 0 used).
@@ -143,6 +203,7 @@ export function elevationKm(
   ny: number,
   nz: number,
   detail = true,
+  hi?: HiDem,
 ): number {
   const lat = Math.asin(ny > 1 ? 1 : ny < -1 ? -1 : ny);
   const lon = Math.atan2(-nz, nx);
@@ -150,7 +211,15 @@ export function elevationKm(
   const vN = 0.5 - lat / Math.PI;
   const landAmt = smoothstep(0.42, 0.58, sampleUV(land, uN, vN));
   if (landAmt <= 0) return 0;
-  const h = sampleUV(height, uN, vN);
+  let h = -1;
+  if (hi) {
+    h = sampleHiKm(hi, uN, vN);
+    if (h >= 0) h /= MAX_ELEV_KM;
+  }
+  // The hi-res DEM carries the real ranges and valleys, so the invented
+  // micro-relief only has to break up flat facets a little.
+  const microScale = h >= 0 ? MICRO_SCALE_HI : 1;
+  if (h < 0) h = sampleUV(height, uN, vN);
   if (!detail) return h * MAX_ELEV_KM * EXAGGERATION * landAmt;
   const mountain = smoothstep(0.035, 0.22, h);
   // plains: a very gentle roll (a few hundred metres), more on uplands
@@ -160,7 +229,7 @@ export function elevationKm(
     mountain > 0
       ? rolling + ((ridgedFbm(nx * RIDGE_FREQ, ny * RIDGE_FREQ, nz * RIDGE_FREQ) - 0.3) * RIDGE_GAIN - rolling) * mountain
       : rolling;
-  return (h * MAX_ELEV_KM + micro) * EXAGGERATION * landAmt;
+  return (h * MAX_ELEV_KM + micro * microScale) * EXAGGERATION * landAmt;
 }
 
 // --- Horizon angles (cast shadows, review-2 §5-2) --------------------------
@@ -204,6 +273,7 @@ export function computeHorizons(
   radiusKm: number,
   firstStepKm: number,
   count: number,
+  hi?: HiDem,
 ): { horizonA: Uint8Array; horizonB: Uint8Array } {
   const horizonA = new Uint8Array(count * 4);
   const horizonB = new Uint8Array(count * 4);
@@ -255,7 +325,7 @@ export function computeHorizons(
         const qx = nx * c + tx * sn;
         const qy = ny * c + ty * sn;
         const qz = nz * c + tz * sn;
-        const r1 = radiusKm + elevationKm(height, land, qx, qy, qz, s < detailSamples);
+        const r1 = radiusKm + elevationKm(height, land, qx, qy, qz, s < detailSamples, hi);
         // vector from vertex to sample, its component along the local up n
         const dx = qx * r1 - nx * r0;
         const dy = qy * r1 - ny * r0;
@@ -297,6 +367,7 @@ export function buildTerrainChunk(
   height: Raster,
   land: Raster,
   snapBorder: boolean,
+  hi?: HiDem,
 ): TerrainChunk {
   const extra = level - seedLevel;
   const mesh = buildChunkMesh({ index: 0, corners, center: corners[0] }, extra, radiusKm, 0);
@@ -311,7 +382,7 @@ export function buildTerrainChunk(
     const nx = x / r;
     const ny = y / r;
     const nz = z / r;
-    const e = elevationKm(height, land, nx, ny, nz);
+    const e = elevationKm(height, land, nx, ny, nz, true, hi);
     elev[v] = e;
     positions[v * 3] = nx * (radiusKm + e);
     positions[v * 3 + 1] = ny * (radiusKm + e);
@@ -325,6 +396,7 @@ export function buildTerrainChunk(
     radiusKm,
     0.5 * facetEdgeKm(level, radiusKm),
     count,
+    hi,
   );
   if (snapBorder) {
     for (const [o, a, b] of borderSnapTriples(extra)) {

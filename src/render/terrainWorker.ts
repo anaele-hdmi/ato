@@ -2,11 +2,13 @@
 // detail chunk's vertices by the DEM + micro-relief and bakes its per-vertex
 // horizon angles (cast shadows). The DEM and land-mask rasters arrive once
 // (transferred, single channel); every build result is transferred back.
-import { buildTerrainChunk, type Raster } from './terrain';
+import { buildTerrainChunk, createHiDem, installHiTile, type Raster } from './terrain';
 import type { SeedChunk } from './icosphere';
 
 export type TerrainWorkerRequest =
   | { type: 'init'; height: Raster; land: Raster }
+  /** One hi-res DEM tile (single channel codes, see terrain.ts HiDem). */
+  | { type: 'tile'; col: number; row: number; data: Uint8Array }
   | {
       type: 'build';
       id: number;
@@ -39,6 +41,7 @@ const scope = self as unknown as WorkerScope;
 
 let height: Raster | null = null;
 let land: Raster | null = null;
+const hi = createHiDem();
 
 scope.onmessage = (e) => {
   const msg = e.data;
@@ -47,9 +50,13 @@ scope.onmessage = (e) => {
     land = msg.land;
     return;
   }
+  if (msg.type === 'tile') {
+    installHiTile(hi, msg.col, msg.row, msg.data);
+    return;
+  }
   if (!height || !land) return; // earth.ts only sends builds after init
   const t0 = performance.now();
-  const c = buildTerrainChunk(msg.corners, msg.seedLevel, msg.level, msg.radiusKm, height, land, msg.snapBorder);
+  const c = buildTerrainChunk(msg.corners, msg.seedLevel, msg.level, msg.radiusKm, height, land, msg.snapBorder, hi);
   const ms = performance.now() - t0;
   scope.postMessage(
     { type: 'built', id: msg.id, seedIndex: msg.seedIndex, level: msg.level, ms, ...c },
