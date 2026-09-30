@@ -200,3 +200,18 @@ export const CLOUD_LAYERS = {
   sunsetGold: new THREE.Color(0xffc98c),
   sunsetPink: new THREE.Color(0xf09aa6),
 };
+
+/** Variable depth of field (post.ts / cameraRig.ts). Orbital photos are
+ *  focused at infinity, so the Earth is never blurred from inside. */
+export const DOF = {
+  /** interior views: half-width (degrees of view angle) of the soft penumbra on
+   *  the window aperture edge, i.e. how out-of-focus the frame/mullions are */
+  cabinBlurDeg: 0.6,
+  /** chase view: background (Earth) blur radius at closest zoom, as a fraction of frame height (~2.4 px at 1080p) */
+  chaseBlurFrac: 0.0022,
+  /** chase distance (km): full effect at/below near, none at/above far */
+  chaseNearKm: 0.03,
+  chaseFarKm: 0.2,
+  /** easing time constant (s) for the chase blur amount */
+  easeSec: 0.3,
+};

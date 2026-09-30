@@ -15,10 +15,13 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { DOF } from './palette';
 
 export interface PostPipeline {
   render(): void;
   resize(width: number, height: number, pixelRatio: number): void;
+  /** Chase-view depth of field: 0 = off (zero cost), 1 = fully focused on the station. Eased internally. */
+  setDof(target: number): void;
   dispose(): void;
 }
 
@@ -28,6 +31,16 @@ function urlWantsPostDisabled(): boolean {
     return new URLSearchParams(window.location.search).get('post') === '0';
   } catch {
     return false;
+  }
+}
+
+/** `?dof=0` turns the variable depth of field off (interior + chase). */
+export function urlWantsDof(): boolean {
+  if (typeof window === 'undefined' || !window.location) return true;
+  try {
+    return new URLSearchParams(window.location.search).get('dof') !== '0';
+  } catch {
+    return true;
   }
 }
 
@@ -49,6 +62,8 @@ const GradeShader = {
     uVignetteRadius: { value: 0.72 },
     uVignetteSoftness: { value: 0.62 },
     uGrainAmount: { value: 0.004 },
+    // Chase-view DOF: background blur radius in target pixels (0 = branch skipped).
+    uDofR: { value: 0 },
   },
   vertexShader: /* glsl */ `
     varying vec2 vUv;
@@ -69,6 +84,7 @@ const GradeShader = {
     uniform float uVignetteRadius;
     uniform float uVignetteSoftness;
     uniform float uGrainAmount;
+    uniform float uDofR;
     varying vec2 vUv;
 
     float luma(vec3 c) { return dot(c, vec3(0.2126, 0.7152, 0.0722)); }
@@ -82,7 +98,29 @@ const GradeShader = {
     }
 
     void main() {
-      vec3 color = texture2D(tDiffuse, vUv).rgb;
+      vec4 c0 = texture2D(tDiffuse, vUv);
+      vec3 color = c0.rgb;
+
+      // Chase-view DOF (focus on the station, far background slightly soft).
+      // Alpha carries the station mask: the station writes 0, everything else
+      // is 1 (MSAA-resolved, so the silhouette stays antialiased). The blur
+      // gathers only background taps (weighted by alpha), so station colour
+      // never bleeds out. The branch is uniform: zero cost when uDofR == 0.
+      if (uDofR > 0.0) {
+        vec2 texel = 1.0 / uResolution;
+        vec3 acc = c0.rgb * c0.a;
+        float wsum = c0.a;
+        for (int i = 0; i < 8; i++) {
+          float fi = float(i);
+          float ang = fi * 2.39996;
+          float rad = sqrt((fi + 0.5) / 8.0) * uDofR;
+          vec4 s = texture2D(tDiffuse, vUv + vec2(cos(ang), sin(ang)) * rad * texel);
+          acc += s.rgb * s.a;
+          wsum += s.a;
+        }
+        vec3 blurBG = wsum > 1e-3 ? acc / wsum : color;
+        color = mix(color, blurBG, c0.a);
+      }
       float l = luma(color);
 
       // Shadow lift: only nudges midtones/near-blacks that still have some
@@ -166,6 +204,14 @@ export function createPost(
   //   ocean glint (all near-1.0 luma) trigger it; the flat-shaded/toon Earth
   //   and station stay untouched so the "posterized" look from
   //   docs/art-direction.md survives.
+  // The bloom composite is additive; keep it from touching the alpha (DOF mask) channel.
+  const bm = bloomPass.blendMaterial;
+  bm.blending = THREE.CustomBlending;
+  bm.blendEquation = THREE.AddEquation;
+  bm.blendSrc = THREE.SrcAlphaFactor;
+  bm.blendDst = THREE.OneFactor;
+  bm.blendSrcAlpha = THREE.ZeroFactor;
+  bm.blendDstAlpha = THREE.OneFactor;
   const gradePass = new ShaderPass(GradeShader);
   gradePass.uniforms.uResolution.value.set(size.x * pixelRatio, size.y * pixelRatio);
   if (fx) {
@@ -178,8 +224,49 @@ export function createPost(
 
   const clock = new THREE.Clock();
 
+  // --- chase DOF state ----------------------------------------------------
+  const dofAllowed = fx && urlWantsDof();
+  let dofTarget = 0;
+  let dofAmount = 0;
+  let lastT = 0;
+  let frameH = size.y * pixelRatio;
+  // Some transparent layers (clouds) write alpha through NormalBlending, which
+  // would dent the mask. Make their alpha write a no-op (RGB blend unchanged).
+  const alphaSafe = new WeakSet<THREE.Material>();
+  function protectAlpha(): void {
+    scene.traverse((o) => {
+      const mats = (o as THREE.Mesh).material;
+      if (!mats) return;
+      for (const m of Array.isArray(mats) ? mats : [mats]) {
+        if (alphaSafe.has(m)) continue;
+        alphaSafe.add(m);
+        if (m.transparent && m.blending === THREE.NormalBlending && !m.premultipliedAlpha) {
+          m.blending = THREE.CustomBlending;
+          m.blendEquation = THREE.AddEquation;
+          m.blendSrc = THREE.SrcAlphaFactor;
+          m.blendDst = THREE.OneMinusSrcAlphaFactor;
+          m.blendSrcAlpha = THREE.ZeroFactor;
+          m.blendDstAlpha = THREE.OneFactor;
+        }
+      }
+    });
+  }
+
+  function setDof(target: number): void {
+    dofTarget = dofAllowed ? THREE.MathUtils.clamp(target, 0, 1) : 0;
+  }
+
   function render(): void {
-    gradePass.uniforms.uTime.value = clock.getElapsedTime();
+    const t = clock.getElapsedTime();
+    const dt = Math.min(0.25, Math.max(0, t - lastT));
+    lastT = t;
+    gradePass.uniforms.uTime.value = t;
+    if (dofAllowed) {
+      if (dofTarget > 0 && dofAmount === 0) protectAlpha();
+      dofAmount += (dofTarget - dofAmount) * (1 - Math.exp(-dt / DOF.easeSec));
+      if (dofTarget === 0 && dofAmount < 0.01) dofAmount = 0;
+      gradePass.uniforms.uDofR.value = dofAmount * DOF.chaseBlurFrac * frameH;
+    }
     composer.render();
   }
 
@@ -188,11 +275,12 @@ export function createPost(
     composer.setSize(width, height);
     bloomPass.resolution.set(Math.max(1, Math.round(width * pr * BLOOM_SCALE)), Math.max(1, Math.round(height * pr * BLOOM_SCALE)));
     gradePass.uniforms.uResolution.value.set(width * pr, height * pr);
+    frameH = height * pr;
   }
 
   function dispose(): void {
     composer.dispose();
   }
 
-  return { render, resize, dispose };
+  return { render, resize, setDof, dispose };
 }

@@ -117,6 +117,11 @@ export class ChaseCameraController {
 
   private readonly canvas: HTMLCanvasElement;
 
+  /** Distance from the station (km). */
+  get distanceKm(): number {
+    return this.distance;
+  }
+
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
     canvas.addEventListener('pointerdown', this.onPointerDown);

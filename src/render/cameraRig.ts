@@ -9,6 +9,8 @@
 //   chase  : outside the station (the only view where the station is visible)
 import * as THREE from 'three';
 import { ChaseCameraController } from './cameraControl';
+import { DOF } from './palette';
+import { urlWantsDof } from './post';
 
 export type CameraMode = 'cupola' | 'aft' | 'limb' | 'zenith' | 'chase';
 export const CAMERA_ORDER: CameraMode[] = ['cupola', 'aft', 'limb', 'zenith', 'chase'];
@@ -171,6 +173,7 @@ const CABIN_FRAGMENT = /* glsl */ `
 uniform int uMode;
 uniform vec3 uWall;
 uniform vec3 uRim;
+uniform float uBlur; // radians: defocus penumbra on the aperture edge (frame is near, focus at infinity)
 varying vec3 vDir;
 
 // signed angular distance (radians) into a rounded rectangle window facing n
@@ -209,7 +212,7 @@ void main() {
     float zen = acos(clamp(d.z, -1.0, 1.0));
     open = radians(32.0) - zen;
   }
-  float w = max(fwidth(open), 1e-4);
+  float w = max(max(fwidth(open), 1e-4), uBlur);
   float inside = smoothstep(-w, w, open);
   if (inside > 0.999) discard;
   // a thin lighter rim just around each aperture, soft falloff into the wall
@@ -230,6 +233,7 @@ function buildCabin(): THREE.Mesh {
       uMode: { value: 0 },
       uWall: { value: new THREE.Color(0x15181f) },
       uRim: { value: new THREE.Color(0x3a3f4a) },
+      uBlur: { value: urlWantsDof() ? DOF.cabinBlurDeg * DEG : 0 },
     },
     side: THREE.BackSide,
     transparent: true,
@@ -270,6 +274,12 @@ export class CameraRig {
     const i = CAMERA_ORDER.indexOf(this.mode);
     this.setMode(CAMERA_ORDER[(i + 1) % CAMERA_ORDER.length]);
     return this.mode;
+  }
+
+  /** Chase-view DOF target: 1 when zoomed right up to the station, 0 when far or inside. */
+  dofTarget(): number {
+    if (this.mode !== 'chase') return 0;
+    return 1 - THREE.MathUtils.smoothstep(this.chase.distanceKm, DOF.chaseNearKm, DOF.chaseFarKm);
   }
 
   /** Turn toward the Sun's azimuth (sunrise framing). */

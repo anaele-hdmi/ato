@@ -197,6 +197,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     cloudMap.setClimate(frame.timeMs, sunDirObjVec);
     cloudMap.update(renderer, simSeconds);
     if (statsEl) renderer.info.reset();
+    post.setDof(rig.dofTarget());
     post.render();
 
     // adaptive resolution

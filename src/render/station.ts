@@ -201,6 +201,15 @@ export function createStation(): StationObjects {
 
   // Matte, faceted: flat-shaded Lambert, colour per vertex.
   const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, flatShading: true });
+  // DOF mask: the station writes alpha 0 into the (otherwise unused) alpha
+  // channel of the MSAA target; every other opaque surface leaves it at 1.
+  // post.ts reads it in the chase view only. RGB output is unchanged.
+  material.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace(
+      '#include <opaque_fragment>',
+      '#include <opaque_fragment>\n  gl_FragColor.a = 0.0;',
+    );
+  };
 
   const _m = new THREE.Matrix4();
   const _q = new THREE.Quaternion();
