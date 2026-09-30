@@ -10,7 +10,7 @@
 import * as THREE from 'three';
 import { ChaseCameraController } from './cameraControl';
 import { DOF } from './palette';
-import { urlWantsDof } from './post';
+import { createCabin, type Cabin } from './cabin';
 
 export type CameraMode = 'cupola' | 'aft' | 'limb' | 'zenith' | 'chase';
 export const CAMERA_ORDER: CameraMode[] = ['cupola', 'aft', 'limb', 'zenith', 'chase'];
@@ -150,114 +150,21 @@ class LookController {
   }
 }
 
-// Cabin: a small dark sphere around the eye whose shader opens only the
-// window apertures (defined as angles in the station's LVLH frame). Unlike
-// flat frames, this has no edges to peek past at extreme pan angles.
-const CABIN_RADIUS_KM = 0.003; // 3 m
-const CABIN_MODE: Record<Exclude<CameraMode, 'chase'>, number> = { cupola: 0, aft: 1, limb: 2, zenith: 3 };
-
-const CABIN_VERTEX = /* glsl */ `
-#include <common>
-#include <logdepthbuf_pars_vertex>
-varying vec3 vDir;
-void main() {
-  vDir = normalize(position); // LVLH: x right, y forward, z up
-  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-  #include <logdepthbuf_vertex>
-}
-`;
-
-const CABIN_FRAGMENT = /* glsl */ `
-#include <common>
-#include <logdepthbuf_pars_fragment>
-uniform int uMode;
-uniform vec3 uWall;
-uniform vec3 uRim;
-uniform float uBlur; // radians: defocus penumbra on the aperture edge (frame is near, focus at infinity)
-varying vec3 vDir;
-
-// signed angular distance (radians) into a rounded rectangle window facing n
-float rectWindow(vec3 d, vec3 n, float halfW, float halfH, float corner) {
-  vec3 u = vec3(1.0, 0.0, 0.0);
-  vec3 v = normalize(cross(n, u));
-  float fz = dot(d, n);
-  if (fz <= 0.0) return -1.0;
-  vec2 a = vec2(atan(dot(d, u), fz), atan(dot(d, v), fz));
-  vec2 q = abs(a) - vec2(halfW, halfH) + corner;
-  float outside = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - corner;
-  return -outside;
-}
-
-void main() {
-  #include <logdepthbuf_fragment>
-  vec3 d = normalize(vDir);
-  float open = -1.0; // >0 inside a window (radians of margin)
-  if (uMode == 0) {
-    // cupola: round centre window + six trapezoids with mullions
-    float nadir = acos(clamp(-d.z, -1.0, 1.0));
-    float centre = radians(34.0) - nadir;
-    float az = atan(d.y, d.x);
-    float seg = radians(60.0);
-    float rel = mod(az - radians(30.0), seg);
-    float mullion = min(rel, seg - rel) * sin(nadir) - radians(3.5);
-    float ring = min(nadir - radians(40.0), radians(68.0) - nadir);
-    open = max(centre, min(ring, mullion));
-  } else if (uMode == 1) {
-    float t = radians(76.0);
-    open = rectWindow(d, vec3(0.0, -sin(t), -cos(t)), radians(42.0), radians(24.0), radians(8.0));
-  } else if (uMode == 2) {
-    float t = radians(70.0);
-    open = rectWindow(d, vec3(0.0, sin(t), -cos(t)), radians(42.0), radians(24.0), radians(8.0));
-  } else {
-    float zen = acos(clamp(d.z, -1.0, 1.0));
-    open = radians(32.0) - zen;
-  }
-  float w = max(max(fwidth(open), 1e-4), uBlur);
-  float inside = smoothstep(-w, w, open);
-  if (inside > 0.999) discard;
-  // a thin lighter rim just around each aperture, soft falloff into the wall
-  float rim = 1.0 - smoothstep(0.0, radians(2.5), -open);
-  vec3 wall = uWall * (0.85 + 0.25 * d.z);
-  vec3 col = mix(wall, uRim, rim * 0.6);
-  gl_FragColor = vec4(col, 1.0 - inside);
-  #include <colorspace_fragment>
-}
-`;
-
-function buildCabin(): THREE.Mesh {
-  const geometry = new THREE.SphereGeometry(CABIN_RADIUS_KM, 64, 48);
-  const material = new THREE.ShaderMaterial({
-    vertexShader: CABIN_VERTEX,
-    fragmentShader: CABIN_FRAGMENT,
-    uniforms: {
-      uMode: { value: 0 },
-      uWall: { value: new THREE.Color(0x15181f) },
-      uRim: { value: new THREE.Color(0x3a3f4a) },
-      uBlur: { value: urlWantsDof() ? DOF.cabinBlurDeg * DEG : 0 },
-    },
-    side: THREE.BackSide,
-    transparent: true,
-  });
-  const mesh = new THREE.Mesh(geometry, material);
-  mesh.renderOrder = 10;
-  mesh.frustumCulled = false;
-  return mesh;
-}
-
 export class CameraRig {
   mode: CameraMode = 'cupola';
   readonly chase: ChaseCameraController;
   private readonly look: LookController;
   /** Add to the scene: the cabin around the active eye, in LVLH each frame. */
   readonly frames = new THREE.Group();
-  private readonly cabin: THREE.Mesh;
+  private readonly cabin: Cabin;
+  private readonly sunLocal = new THREE.Vector3();
   private readonly basis = new THREE.Matrix4();
 
   constructor(canvas: HTMLCanvasElement) {
     this.chase = new ChaseCameraController(canvas);
     this.look = new LookController(canvas);
-    this.cabin = buildCabin();
-    this.frames.add(this.cabin);
+    this.cabin = createCabin();
+    this.frames.add(this.cabin.group);
     this.setMode('cupola');
   }
 
@@ -266,8 +173,7 @@ export class CameraRig {
     this.chase.enabled = mode === 'chase';
     this.look.enabled = mode !== 'chase';
     if (mode !== 'chase') this.look.setParams(LOOK[mode]);
-    this.cabin.visible = mode !== 'chase';
-    if (mode !== 'chase') (this.cabin.material as THREE.ShaderMaterial).uniforms.uMode.value = CABIN_MODE[mode];
+    this.cabin.setMode(mode === 'chase' ? null : mode);
   }
 
   next(): CameraMode {
@@ -306,6 +212,9 @@ export class CameraRig {
     this.basis.makeBasis(right, fwd, up);
     this.frames.quaternion.setFromRotationMatrix(this.basis);
     this.frames.position.copy(eye);
+    if (this.mode !== 'chase') {
+      this.cabin.update(this.sunLocal.set(sunDir.dot(right), sunDir.dot(fwd), sunDir.dot(up)).normalize());
+    }
 
     if (this.mode === 'chase') {
       if (camera.fov !== CHASE_FOV) {
@@ -321,11 +230,6 @@ export class CameraRig {
   dispose(): void {
     this.chase.dispose();
     this.look.dispose();
-    this.frames.traverse((o) => {
-      if (o instanceof THREE.Mesh) {
-        o.geometry.dispose();
-        (o.material as THREE.Material).dispose();
-      }
-    });
+    this.cabin.dispose();
   }
 }

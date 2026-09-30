@@ -71,6 +71,33 @@ export const STATION = {
   /** ambient fill so the unlit side reads as a cooler mid grey, not black */
   ambient: new THREE.Color(0xc2d1ff),
   ambientIntensity: 2.17,
+  /** exterior cupola window glass: near black, reflects the sun */
+  glass: new THREE.Color(0x070b13),
+  glassSpecular: new THREE.Color(0xa9bbd8),
+  /** opened window shutters */
+  shutter: new THREE.Color(0x9c9a94),
+};
+
+/** Interior window frames (cabin.ts). Lighting is analytic: a little ambient,
+ *  earthshine from below, and the Sun only where it can reach through a window.
+ *  Intensities are linear radiance multipliers (the Sun uses SUN.*). */
+export const CABIN = {
+  wall: new THREE.Color(0x15181f),
+  /** window seal / rubber gasket between glass and metal */
+  seal: new THREE.Color(0x12151a),
+  /** anodised aluminium frame */
+  frame: new THREE.Color(0xa09e98),
+  ambient: new THREE.Color(0x8fa2c8),
+  ambientIntensity: 0.05,
+  /** blue-white light bounced up from the Earth: strong over the day side */
+  earthshine: new THREE.Color(0xa6bfe8),
+  earthDay: 0.3,
+  earthNight: 0.03,
+  /** Sun colour while it grazes the atmosphere (sunrise / sunset moment) */
+  sunWarm: new THREE.Color(0xff8a45),
+  /** glass reflection: base (normal incidence) and extra at grazing angles */
+  glassBase: 0.035,
+  glassFresnel: 0.5,
 };
 
 /** Land biome faces (M2): flat colours picked by latitude + coast distance + a
