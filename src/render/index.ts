@@ -37,7 +37,14 @@ export interface SceneRenderer {
   dispose(): void;
 }
 
-const MAX_DPR = 1.5;
+// Upper bound of the render resolution (never above devicePixelRatio). 2 keeps
+// cloud edges crisp on 3x phones; the adaptive loop below still drops it when slow.
+// ?dpr=N overrides the cap (e.g. ?dpr=1 to save fuel, ?dpr=3 for stills).
+const DEFAULT_MAX_DPR = 2;
+const MAX_DPR = (() => {
+  const v = Number(new URLSearchParams(location.search).get('dpr'));
+  return Number.isFinite(v) && v >= 0.5 && v <= 4 ? v : DEFAULT_MAX_DPR;
+})();
 const MIN_DPR = 0.75;
 // Adaptive resolution: keep the frame rate up on weak phones by lowering the
 // render resolution first (cheapest visual cost), then raising it back when
