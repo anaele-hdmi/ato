@@ -34,4 +34,7 @@ npm test         # 軌道計算のテスト
 - 陸地形状: Natural Earth（world-atlas 経由, パブリックドメイン）
 - 標高画像: three-globe（vasturiano, MIT）のサンプル画像 `earth-topology.png`。元データの出典は未確認
 - 恒星データ: d3-celestial © 2015 Olaf Frohn, BSD-3-Clause（Hipparcos 由来）
+- 月の位置・位相: Jean Meeus『Astronomical Algorithms』第47・48章の主要項のみの簡略式（自前実装、出典は式のみ）。月面の海の位置は IAU 月面座標の概略値
+- 地磁気双極子: 北磁極 80.7°N 72.7°W（IGRF-13 の中心双極子近似）。オーロラの活動度は日付シードの疑似乱数（実際の宇宙天気ではない）
+- 流星群の極大日・ZHR: IMO（国際流星機構）の主要流星群リストの概数
 - 宇宙船は架空のもので、実在の機関・機体とは無関係

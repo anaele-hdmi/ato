@@ -22,7 +22,7 @@
 // The geometry is a FrontSide sphere whose radius must stay BELOW the station
 // altitude (420 km): the camera has to be outside it.
 import * as THREE from 'three';
-import { ATMOSPHERE, ATMOSPHERE_SCATTER as S } from './palette';
+import { ATMOSPHERE, ATMOSPHERE_SCATTER as S, NLC } from './palette';
 import { EARTH_RADIUS_KM } from '../types';
 import { createTransmittanceLut, TRANSMITTANCE_LUT_WIDTH, TRANSMITTANCE_LUT_HEIGHT } from './atmosphereLut';
 
@@ -32,6 +32,9 @@ const SHELL_HEIGHT_KM = 330;
 /** Airglow layer (night side), km — kept from the analytic model. */
 const AIRGLOW_H_KM = 95;
 const AIRGLOW_W_KM = 2.5;
+/** Noctilucent cloud layer (summer mesopause), km. */
+const NLC_H_KM = 83;
+const NLC_W_KM = 2.4;
 
 const VERTEX_SHADER = /* glsl */ `
 #include <common>
@@ -85,6 +88,11 @@ uniform vec3 uAirglowColor;
 uniform float uAirglowIntensity;
 uniform float uAirglowH;
 uniform float uAirglowW;
+uniform vec2 uNlcSeason;       // (north, south) season factor 0..1
+uniform vec3 uNlcColor;
+uniform float uNlcIntensity;
+uniform float uNlcH;
+uniform float uNlcW;
 
 varying vec3 vWorldPosition;
 varying vec3 vCenter;
@@ -143,6 +151,23 @@ void main() {
     float ax = (hc - uAirglowH) / w;
     float ag = exp(-ax * ax) * (uAirglowW / w);
     extra += uAirglowColor * uAirglowIntensity * ag * (1.0 - smoothstep(-0.25, 0.0, muT));
+
+    // Noctilucent clouds: a thin silvery layer at ~83 km, only in the summer
+    // hemisphere poleward of ~50 deg, and only where the layer is still lit by
+    // the Sun (it sees the Sun until ~9 deg below the horizon) but the ground
+    // is out of full daylight. Seen edge-on at the limb, as a thin wavy line.
+    if (uNlcSeason.x + uNlcSeason.y > 0.0) {
+      float sinLat = pc.y / rc;       // Earth's axis is scene +Y
+      float season = sinLat > 0.0 ? uNlcSeason.x : uNlcSeason.y;
+      float latW = smoothstep(0.74, 0.82, abs(sinLat));
+      float dep = -muT;               // sin(solar depression) at the tangent point
+      float twi = smoothstep(0.0, 0.052, dep) * (1.0 - smoothstep(0.13, 0.16, dep));
+      float wave = 1.6 * sin(pc.x * 0.0021 + pc.z * 0.0034) + 0.9 * sin(pc.x * 0.0057 - pc.z * 0.0043);
+      float nx = (hc - (uNlcH + wave)) / max(uNlcW, hcW * 1.5);
+      float ng = exp(-nx * nx) * (uNlcW / max(uNlcW, hcW * 1.5));
+      float streak = 0.5 + 0.5 * sin(pc.x * 0.0045 - pc.z * 0.0031 + 2.0 * sin(pc.y * 0.0027 + pc.x * 0.0011));
+      extra += uNlcColor * uNlcIntensity * ng * (0.35 + 0.65 * streak) * season * latW * twi;
+    }
   }
 
   float discTop = (uTop - rc) * (uTop + rc);
@@ -245,6 +270,8 @@ export interface AtmosphereObjects {
   mesh: THREE.Mesh;
   material: THREE.ShaderMaterial;
   setSunDir(v: THREE.Vector3): void;
+  /** Noctilucent-cloud season factors (0..1) for the northern / southern hemisphere. */
+  setNlcSeason(north: number, south: number): void;
   dispose(): void;
 }
 
@@ -299,6 +326,11 @@ export function createAtmosphere(): AtmosphereObjects {
       uAirglowIntensity: { value: ATMOSPHERE.nightIntensity },
       uAirglowH: { value: AIRGLOW_H_KM },
       uAirglowW: { value: AIRGLOW_W_KM },
+      uNlcSeason: { value: new THREE.Vector2(0, 0) },
+      uNlcColor: { value: NLC.color },
+      uNlcIntensity: { value: NLC.intensity },
+      uNlcH: { value: NLC_H_KM },
+      uNlcW: { value: NLC_W_KM },
     },
     transparent: true,
     depthWrite: false,
@@ -317,6 +349,9 @@ export function createAtmosphere(): AtmosphereObjects {
     material,
     setSunDir(v: THREE.Vector3) {
       (material.uniforms.uSunDir.value as THREE.Vector3).copy(v);
+    },
+    setNlcSeason(north: number, south: number) {
+      (material.uniforms.uNlcSeason.value as THREE.Vector2).set(north, south);
     },
     dispose() {
       geometry.dispose();
