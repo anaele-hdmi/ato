@@ -2,7 +2,10 @@
 // hub with chamfered ends, a faceted zenith dome with a small antenna on top,
 // an Earth-facing cupola pod below, two chunky segmented arms and two square
 // 2x2 solar arrays that turn about the arm axis to face the Sun.
-// Matte flat-shaded Lambert with vertex colours; no textures.
+// Space lighting (no sky scatter): flat-shaded, vertex-coloured, no textures.
+// Reflection character is split across a few meshes: matte white insulation
+// (Lambert), lightly reflective metal trim (Phong), navy solar cells with a
+// slight specular sheen, and near-black glass with a sharp Sun glint.
 // LVLH-oriented: local -Z = velocity (forward), local +Y = away from Earth,
 // local X = the arm axis.
 import * as THREE from 'three';
@@ -35,7 +38,7 @@ const POD_BOTTOM = -10.7 * M;
 const CUP_TOP_Y = POD_MID - 0.55 * M;
 const CUP_R_TOP = 3.0 * M; // hexagon circumradius (= side length)
 const CUP_R_BOTTOM = 1.5 * M;
-const CUP_BODY_PULL = 0.16 * M; // body sits this much (circumradius) inside the frame plane
+const CUP_BODY_PULL = 0.2 * M; // body sits this much (circumradius) inside the frame plane
 const CUP_MARGIN = 0.4 * M; // window inset from the face edge
 const CUP_GLASS_H = -0.04 * M;
 
@@ -211,15 +214,17 @@ export function markStationMaterial(material: THREE.Material): void {
   };
 }
 
-// exterior window frame cross-section (metres -> km): glass seat, seal, step, chamfer, lip, bevel to the body
+// exterior window frame cross-section (metres -> km): glass seat, seal wall,
+// 45-degree chamfer up to a flat lip, then a steep drop to the body (the step
+// that catches raking light)
 const CUP_PROFILE: ProfileStep[] = (
   [
-    [0, -0.04, 0.5, 0],
-    [0.05, -0.04, 0.55, 0],
-    [0.05, 0.03, 0.75, 0.4],
-    [0.13, 0.07, 0.92, 1],
-    [0.19, 0.07, 1, 1],
-    [0.26, -0.1, 0.85, 1],
+    [0, -0.05, 0.45, 0],
+    [0.05, -0.05, 0.5, 0],
+    [0.05, 0.04, 0.7, 0.4],
+    [0.14, 0.11, 0.9, 1],
+    [0.22, 0.11, 1, 1],
+    [0.3, -0.12, 0.8, 1],
   ] as const
 ).map(([off, h, ao, tone]) => ({ off: off * M, h: h * M, ao, tone }));
 
@@ -232,9 +237,27 @@ export function createStation(): StationObjects {
   const dark = STATION.dark;
   const podDark = dark.clone().lerp(shade, 0.28);
 
-  // Matte, faceted: flat-shaded Lambert, colour per vertex.
+  // White insulation: matte, faceted (flat-shaded Lambert, colour per vertex).
   const material = new THREE.MeshLambertMaterial({ color: 0xffffff, vertexColors: true, flatShading: true });
   markStationMaterial(material);
+  // Metal trim (frames, collars, mast, window seals): a little reflective.
+  const trimMaterial = new THREE.MeshPhongMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    flatShading: true,
+    specular: STATION.metalSpecular,
+    shininess: STATION.metalShininess,
+  });
+  markStationMaterial(trimMaterial);
+  // Solar cells: dark navy, faint mirror sheen that flashes the Sun per facet.
+  const panelMaterial = new THREE.MeshPhongMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    flatShading: true,
+    specular: STATION.panelSpecular,
+    shininess: STATION.panelShininess,
+  });
+  markStationMaterial(panelMaterial);
 
   const _m = new THREE.Matrix4();
   const _q = new THREE.Quaternion();
@@ -258,6 +281,7 @@ export function createStation(): StationObjects {
   }
 
   const hull: THREE.BufferGeometry[] = [];
+  const trim: THREE.BufferGeometry[] = [];
 
   /** sweep output -> hull geometry: per-vertex colour from (ao, tone) */
   function colorFrame(g: THREE.BufferGeometry): THREE.BufferGeometry {
@@ -277,7 +301,7 @@ export function createStation(): StationObjects {
   /** Cupola: hex frustum body, six trapezoid windows + a round floor window,
    *  each with a chamfered frame, dark glass, and opened shutters on the slopes.
    *  Frames/shutters go into `hull`; returns the glass panes. */
-  function buildCupola(hullList: THREE.BufferGeometry[], bodyCol: THREE.Color): THREE.BufferGeometry[] {
+  function buildCupola(hullList: THREE.BufferGeometry[], trimList: THREE.BufferGeometry[], bodyCol: THREE.Color): THREE.BufferGeometry[] {
     const glass: THREE.BufferGeometry[] = [];
     const ring = (k: number, r: number, y: number) => new THREE.Vector3(Math.cos((k * Math.PI) / 3) * r, y, Math.sin((k * Math.PI) / 3) * r);
     const bottomY = POD_BOTTOM;
@@ -316,31 +340,57 @@ export function createStation(): StationObjects {
         { x: -w1, y: y1, corner: true },
       ];
       const viewer = Tm.clone().addScaledVector(n, 50);
-      hullList.push(colorFrame(sweepFrame(loop, CUP_PROFILE, map, viewer)));
+      trimList.push(colorFrame(sweepFrame(loop, CUP_PROFILE, map, viewer)));
       glass.push(fillPolygon(loop, map, CUP_GLASS_H, n));
 
-      // shutter: a slab hinged above the window, swung open away from the glass
+      // shutter: a thick, chamfered white-insulation vane hinged above the
+      // window and swung open away from the glass; raised ribs on both faces
+      // and a metal hinge bar give it depth under raking light.
       const pad = 0.1 * M;
       const hingeY = y0 - 0.16 * M;
+      const len = y1 + pad - hingeY;
       const shape = new THREE.Shape();
       shape.moveTo(-(w0 + pad), 0);
       shape.lineTo(w0 + pad, 0);
-      shape.lineTo(w1 + pad, y1 + pad - hingeY);
-      shape.lineTo(-(w1 + pad), y1 + pad - hingeY);
+      shape.lineTo(w1 + pad, len);
+      shape.lineTo(-(w1 + pad), len);
       shape.closePath();
-      const slab = new THREE.ExtrudeGeometry(shape, { depth: 0.05 * M, bevelEnabled: false });
+      const T = 0.09 * M;
+      const BV = 0.05 * M;
+      const vane: THREE.BufferGeometry[] = [];
+      const slab = new THREE.ExtrudeGeometry(shape, { depth: T, bevelEnabled: true, bevelThickness: BV, bevelSize: BV, bevelSegments: 1 });
+      vane.push(paint(slab, STATION.shutter, 0.04));
+      const wAt = (t: number) => w0 + (w1 - w0) * t;
+      for (const face of [-BV - 0.04 * M, T + BV + 0.04 * M]) {
+        // long centre rib + two cross ribs
+        const rib = bevelBox(0.09 * M, len * 0.42, 0.06 * M, 0.025 * M);
+        rib.translate(0, len * 0.5, face);
+        vane.push(paint(rib, STATION.shutterRib, 0.03));
+        for (const t of [0.3, 0.7]) {
+          const cross = bevelBox(wAt(t) * 0.86, 0.07 * M, 0.06 * M, 0.025 * M);
+          cross.translate(0, len * t, face);
+          vane.push(paint(cross, STATION.shutterRib, 0.03));
+        }
+      }
+      const vaneGeo = mergeGeometries(vane, false)!;
+      for (const g of vane) g.dispose();
       const open = (80 * Math.PI) / 180;
       const d = v.clone().multiplyScalar(Math.cos(open)).addScaledVector(n, Math.sin(open));
       const basis = new THREE.Matrix4().makeBasis(u, d, new THREE.Vector3().crossVectors(u, d));
       basis.setPosition(Tm.clone().addScaledVector(v, hingeY).addScaledVector(n, 0.16 * M));
-      slab.applyMatrix4(basis);
-      hullList.push(paint(slab, STATION.shutter, 0.05));
+      vaneGeo.applyMatrix4(basis);
+      hullList.push(vaneGeo);
+      // metal hinge bar along the top edge
+      const hinge = bevelBox(w0 + pad + 0.05 * M, 0.06 * M, 0.06 * M, 0.025 * M);
+      hinge.translate(0, -0.03 * M, T / 2);
+      hinge.applyMatrix4(basis);
+      trimList.push(paint(hinge, STATION.bodyShade, 0.03));
     }
 
     // round window in the floor
     const floor: Mapper = (x, z, h) => new THREE.Vector3(x, bottomY - h, z);
     const round = circleLoop(0.8 * M, 24);
-    hullList.push(colorFrame(sweepFrame(round, CUP_PROFILE, floor, new THREE.Vector3(0, bottomY - 50, 0))));
+    trimList.push(colorFrame(sweepFrame(round, CUP_PROFILE, floor, new THREE.Vector3(0, bottomY - 50, 0))));
     glass.push(fillPolygon(round, floor, CUP_GLASS_H, new THREE.Vector3(0, -1, 0)));
     return glass;
   }
@@ -359,7 +409,7 @@ export function createStation(): StationObjects {
   // thin seam bands where the chamfers start (subtle panel break)
   for (const y of [-HUB_SIDE_HALF, HUB_SIDE_HALF]) {
     put(
-      hull,
+      trim,
       octStack([
         [y - 0.09 * M, HUB_APOTHEM + 0.05 * M],
         [y + 0.09 * M, HUB_APOTHEM + 0.05 * M],
@@ -380,7 +430,7 @@ export function createStation(): StationObjects {
     const d = HUB_APOTHEM + 0.02 * M;
     const tx = Math.cos(faceAngle); // tangent along the face (right-handed)
     const tz = -Math.sin(faceAngle);
-    put(hull, g, dark, [nx * d + tx * u, y, nz * d + tz * u], [0, faceAngle, 0], 0);
+    put(trim, g, dark, [nx * d + tx * u, y, nz * d + tz * u], [0, faceAngle, 0], 0);
     // light sill under each window
     const s = new THREE.BoxGeometry(w + 0.3 * M, 0.18 * M, 0.2 * M);
     put(hull, s, shade, [nx * (d + 0.02 * M) + tx * u, y - h / 2 - 0.2 * M, nz * (d + 0.02 * M) + tz * u], [0, faceAngle, 0], 0);
@@ -407,9 +457,9 @@ export function createStation(): StationObjects {
     shade,
   );
   put(hull, domeCap(DOME_R), body, [0, DOME_BASE - 0.2 * M, 0], [0, Math.PI / 8, 0], 0.05);
-  put(hull, new THREE.CylinderGeometry(0.07 * M, 0.09 * M, MAST_TOP - DOME_TOP + 0.3 * M, 5), dark, [0, (MAST_TOP + DOME_TOP - 0.3 * M) / 2, 0], [0, 0, 0], 0);
-  put(hull, new THREE.BoxGeometry(1.3 * M, 0.08 * M, 0.08 * M), dark, [0, MAST_TOP - 0.45 * M, 0], [0, 0, 0], 0);
-  put(hull, new THREE.OctahedronGeometry(0.13 * M), dark, [0, MAST_TOP, 0], [0, 0, 0], 0);
+  put(trim, new THREE.CylinderGeometry(0.07 * M, 0.09 * M, MAST_TOP - DOME_TOP + 0.3 * M, 5), dark, [0, (MAST_TOP + DOME_TOP - 0.3 * M) / 2, 0], [0, 0, 0], 0);
+  put(trim, new THREE.BoxGeometry(1.3 * M, 0.08 * M, 0.08 * M), dark, [0, MAST_TOP - 0.45 * M, 0], [0, 0, 0], 0);
+  put(trim, new THREE.OctahedronGeometry(0.13 * M), dark, [0, MAST_TOP, 0], [0, 0, 0], 0);
 
   // ---- bottom: neck, Earth-facing cupola pod -------------------------------
   put(
@@ -440,14 +490,14 @@ export function createStation(): StationObjects {
     [0, 0, 0],
     0.06,
   );
-  const glassParts = buildCupola(hull, podDark);
+  const glassParts = buildCupola(hull, trim, podDark);
 
   // ---- arms: chunky segmented blocks with joint collars, to a mount block --
   for (const side of [-1, 1]) {
     const sx = (x: number) => side * x;
     const collar = (x0: number, len: number, a: number) => {
       put(
-        hull,
+        trim,
         octStack([
           [0, a],
           [len, a],
@@ -464,7 +514,7 @@ export function createStation(): StationObjects {
     put(hull, bevelBox(0.8 * M, 1.3 * M, 1.3 * M, 0.3 * M), body, [sx(ARM_ROOT + 3.65 * M), 0, 0]);
     collar(ARM_ROOT + 4.4 * M, 0.35 * M, 0.85 * M);
     // square mount block at the arm end (static; the array turns beside it)
-    put(hull, bevelBox(0.4 * M, 0.95 * M, 0.95 * M, 0.18 * M), shade, [sx(ARRAY_INNER - 0.8 * M), 0, 0]);
+    put(trim, bevelBox(0.4 * M, 0.95 * M, 0.95 * M, 0.18 * M), shade, [sx(ARRAY_INNER - 0.8 * M), 0, 0]);
   }
 
   const hullGeo = mergeGeometries(hull, false)!;
@@ -472,6 +522,11 @@ export function createStation(): StationObjects {
   geometries.push(hullGeo);
   const hullMesh = new THREE.Mesh(hullGeo, material);
   group.add(hullMesh);
+  const trimGeo = mergeGeometries(trim, false)!;
+  for (const g of trim) g.dispose();
+  geometries.push(trimGeo);
+  const trimMesh = new THREE.Mesh(trimGeo, trimMaterial);
+  group.add(trimMesh);
   // dark glass that catches the Sun (one merged mesh, one extra draw call)
   const glassGeo = mergeGeometries(glassParts, false)!;
   for (const g of glassParts) g.dispose();
@@ -479,12 +534,13 @@ export function createStation(): StationObjects {
   const glassMaterial = new THREE.MeshPhongMaterial({
     color: STATION.glass,
     specular: STATION.glassSpecular,
-    shininess: 80,
+    shininess: STATION.glassShininess,
     flatShading: true,
     side: THREE.DoubleSide,
   });
   markStationMaterial(glassMaterial);
-  group.add(new THREE.Mesh(glassGeo, glassMaterial));
+  const glassMesh = new THREE.Mesh(glassGeo, glassMaterial);
+  group.add(glassMesh);
 
   // ---- solar arrays: frame + 2x2 faceted panels, one mesh per array --------
   const arrays: THREE.Object3D[] = [];
@@ -493,6 +549,7 @@ export function createStation(): StationObjects {
   const cellSpan = (S - 3 * FRAME_BAR) / 2;
   for (const side of [-1, 1]) {
     const parts: THREE.BufferGeometry[] = [];
+    const cells: THREE.BufferGeometry[] = [];
     const cx = half; // array centre along the pivot's local +X (mirrored below)
     // shaft from the mount into the frame
     put(parts, bevelBox(0.3 * M, 0.45 * M, 0.45 * M, 0.1 * M), dark, [-0.2 * M, 0, 0], [0, 0, 0], 0);
@@ -520,12 +577,16 @@ export function createStation(): StationObjects {
       for (const pz of [-1, 1]) {
         const x = cx + px * (FRAME_BAR / 2 + cellSpan / 2);
         const z = pz * (FRAME_BAR / 2 + cellSpan / 2);
-        put(parts, facetedPanel(cellSpan / 2, cellSpan / 2, PANEL_THICK, PANEL_RAISE), STATION.panel, [x, 0, z], [0, 0, 0], 0.12);
+        put(cells, facetedPanel(cellSpan / 2, cellSpan / 2, PANEL_THICK, PANEL_RAISE), STATION.panel, [x, 0, z], [0, 0, 0], 0.12);
       }
     const geo = mergeGeometries(parts, false)!;
     for (const g of parts) g.dispose();
     geometries.push(geo);
-    const mesh = new THREE.Mesh(geo, material);
+    const cellGeo = mergeGeometries(cells, false)!;
+    for (const g of cells) g.dispose();
+    geometries.push(cellGeo);
+    const mesh = new THREE.Group();
+    mesh.add(new THREE.Mesh(geo, trimMaterial), new THREE.Mesh(cellGeo, panelMaterial));
     const pivot = new THREE.Object3D();
     pivot.position.set(side * ARRAY_INNER, 0, 0);
     // the -X array is the same geometry turned half-way round (not mirrored,
@@ -535,6 +596,15 @@ export function createStation(): StationObjects {
     group.add(pivot);
     arrays.push(pivot);
   }
+
+  // Hull-to-hull shadows: everything except the glass casts; all receive.
+  // (The renderer's shadow map only renders when index.ts asks it to.)
+  group.traverse((o) => {
+    if (o instanceof THREE.Mesh) {
+      o.castShadow = o !== glassMesh;
+      o.receiveShadow = true;
+    }
+  });
 
   // ---- orientation -----------------------------------------------------
   const upDir = new THREE.Vector3(0, 1, 0);
@@ -579,6 +649,8 @@ export function createStation(): StationObjects {
     dispose() {
       for (const g of geometries) g.dispose();
       material.dispose();
+      trimMaterial.dispose();
+      panelMaterial.dispose();
       glassMaterial.dispose();
     },
   };

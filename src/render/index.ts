@@ -50,6 +50,11 @@ const SHADER_TIME_EPOCH_MS = Date.UTC(2026, 0, 1);
 const SHADER_TIME_WRAP_S = 4 * 86400;
 const CAMERA_NEAR_KM = 0.001;
 const CAMERA_FAR_KM = 100000;
+// hull shadow map: 1024^2 ortho map around the station (arrays reach ~27 m)
+const SHADOW_MAP = 1024;
+const SHADOW_HALF_KM = 0.03;
+const SHADOW_DIST_KM = 0.1;
+const SHADOW_EVERY_N_FRAMES = 6;
 
 function toVec3(v: Vec3, out: THREE.Vector3): THREE.Vector3 {
   return out.set(v.x, v.y, v.z);
@@ -77,6 +82,11 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, MAX_DPR));
   renderer.setClearColor(SPACE.black, 1);
+  // Hull-to-hull shadows only (station meshes cast/receive). The map is never
+  // auto-rendered: update() requests a refresh a few times a second, chase view only.
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFShadowMap;
+  renderer.shadowMap.autoUpdate = false;
 
   const initialAspect = canvas.clientWidth > 0 && canvas.clientHeight > 0 ? canvas.clientWidth / canvas.clientHeight : 16 / 9;
   const camera = new THREE.PerspectiveCamera(50, initialAspect, CAMERA_NEAR_KM, CAMERA_FAR_KM);
@@ -117,12 +127,39 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   const station = createStation();
   scene.add(station.group);
 
-  const sunLight = new THREE.DirectionalLight(SUN.color, SUN.intensity);
+  // Space lighting: no ambient sky. Sun (hard), earthshine from below (day
+  // side only), faint moonlight and a starlight floor. Only the station's
+  // Lambert/Phong materials see these lights.
+  const sunLight = new THREE.DirectionalLight(SUN.color, STATION.sunIntensity);
   sunLight.target.position.set(0, 0, 0);
+  sunLight.castShadow = true;
+  sunLight.shadow.mapSize.set(SHADOW_MAP, SHADOW_MAP);
+  const sc = sunLight.shadow.camera;
+  sc.left = -SHADOW_HALF_KM;
+  sc.right = SHADOW_HALF_KM;
+  sc.top = SHADOW_HALF_KM;
+  sc.bottom = -SHADOW_HALF_KM;
+  sc.near = SHADOW_DIST_KM - SHADOW_HALF_KM * 1.6;
+  sc.far = SHADOW_DIST_KM + SHADOW_HALF_KM * 1.6;
+  sunLight.shadow.bias = -0.0004;
+  sunLight.shadow.normalBias = 0.00004;
   scene.add(sunLight);
   scene.add(sunLight.target);
-  const fill = new THREE.AmbientLight(STATION.ambient, STATION.ambientIntensity);
-  scene.add(fill);
+  const earthLight = new THREE.DirectionalLight(STATION.earthshine, 0);
+  earthLight.target.position.set(0, 0, 0);
+  scene.add(earthLight, earthLight.target);
+  const earthWide = new THREE.HemisphereLight(0x000000, STATION.earthshine, 0);
+  scene.add(earthWide);
+  const moonLight = new THREE.DirectionalLight(STATION.moonlight, 0);
+  moonLight.target.position.set(0, 0, 0);
+  scene.add(moonLight, moonLight.target);
+  const starFill = new THREE.AmbientLight(STATION.starlight, STATION.starlightIntensity);
+  scene.add(starFill);
+  let sunFade = 1; // eased 0..1 as the station enters / leaves Earth's shadow
+  let shadowTick = 0;
+  let shadowWasChase = false;
+  let shadowPrimed = false;
+  const hDir = new THREE.Vector3();
 
   const post = createPost(renderer, scene, camera);
 
@@ -187,11 +224,31 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     clouds.setSunDirWorld(sunDirVec);
     clouds.setTime(simSeconds);
 
-    sunLight.position.copy(sunDirVec);
     sun.setDirection(sunDirVec);
 
     upDirVec.copy(stationPosVec).normalize();
     fwdDirVec.copy(stationVelVec).normalize();
+
+    // --- station lights ---
+    // Sun: full unless the station is in Earth's shadow (eased over ~0.7 s).
+    sunFade += ((frame.inShadow ? 0 : 1) - sunFade) * Math.min(1, dtSec / 0.7);
+    sunLight.position.copy(sunDirVec).multiplyScalar(SHADOW_DIST_KM);
+    sunLight.intensity = STATION.sunIntensity * sunFade;
+    // Earthshine: the lit Earth below. Strong when the sub-station point is in
+    // daylight, gone past the terminator; near the terminator it comes from
+    // the day-side horizon rather than straight below.
+    const sunUp = sunDirVec.dot(upDirVec);
+    const dayBelow = THREE.MathUtils.smoothstep(sunUp, -0.3, 0.5);
+    hDir.copy(sunDirVec).addScaledVector(upDirVec, -sunUp);
+    if (hDir.lengthSq() > 1e-6) hDir.normalize();
+    earthLight.position.copy(upDirVec).multiplyScalar(-(0.6 + 0.4 * dayBelow)).addScaledVector(hDir, 0.45 * (1 - dayBelow));
+    earthLight.intensity = STATION.earthshineDay * dayBelow;
+    earthWide.position.copy(upDirVec);
+    earthWide.intensity = STATION.earthshineDay * STATION.earthshineWide * dayBelow;
+    // Moonlight: night side only, and not from behind the Earth.
+    const moonAbove = THREE.MathUtils.smoothstep(moonInfo.dirWorld.dot(upDirVec), -0.36, -0.2);
+    moonLight.position.copy(moonInfo.dirWorld);
+    moonLight.intensity = STATION.moonlightIntensity * moonInfo.illum * moonAbove * (1 - sunFade);
     station.orient(upDirVec, fwdDirVec, sunDirVec);
 
     rotateYInverse(upDirVec, frame.gmstRad, upDirObjVec);
@@ -243,6 +300,19 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
 
     cloudMap.setClimate(frame.timeMs, sunDirObjVec);
     cloudMap.update(renderer, simSeconds);
+    // hull shadows: chase view only, a few times a second (never in cabin views)
+    const chaseNow = rig.mode === 'chase';
+    if (!shadowPrimed) {
+      // one render up front so the depth texture exists before any lit draw
+      shadowPrimed = true;
+      renderer.shadowMap.needsUpdate = true;
+    } else if (chaseNow && sunFade > 0.02) {
+      if (!shadowWasChase || ++shadowTick >= SHADOW_EVERY_N_FRAMES) {
+        renderer.shadowMap.needsUpdate = true;
+        shadowTick = 0;
+      }
+    }
+    shadowWasChase = chaseNow;
     if (statsEl) renderer.info.reset();
     post.setDof(rig.dofTarget());
     post.render();
@@ -301,6 +371,9 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     meteors.dispose();
     station.dispose();
     sunLight.dispose();
+    sunLight.shadow.dispose();
+    earthLight.dispose();
+    moonLight.dispose();
     post.dispose();
     renderer.dispose();
   }
