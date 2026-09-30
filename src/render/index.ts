@@ -12,13 +12,14 @@ import { createMilkyWay } from './milkyway';
 import { createStation } from './station';
 import { CameraRig, type CameraMode } from './cameraRig';
 import { createSun } from './sun';
+import { createFlare, urlWantsFlare } from './flare';
 import { createPost } from './post';
 import { createCloudMap } from './cloudMap';
 import { createMoon, moonEclipseFactor } from './moon';
 import { createAurora } from './aurora';
 import { createMeteors } from './meteors';
 import { dailyKp, nlcSeason } from '../sim/astro';
-import { SUN, SPACE, STATION } from './palette';
+import { SUN, SPACE, STATION, FLARE } from './palette';
 
 export interface SceneRenderer {
   update(frame: FrameState, dtSec: number): void;
@@ -102,7 +103,11 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
   const camDir = new THREE.Vector3();
 
   const sun = createSun();
-  scene.add(sun.sprite);
+  scene.add(sun.mesh);
+  const flareOn = urlWantsFlare();
+  const flare = flareOn ? createFlare(renderer, scene) : null;
+  const camPos = new THREE.Vector3();
+  const earthRel = new THREE.Vector3();
 
   const moon = createMoon();
   scene.add(moon.mesh);
@@ -188,7 +193,6 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     clouds.setTime(simSeconds);
 
     sunLight.position.copy(sunDirVec);
-    sun.setDirection(sunDirVec);
 
     upDirVec.copy(stationPosVec).normalize();
     fwdDirVec.copy(stationVelVec).normalize();
@@ -209,6 +213,15 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
       const towardEarth = THREE.MathUtils.smoothstep(camDir.dot(upDirVec) * -1, -0.45, 0.25);
       const towardSun = THREE.MathUtils.smoothstep(camDir.dot(sunDirVec), 0.5, 0.95);
       target = 0.22 * (1 - 0.85 * towardEarth) * (1 - 0.9 * towardSun);
+    }
+    // Sun disc (atmosphere-tinted) and, unless ?flare=0, the glare / flare + exposure dip
+    camera.getWorldPosition(camPos);
+    earthRel.copy(earth.pivot.position).sub(camPos);
+    sun.update(camPos, sunDirVec, earthRel, 1);
+    if (flare) {
+      flare.update(camera, camPos, sunDirVec, earthRel, dtSec);
+      // the Sun dazzles: the eye closes down, stars and the night side sink
+      target *= 1 - FLARE.exposureDip * flare.glare;
     }
     skyExposure += (target - skyExposure) * Math.min(1, dtSec / 1.8);
     milkyWay.setExposure(skyExposure);
@@ -296,6 +309,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     stars.dispose();
     milkyWay.dispose();
     sun.dispose();
+    flare?.dispose();
     moon.dispose();
     aurora.dispose();
     meteors.dispose();
