@@ -103,6 +103,13 @@ const FACET_BIAS = 0.03; // flat ground reads slightly more lit than shaded
 const FACET_BIAS_HIGH_SUN = 0.4;
 const SHADE_GAIN = 0.78; // value of the shade colour (lower = deeper shadows)
 const HORIZON_SOFT_DEG = 1.5; // cast-shadow edge softness
+// Quiet plains: tilts below ~REL_QUIET rad (rel. to flat ground) fade out of
+// the lit/shade split entirely, and horizons below HORIZON_QUIET_DEG (5x-
+// exaggerated bumps of a few hundred metres) cast no shadow. Mountains, whose
+// facets tilt by 0.1+ rad and whose horizons are 4+ deg, are unaffected.
+const REL_QUIET_LO = 0.03;
+const REL_QUIET_HI = 0.13;
+const HORIZON_QUIET_DEG = 1.5;
 
 // Surface colour rules driven by the DEM / bathymetry (all colours: palette.ts SURFACE).
 const BATH_CAP_M = 400; // bath.webp depth code: 255 * sqrt(depth / cap), must match scripts/build-dem.mjs
@@ -164,6 +171,7 @@ float horizonLit(vec3 n, vec3 sunObj, vec4 hA, vec4 hB) {
   vec4 dB = abs(mod(az - vec4(4.0, 5.0, 6.0, 7.0) + 4.0, 8.0) - 4.0);
   float hN = dot(clamp(1.0 - dA, 0.0, 1.0), hA) + dot(clamp(1.0 - dB, 0.0, 1.0), hB);
   float hDeg = mix(${HORIZON_MIN_DEG.toFixed(1)}, ${HORIZON_MAX_DEG.toFixed(1)}, hN);
+  hDeg = hDeg > 0.0 ? max(hDeg - ${HORIZON_QUIET_DEG.toFixed(2)}, 0.0) : hDeg; // plains: no cast shadow
   return smoothstep(hDeg - ${HORIZON_SOFT_DEG.toFixed(2)}, hDeg + ${HORIZON_SOFT_DEG.toFixed(2)}, sunElDeg);
 }
 
@@ -370,6 +378,7 @@ void main() {
   float sunElRad = asin(clamp(n0, -1.0, 1.0));
   float soft = mix(${FACET_SOFTNESS.toFixed(3)}, ${FACET_SOFTNESS_HIGH.toFixed(3)}, smoothstep(0.3, 1.0, sunElRad));
   float bias = ${FACET_BIAS.toFixed(3)} + ${FACET_BIAS_HIGH_SUN.toFixed(2)} * max(sunElRad - 0.3, 0.0);
+  rel *= smoothstep(${REL_QUIET_LO.toFixed(3)}, ${REL_QUIET_HI.toFixed(3)}, abs(rel)); // plains stay calm
   float facing = smoothstep(-soft, soft, rel + bias);
   float dayLit = smoothstep(-0.01, 0.07, n0);
   float litAmt = facing * vCastLit * dayLit;

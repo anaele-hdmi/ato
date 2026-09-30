@@ -110,18 +110,34 @@ export const HI_TILE_SIZE: number = demMeta.tileSize;
 const HI_W = HI_TILE_COLS * HI_TILE_SIZE;
 const HI_H = HI_TILE_ROWS * HI_TILE_SIZE;
 const HI_CAP_KM = demMeta.elevCapM / 1000;
+const HI_PIXEL_KM = (Math.PI * 6371) / (HI_H); // 0.05 deg = 5.56 km
+/** Mip level = log2(footprint / pixel) - LOD_BIAS. */
+const LOD_BIAS = 1.0;
 const HI_LUT = new Float32Array(256);
 for (let i = 0; i < 256; i++) HI_LUT[i] = HI_CAP_KM * (i / 255) * (i / 255);
+
+// Box-filtered mip levels of the DEM (level k averages (2^k)^2 pixels, in
+// metres, Uint16). A vertex only stands for a whole facet (14-28 km) while the
+// DEM has 5.6 km pixels: point-sampling it aliases valleys and ridges into
+// vertex-to-vertex jitter that shows up as a checkerboard of facets. Vertex
+// heights are instead read from the mip whose footprint matches the facet
+// spacing (elevationKm `footprintKm`), a cheap pre-filtered low-pass.
+const MIP_LEVELS = 3;
+const MIP_MAX_M = 65535;
 
 export interface HiDem {
   /** HI_W x HI_H codes, zero until the tile covering them is installed. */
   data: Uint8Array;
   /** 1 per tile once installed (index = row * HI_TILE_COLS + col). */
   loaded: Uint8Array;
+  /** mips[k-1] = level k (width HI_W >> k), metres. */
+  mips: Uint16Array[];
 }
 
 export function createHiDem(): HiDem {
-  return { data: new Uint8Array(HI_W * HI_H), loaded: new Uint8Array(HI_TILE_COLS * HI_TILE_ROWS) };
+  const mips: Uint16Array[] = [];
+  for (let k = 1; k <= MIP_LEVELS; k++) mips.push(new Uint16Array((HI_W >> k) * (HI_H >> k)));
+  return { data: new Uint8Array(HI_W * HI_H), loaded: new Uint8Array(HI_TILE_COLS * HI_TILE_ROWS), mips };
 }
 
 export function installHiTile(hi: HiDem, col: number, row: number, tile: Uint8Array): void {
@@ -130,6 +146,26 @@ export function installHiTile(hi: HiDem, col: number, row: number, tile: Uint8Ar
     hi.data.set(tile.subarray(y * ts, (y + 1) * ts), (row * ts + y) * HI_W + col * ts);
   }
   hi.loaded[row * HI_TILE_COLS + col] = 1;
+  // mips of this tile (cells never straddle tiles: 1200 divides by 8)
+  for (let k = 1; k <= MIP_LEVELS; k++) {
+    const n = 1 << k;
+    const w = HI_W >> k;
+    const out = hi.mips[k - 1];
+    const cells = ts >> k;
+    const inv = 1 / (n * n);
+    for (let cy = 0; cy < cells; cy++) {
+      for (let cx = 0; cx < cells; cx++) {
+        let sum = 0;
+        const x0 = col * ts + cx * n;
+        const y0 = row * ts + cy * n;
+        for (let j = 0; j < n; j++) {
+          const r = (y0 + j) * HI_W + x0;
+          for (let i = 0; i < n; i++) sum += HI_LUT[hi.data[r + i]];
+        }
+        out[(row * cells + cy) * w + col * cells + cx] = Math.min(MIP_MAX_M, Math.round(sum * inv * 1000));
+      }
+    }
+  }
 }
 
 // Bilinear elevation in km from the hi-res DEM, or -1 if the tile is missing.
@@ -154,6 +190,53 @@ function sampleHiKm(hi: HiDem, uN: number, vN: number): number {
   const top = a00 + (a10 - a00) * fx;
   const bot = a01 + (a11 - a01) * fx;
   return top + (bot - top) * fy;
+}
+
+/** Elevation in km at fractional mip `lod` (0 = raw DEM, 3 = 8 px boxes),
+ *  trilinear between the two nearest levels; -1 if the tile is missing. */
+function sampleHiLodKm(hi: HiDem, uN: number, vN: number, lod: number): number {
+  if (lod <= 0.02) return sampleHiKm(hi, uN, vN);
+  const l = lod >= MIP_LEVELS ? MIP_LEVELS : lod;
+  const k0 = Math.floor(l);
+  const f = l - k0;
+  const a = k0 === 0 ? sampleHiKm(hi, uN, vN) : sampleMipKm(hi, k0, uN, vN);
+  if (a < 0 || f < 0.02 || k0 >= MIP_LEVELS) return a;
+  const b = sampleMipKm(hi, k0 + 1, uN, vN);
+  return b < 0 ? a : a + (b - a) * f;
+}
+
+function sampleMipKm(hi: HiDem, k: number, uN: number, vN: number): number {
+  const w = HI_W >> k;
+  const h = HI_H >> k;
+  const cells = HI_TILE_SIZE >> k;
+  const u = uN * w - 0.5;
+  const v = vN * h - 0.5;
+  const x0 = Math.floor(u);
+  const y0 = Math.max(0, Math.min(h - 1, Math.floor(v)));
+  const y1 = Math.min(h - 1, y0 + 1);
+  const fx = u - x0;
+  const fy = Math.max(0, Math.min(1, v - y0));
+  const xa = ((x0 % w) + w) % w;
+  const xb = xa + 1 === w ? 0 : xa + 1;
+  const m = hi.mips[k - 1];
+  const ld = hi.loaded;
+  // the nearest cell decides "missing"; taps that fall in a not-yet-installed
+  // neighbour tile reuse it instead of dipping to zero
+  const nx = fx < 0.5 ? xa : xb;
+  const ny = fy < 0.5 ? y0 : y1;
+  if (!ld[Math.floor(ny / cells) * HI_TILE_COLS + Math.floor(nx / cells)]) return -1;
+  const c = m[ny * w + nx];
+  const r0 = Math.floor(y0 / cells) * HI_TILE_COLS;
+  const r1 = Math.floor(y1 / cells) * HI_TILE_COLS;
+  const ca = Math.floor(xa / cells);
+  const cb = Math.floor(xb / cells);
+  const a00 = ld[r0 + ca] ? m[y0 * w + xa] : c;
+  const a10 = ld[r0 + cb] ? m[y0 * w + xb] : c;
+  const a01 = ld[r1 + ca] ? m[y1 * w + xa] : c;
+  const a11 = ld[r1 + cb] ? m[y1 * w + xb] : c;
+  const top = a00 + (a10 - a00) * fx;
+  const bot = a01 + (a11 - a01) * fx;
+  return (top + (bot - top) * fy) * 0.001;
 }
 
 // Bilinear sample of channel 0 at precomputed equirect pixel coords (u, v).
@@ -204,6 +287,7 @@ export function elevationKm(
   nz: number,
   detail = true,
   hi?: HiDem,
+  footprintKm = 0,
 ): number {
   const lat = Math.asin(ny > 1 ? 1 : ny < -1 ? -1 : ny);
   const lon = Math.atan2(-nz, nx);
@@ -213,7 +297,17 @@ export function elevationKm(
   if (landAmt <= 0) return 0;
   let h = -1;
   if (hi) {
-    h = sampleHiKm(hi, uN, vN);
+    h = footprintKm > 0
+      ? sampleHiLodKm(
+          hi,
+          uN,
+          vN,
+          // far horizon samples (detail = false) use the nearest mip only: half the taps
+          detail
+            ? Math.log2(Math.max(footprintKm, 1) / HI_PIXEL_KM) - LOD_BIAS
+            : Math.round(Math.log2(Math.max(footprintKm, 1) / HI_PIXEL_KM) - LOD_BIAS),
+        )
+      : sampleHiKm(hi, uN, vN);
     if (h >= 0) h /= MAX_ELEV_KM;
   }
   // The hi-res DEM carries the real ranges and valleys, so the invented
@@ -325,7 +419,9 @@ export function computeHorizons(
         const qx = nx * c + tx * sn;
         const qy = ny * c + ty * sn;
         const qz = nz * c + tz * sn;
-        const r1 = radiusKm + elevationKm(height, land, qx, qy, qz, s < detailSamples, hi);
+        const r1 =
+          radiusKm +
+          elevationKm(height, land, qx, qy, qz, s < detailSamples, hi, Math.max(2 * firstStepKm, 0.35 * dists[s]));
         // vector from vertex to sample, its component along the local up n
         const dx = qx * r1 - nx * r0;
         const dy = qy * r1 - ny * r0;
@@ -374,6 +470,7 @@ export function buildTerrainChunk(
   const positions = mesh.positions;
   const count = positions.length / 3;
   const elev = new Float32Array(count);
+  const edgeKm = facetEdgeKm(level, radiusKm);
   for (let v = 0; v < count; v++) {
     const x = positions[v * 3];
     const y = positions[v * 3 + 1];
@@ -382,7 +479,7 @@ export function buildTerrainChunk(
     const nx = x / r;
     const ny = y / r;
     const nz = z / r;
-    const e = elevationKm(height, land, nx, ny, nz, true, hi);
+    const e = elevationKm(height, land, nx, ny, nz, true, hi, edgeKm);
     elev[v] = e;
     positions[v * 3] = nx * (radiusKm + e);
     positions[v * 3 + 1] = ny * (radiusKm + e);
@@ -394,7 +491,7 @@ export function buildTerrainChunk(
     height,
     land,
     radiusKm,
-    0.5 * facetEdgeKm(level, radiusKm),
+    0.5 * edgeKm,
     count,
     hi,
   );
