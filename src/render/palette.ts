@@ -215,3 +215,27 @@ export const DOF = {
   /** easing time constant (s) for the chase blur amount */
   easeSec: 0.3,
 };
+
+/** Lightning inside night-side convective cells (clouds.ts, cloudLightning). */
+export const LIGHTNING = {
+  /** cold blue-white glow of a flash inside the cloud (linear) */
+  color: new THREE.Color(0.5, 0.66, 1.0),
+  /** peak emissive strength of a return stroke on thick cloud */
+  intensity: 3.4,
+  /** flash probability per cell per 6 s slot at full convective strength in
+   *  the local evening (kept low: the dark side is quiet, a flash now and then) */
+  rate: 0.25,
+  /** debug only: 1 = every active cell glows continuously (for stills) */
+  hold: 0,
+};
+
+/** Near-view cloud form (clouds.ts, low layer): pseudo-normal lighting and
+ *  self-shadowing of the 2D cumulus field. */
+export const CLOUD_FORM = {
+  /** max darkening of a puff on the side facing away from the sun (0..1) */
+  selfShadow: 0.5,
+  /** darkening in the gaps between puffs (cavity / ambient occlusion) */
+  cavity: 0.34,
+  /** thin sun-side edges glow with light passing through (translucency) */
+  rim: 0.32,
+};
