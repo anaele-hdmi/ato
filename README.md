@@ -48,6 +48,7 @@ node scripts/build-dem.mjs            # NOAA から取得（約 900 MB, 数分�
 - 標高画像: three-globe（vasturiano, MIT）のサンプル画像 `earth-topology.png`。元データの出典は未確認
 - 標高・水深: NOAA NCEI, ETOPO 2022 Global Relief Model の 60 arc-second 版（ice surface, EGM2008 高度）。パブリックドメイン（米国政府作品）。DOI 10.25921/fd45-gt74。`scripts/build-dem.mjs` で 0.05° の陸標高タイル（`elev_*.webp`）と 0.1° の水深＋湖マスク（`bath.webp`）に変換
 - 湖沼: Natural Earth 1:50m Lakes（パブリックドメイン）。`bath.webp` の G チャンネルに焼き込み
+- 夜景の灯り: NASA Earth Observatory / NASA GSFC「Black Marble」2016（Suomi NPP VIIRS、パブリックドメイン、https://earthobservatory.nasa.gov/features/NightLights ）。`scripts/build-city-lights.mjs` で 2048×1024 の単チャンネル WebP（`src/assets/city-lights.webp`）に変換
 - 恒星データ: d3-celestial © 2015 Olaf Frohn, BSD-3-Clause（Hipparcos 由来）
 - 月の位置・位相: Jean Meeus『Astronomical Algorithms』第47・48章の主要項のみの簡略式（自前実装、出典は式のみ）。月面の海の位置は IAU 月面座標の概略値
 - 地磁気双極子: 北磁極 80.7°N 72.7°W（IGRF-13 の中心双極子近似）。オーロラの活動度は日付シードの疑似乱数（実際の宇宙天気ではない）
