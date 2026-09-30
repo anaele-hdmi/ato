@@ -76,7 +76,7 @@ export const FLARE = {
   /** close glow around the disc */
   core: 0.9,
   /** ghost gain (multiplies each ghost's own gain) */
-  ghost: 1.0,
+  ghost: 0.6,
   /** how much the auto exposure closes when the Sun fills the view (0..1) */
   exposureDip: 0.5,
   /** ghosts: t = position along the Sun->screen-centre axis (1 = Sun, 0 = centre, -1 = opposite), size = screen-height fraction */
