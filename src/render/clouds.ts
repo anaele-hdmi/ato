@@ -27,7 +27,7 @@
 // upper 2–4; cloudy low pixels ~6 fetches (+4–5 where towers are possible);
 // no per-pixel hash noise.
 import * as THREE from 'three';
-import { CLOUD_LAYERS, RELIEF } from './palette';
+import { CLOUD_LAYERS, CLOUD_FORM, LIGHTNING, RELIEF } from './palette';
 import { NOISE_GLSL } from './noiseGlsl';
 import { CLOUD_MAP_GLSL, type CloudMapUniforms } from './cloudMap';
 import { CLOUD_ALT } from './cloudLayers';
@@ -82,6 +82,82 @@ vec3 cloudHaze(vec3 col, vec3 n, vec3 viewDir, float mu) {
   vec3 hazeColor = mix(uHazeCool, uHazeWarm, smoothstep(0.05, 0.7, mu) * 0.5);
   return mix(col, hazeColor, grazing * 0.25 * smoothstep(-0.1, 0.1, mu));
 }
+
+uniform vec3 uLightningColor; // flash colour * peak intensity (palette LIGHTNING)
+uniform vec2 uLightning;      // x: flash rate per cell per slot, y: debug hold
+uniform float uFlashTime;     // wall-clock seconds (independent of the sim speed)
+
+// ---------------------------------------------------------------------------
+// Night-side light on clouds. cloudNightLight() is the one hook for light that
+// still reaches a cloud after the sun has set for it: today the lightning
+// inside convective cells (lit towers and anvils); moonlight joins here too.
+// rgb: emissive (added after the day tone, not dimmed by night);
+// a: how much it makes an otherwise dark cloud show up (alpha floor).
+
+float ltHash(vec3 p) {
+  vec3 p3 = fract(p * 0.1031);
+  p3 += dot(p3, p3.zyx + 31.32);
+  return fract((p3.x + p3.y) * p3.z);
+}
+
+// 0.25..1: how likely storms fire at this local solar time (peak ~21h,
+// quietest ~9h) from the point's hour angle relative to the sun (object space:
+// +Y is the pole, map longitude = atan(-z, x))
+float ltEvening(vec3 q, vec3 L) {
+  vec2 q2 = vec2(q.x, -q.z);
+  vec2 l2 = vec2(L.x, -L.z);
+  l2 /= max(length(l2), 1e-4);
+  float ha = atan(l2.x * q2.y - l2.y * q2.x, dot(l2, q2)); // point lon - sun lon
+  float h = 12.0 + ha * (12.0 / PI);
+  return mix(0.25, 1.0, 0.5 + 0.5 * cos((h - 21.0) * (PI / 12.0)));
+}
+
+// Deterministic flashes from the cell hash + wall-clock time (no CPU state).
+// Cells ~160 km wide, each on its own 6 s slot clock; in a slot a cell fires
+// with probability rate * strength * evening, as 1-3 strokes 90-150 ms apart
+// (~15 ms up, ~70 ms decay). The glow is a soft blob around a jittered point
+// in the cell (moving a little per stroke).
+float lightningFlash(vec3 q, float act, float evening) {
+  vec3 c = q * 40.0;
+  vec3 ci = floor(c);
+  vec3 f = c - ci;
+  float hc = ltHash(ci);
+  vec3 ctr = vec3(ltHash(ci + 4.1), ltHash(ci + 8.7), ltHash(ci + 15.3)) * 0.28 + 0.36;
+  if (uLightning.y > 0.5) {
+    return (1.0 - smoothstep(0.06, 0.34, length(f - ctr))) * step(0.3, hc) * act;
+  }
+  if (hc < 0.3) return 0.0; // some cells are just not thundery
+  float T = uFlashTime + hc * 41.0;
+  float slot = floor(T / 6.0);
+  float t = T - slot * 6.0;
+  vec3 hh = vec3(ltHash(ci * 1.31 + slot * 7.1 + 3.7), ltHash(ci * 0.77 + slot * 3.3 + 9.1), ltHash(ci * 2.17 + slot * 5.9 + 1.3));
+  if (hh.x > uLightning.x * act * evening) return 0.0;
+  float start = 0.3 + hh.y * 4.6;
+  float n = 1.0 + floor(hh.z * 2.999);
+  float gap = 0.09 + 0.06 * hh.y;
+  float e = 0.0;
+  for (int i = 0; i < 3; i++) {
+    float x = t - (start + float(i) * gap);
+    if (float(i) < n && x > 0.0) {
+      float fi = float(i);
+      vec3 cc = ctr + (vec3(ltHash(ci + fi * 3.3), ltHash(ci + fi * 5.1), ltHash(ci + fi * 7.7)) - 0.5) * 0.1 * fi;
+      float amp = fi < 0.5 ? 1.0 : 0.75 - 0.15 * fi;
+      e += amp * exp(-x * 14.0) * (1.0 - exp(-x * 70.0)) * (1.0 - smoothstep(0.06, 0.34, length(f - cc)));
+    }
+  }
+  return min(e * 1.4, 1.0);
+}
+
+vec4 cloudNightLight(vec3 q, vec3 L, float mu, float hKm, float mA, float thick, float puff) {
+  float dark = 1.0 - smoothstep(-0.02, 0.06, mu + clHorizonDip(hKm));
+  float act = smoothstep(0.45, 0.9, mA);
+  if (dark < 0.01 || act < 0.01) return vec4(0.0);
+  float e = lightningFlash(q, act, ltEvening(q, L)) * dark;
+  if (e < 0.004) return vec4(0.0);
+  // lit from inside: strongest where the cloud is thick, on the puffs
+  float body = e * mix(0.5, 1.0, thick) * (0.55 + 0.9 * puff);
+  return vec4(uLightningColor * body, clamp(body * 1.3, 0.0, 1.0));
+}
 `;
 
 // ---------------------------------------------------------------------------
@@ -92,6 +168,7 @@ uniform vec3 uLowShade;
 uniform vec3 uLowDeep;
 
 uniform highp sampler3D uPuffTex;
+uniform vec3 uForm;           // palette CLOUD_FORM: self shadow, cavity, rim
 
 const float F_MASS = 120.0;   // cloud-mass cell scale (~53 km cells)
 const float F_DETAIL = 400.0; // cumulus texture inside the masses (~16 km)
@@ -104,10 +181,12 @@ vec4 billowAt(vec3 q, float f) { return texture(uPuffTex, q * (f / 8.0) + cloudD
 
 // 2D low-layer density: the macro field sets coverage; masses and a detail
 // texture shape soft cloud fields inside it (EVE-style main + detail maps)
-float lowDensity(vec3 q, vec4 m, float fade, float fadeDetail, float fw_big) {
+float lowDensity(vec3 q, vec4 m, float fade, float fadeDetail, float fw_big, out float massO, out float detO) {
   float deck = smoothstep(0.3, 0.75, m.r);
   float mass = billowAt(q, F_MASS).a;
   float det = billowAt(q, F_DETAIL).a;
+  massO = mass;
+  detO = det;
   // open cells behind cold fronts: cloud walls around clear centres
   float open = clamp(-m.a, 0.0, 1.0);
   mass = mix(mass, smoothstep(0.1, 0.8, 1.0 - mass), open * 0.8);
@@ -184,6 +263,8 @@ void main() {
   float cov;
   float light;
   float thick;
+  float puff = 0.5;
+  float rim = 0.0;
   if (tower) {
     // tower: offset-sample normal of its height field; darker toward the base
     float eps = 0.3 / (F_MASS * 1.6);
@@ -194,19 +275,41 @@ void main() {
     light = clamp((ndl + 0.5) / 1.5, 0.0, 1.0) * mix(0.7, 1.0, hf);
     cov = 1.0;
     thick = 1.0;
+    puff = mix(0.4, 0.8, hf);
   } else {
     // 2D layer: soft coverage, sun-side brightening from an offset sample
     // toward the sun (density falling toward the sun = lit edge)
-    float d = lowDensity(q, m, fade, fadeDetail, fw * F_BIG);
+    float mass0;
+    float dt0;
+    float d = lowDensity(q, m, fade, fadeDetail, fw * F_BIG, mass0, dt0);
     cov = smoothstep(0.0, mix(0.3, 0.45, 1.0 - fade), d);
     if (cov < 0.01) discard;
+    thick = smoothstep(0.0, 0.8, d);
+    puff = dt0;
     // offset sample of the detail texture only (the masses barely change
     // over that distance): one fetch
-    float dt0 = billowAt(q, F_DETAIL).a;
     float dt1 = billowAt(normalize(q + sunT * (0.5 / F_DETAIL)), F_DETAIL).a;
     float grad = clamp((dt0 - dt1) * 0.3 * fadeDetail * 4.0, -1.0, 1.0) * horiz;
-    thick = smoothstep(0.0, 0.8, d);
-    light = clamp(0.62 + 0.25 * mu + 0.45 * grad - 0.12 * thick, 0.0, 1.0);
+    light = clamp(0.66 + 0.25 * mu + 0.6 * grad - 0.12 * thick, 0.0, 1.0);
+    // --- near view (fadeDetail -> 0 with distance, so the horizon is untouched)
+    // Form: treat the cloud field as a height field. (1) self shadow: the
+    // sun-side neighbour, one puff-shadow length away (a ~6 km puff over a low
+    // sun casts ~20 km), is higher -> this pixel sits in its shadow (masses +
+    // detail, 2 fetches). (2) cavity: the gaps between puffs inside thick
+    // cloud are darker. (3) rim: thin sun-facing edges let light through.
+    // Everything is bounded and blue-grey (uLowShade), never black.
+    if (fadeDetail > 0.04 && sun.w > 0.01) {
+      float slen = clamp(3.0 * horiz / max(mu + 0.05, 0.15), 0.0, 6.0) * 4.0; // km
+      vec3 qs = normalize(q + sunT * (slen / CL_R0));
+      float ms = billowAt(qs, F_MASS).a;
+      float ds = billowAt(qs, F_DETAIL).a;
+      float h0 = (mass0 - 0.4) * 0.5 + (dt0 - 0.42) * 0.23;
+      float hs = (ms - 0.4) * 0.5 + (ds - 0.42) * 0.23;
+      float sh = clamp((hs - h0) * 14.0, 0.0, 1.0) * smoothstep(0.1, 0.5, horiz) * thick;
+      float cav = (1.0 - smoothstep(0.2, 0.6, dt0)) * smoothstep(0.35, 0.85, d);
+      light *= 1.0 - fadeDetail * (uForm.x * sh + uForm.y * cav);
+      rim = uForm.z * fadeDetail * (1.0 - thick) * (0.35 + 0.65 * max(grad, 0.0));
+    }
   }
 
   // shade from mid deck / anvils / cirrus / tower clusters up-sun (one lookup)
@@ -236,11 +339,17 @@ void main() {
   vec3 viewDir = -dir;
   float back = pow(max(dot(dir, L), 0.0), 6.0) * (1.0 - thick) * sun.w;
   tone += uSunsetGold * sun.rgb * back * 0.35;
+  // translucent sun-facing edges (form, near view)
+  tone += uLowLit * sun.rgb * (rim * sun.w);
 
   tone = cloudHaze(tone, q, viewDir, mu);
   float night = smoothstep(-0.02, 0.06, mu + clHorizonDip(hKm));
   vec3 color = tone * mix(0.03, 1.0, night);
   float alpha = cov * mix(0.85, 0.96, thick) * mix(0.05, 1.0, night);
+  // night side: lightning (and later moonlight) lights the cloud from within
+  vec4 nl = cloudNightLight(q, L, mu, hKm, m.a, thick, puff);
+  color += nl.rgb;
+  alpha = max(alpha, cov * nl.a);
 
   gl_FragColor = vec4(color, alpha);
   #include <colorspace_fragment>
@@ -311,7 +420,10 @@ vec4 highLayer(vec3 n, vec4 m, float fw, vec3 L, vec3 viewDir) {
   // thin cirrus is translucent; anvils/shields nearly opaque, but thinner over
   // the strongest convective cores so the towers show through
   float alpha = cov * mix(0.4, 0.9, anvil) * (1.0 - 0.45 * smoothstep(0.45, 0.9, m.a)) * mix(0.04, 1.0, night);
-  return vec4(tone * mix(0.03, 1.0, night), alpha);
+  // night side: a flash in the cell below lights the anvil from within too
+  vec4 nl = cloudNightLight(n, L, mu, CL_HIGH, m.a, anvil, s1);
+  alpha = max(alpha, cov * nl.a * 0.8);
+  return vec4(tone * mix(0.03, 1.0, night) + nl.rgb * 0.7, alpha);
 }
 
 void main() {
@@ -370,6 +482,10 @@ export function createClouds(cloudMap: CloudMapUniforms): CloudObjects {
     uSunDirObj: { value: new THREE.Vector3(1, 0, 0) },
     uCamObj: { value: new THREE.Vector3() },
     uTime: { value: 0 },
+    // wall-clock seconds for lightning strokes (they must not scale with the sim speed)
+    uFlashTime: { value: 0 },
+    uLightningColor: { value: new THREE.Vector3(LIGHTNING.color.r, LIGHTNING.color.g, LIGHTNING.color.b).multiplyScalar(LIGHTNING.intensity) },
+    uLightning: { value: new THREE.Vector2(LIGHTNING.rate, LIGHTNING.hold) },
     uHazeCool: { value: RELIEF.hazeCool },
     uHazeWarm: { value: RELIEF.hazeWarm },
     uSunsetGold: { value: CLOUD_LAYERS.sunsetGold },
@@ -396,6 +512,7 @@ export function createClouds(cloudMap: CloudMapUniforms): CloudObjects {
       const c = shared.uCamObj.value;
       c.setFromMatrixPosition(camera.matrixWorld);
       mesh.worldToLocal(c);
+      shared.uFlashTime.value = (performance.now() / 1000) % 3600;
     };
     geometries.push(geometry);
     materials.push(material);
@@ -406,7 +523,12 @@ export function createClouds(cloudMap: CloudMapUniforms): CloudObjects {
   shell(
     CLOUD_ALT.cbTop,
     LOW_FRAGMENT,
-    { uLowLit: { value: CLOUD_LAYERS.lowLit }, uLowShade: { value: CLOUD_LAYERS.lowShade }, uLowDeep: { value: CLOUD_LAYERS.lowDeep } },
+    {
+      uLowLit: { value: CLOUD_LAYERS.lowLit },
+      uLowShade: { value: CLOUD_LAYERS.lowShade },
+      uLowDeep: { value: CLOUD_LAYERS.lowDeep },
+      uForm: { value: new THREE.Vector3(CLOUD_FORM.selfShadow, CLOUD_FORM.cavity, CLOUD_FORM.rim) },
+    },
     1,
   );
   shell(
