@@ -200,3 +200,17 @@ export const CLOUD_LAYERS = {
   sunsetGold: new THREE.Color(0xffc98c),
   sunsetPink: new THREE.Color(0xf09aa6),
 };
+
+/** DEM-driven surface colours (earth.ts): shallow banks, lakes, mountain snow
+ *  and sea ice. Kept quiet and desaturated, close to the ocean / land faces
+ *  they sit next to. */
+export const SURFACE = {
+  /** shallow banks and reefs (Bahamas, Red Sea, Great Barrier Reef): depth < ~40 m */
+  turquoise: new THREE.Color(0x4a969b),
+  /** major lakes */
+  lake: new THREE.Color(0x467f9a),
+  /** snow above the latitude-dependent snow line */
+  snow: new THREE.Color(0xeceeed),
+  /** seasonal sea ice: a touch bluer than the land ice */
+  seaIce: new THREE.Color(0xdbe6ec),
+};

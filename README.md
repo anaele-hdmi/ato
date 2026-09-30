@@ -21,8 +21,20 @@ npm test         # 軌道計算のテスト
 | `?t=2026-09-28T05:00:00Z` | 開始時刻を固定 |
 | `?stats=1` | fps・描画三角形数・描画呼び出し数を表示 |
 | `?detail=7` / `?detail=9` | 地形の細かさ（既定 8） |
+| `?hires=0` | 高解像度 DEM を使わず、従来の粗い標高（2048x1024）だけにする |
 | `?adaptive=0` | 解像度の自動調整を止める |
 | `?post=0` | 仕上げ処理（光の滲み・色調・粒子）を切る |
+
+## 標高データの再生成
+
+実行時に使う標高・水深アセット（`src/assets/dem/`）は事前変換でコミット済み。元データは含めない。作り直すとき:
+
+```sh
+npm i --no-save sharp                 # エンコーダ（この変換のときだけ）
+node scripts/build-dem.mjs            # NOAA から取得（約 900 MB, 数分）→ 変換
+```
+
+プロキシ越しは `NODE_USE_ENV_PROXY=1`。取得結果は一時ディレクトリにキャッシュされる（`--cache <dir>`）。
 
 ## 設計資料
 
@@ -33,5 +45,7 @@ npm test         # 軌道計算のテスト
 
 - 陸地形状: Natural Earth（world-atlas 経由, パブリックドメイン）
 - 標高画像: three-globe（vasturiano, MIT）のサンプル画像 `earth-topology.png`。元データの出典は未確認
+- 標高・水深: NOAA NCEI, ETOPO 2022 Global Relief Model の 60 arc-second 版（ice surface, EGM2008 高度）。パブリックドメイン（米国政府作品）。DOI 10.25921/fd45-gt74。`scripts/build-dem.mjs` で 0.05° の陸標高タイル（`elev_*.webp`）と 0.1° の水深＋湖マスク（`bath.webp`）に変換
+- 湖沼: Natural Earth 1:50m Lakes（パブリックドメイン）。`bath.webp` の G チャンネルに焼き込み
 - 恒星データ: d3-celestial © 2015 Olaf Frohn, BSD-3-Clause（Hipparcos 由来）
 - 宇宙船は架空のもので、実在の機関・機体とは無関係

@@ -161,6 +161,7 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     // 2026-01-01, wrapped every 4 days (a jump at the wrap is acceptable).
     const simSeconds = ((frame.timeMs - SHADER_TIME_EPOCH_MS) / 1000) % SHADER_TIME_WRAP_S;
     earth.setTime(simSeconds);
+    earth.setDate(frame.timeMs);
     clouds.setSunDirObject(sunDirObjVec);
     clouds.setSunDirWorld(sunDirVec);
     clouds.setTime(simSeconds);
