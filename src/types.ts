@@ -28,6 +28,20 @@ export interface FrameState {
   lonDeg: number;
   /** True when the station is inside Earth's (cylindrical) shadow. */
   inShadow: boolean;
+  /** Moon (geocentric). Direction seen from the station = normalize(pos - stationPos). */
+  moon: MoonFrame;
+}
+
+export interface MoonFrame {
+  /** Geocentric position, scene frame, km. */
+  pos: Vec3;
+  distKm: number;
+  /** Illuminated fraction of the disc seen from Earth, 0 new .. 1 full. */
+  illumFraction: number;
+  /** Sun-Moon-Earth phase angle, degrees (0 full, 180 new). */
+  phaseAngleDeg: number;
+  /** Relative moonlight illuminance, full moon at mean distance = 1. */
+  illuminance: number;
 }
 
 export type TimeRate = 1 | 10;

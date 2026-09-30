@@ -239,3 +239,43 @@ export const CLOUD_FORM = {
   /** thin sun-side edges glow with light passing through (translucency) */
   rim: 0.32,
 };
+
+/** Moon (moon.ts): a lunar surface lit by the Sun, dim bluish earthshine on
+ *  the dark part. Colours are linear-converted hex; brightness is a scale on
+ *  the whole disc before the sky-exposure gain. */
+export const MOON = {
+  highland: new THREE.Color(0xd8d3c8),
+  mare: new THREE.Color(0x7c8088),
+  earthshine: new THREE.Color(0x5f7fb8),
+  /** earthshine radiance relative to the lit disc at full Earth phase */
+  earthshineStrength: 0.045,
+  /** peak brightness of the lit surface (linear, before exposure) */
+  brightness: 0.95,
+  /** faint halo around the disc, relative to the disc, scaled by phase */
+  halo: 0.05,
+  /** eclipsed moon: dim coppery red */
+  eclipse: new THREE.Color(0xa13a1c),
+};
+
+/** Aurora (aurora.ts): 557.7 nm oxygen green low, faint 630 nm red above. */
+export const AURORA = {
+  green: new THREE.Color(0x35e0a0),
+  red: new THREE.Color(0xc02a55),
+  /** N2+ blue-violet fringe on the lower edge */
+  fringe: new THREE.Color(0x6a5ad8),
+  /** overall radiance scale (linear, additive) */
+  intensity: 0.55,
+};
+
+/** Noctilucent clouds (atmosphere.ts): thin silvery-blue layer at ~83 km. */
+export const NLC = {
+  color: new THREE.Color(0x9fc4ff),
+  intensity: 0.6,
+};
+
+/** Meteors (meteors.ts): short warm-white streaks with a faint green tail. */
+export const METEOR = {
+  head: new THREE.Color(0xfff2dc),
+  tail: new THREE.Color(0x9fe8c8),
+  intensity: 2.4,
+};

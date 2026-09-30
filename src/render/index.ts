@@ -14,6 +14,10 @@ import { CameraRig, type CameraMode } from './cameraRig';
 import { createSun } from './sun';
 import { createPost } from './post';
 import { createCloudMap } from './cloudMap';
+import { createMoon, moonEclipseFactor } from './moon';
+import { createAurora } from './aurora';
+import { createMeteors } from './meteors';
+import { dailyKp, nlcSeason } from '../sim/astro';
 import { SUN, SPACE, STATION } from './palette';
 
 export interface SceneRenderer {
@@ -23,6 +27,13 @@ export interface SceneRenderer {
   aimAtSun(): void;
   /** Switches to the next viewpoint and returns it. */
   nextCamera(): CameraMode;
+  /**
+   * Moon as seen from the station, refreshed every update(): `dirWorld` is the
+   * unit direction (scene/world frame), `illum` the relative moonlight
+   * illuminance (phase x distance; full moon at mean distance = 1, quarter ~0.09).
+   * For lighting clouds / sea with moonlight.
+   */
+  readonly moon: { readonly dirWorld: THREE.Vector3; illum: number };
   dispose(): void;
 }
 
@@ -92,6 +103,15 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
 
   const sun = createSun();
   scene.add(sun.sprite);
+
+  const moon = createMoon();
+  scene.add(moon.mesh);
+  const moonInfo = { dirWorld: new THREE.Vector3(1, 0, 0), illum: 0 };
+  const moonPosVec = new THREE.Vector3();
+  const aurora = createAurora();
+  earth.rotGroup.add(aurora.group);
+  const meteors = createMeteors();
+  scene.add(meteors.mesh);
 
   const station = createStation();
   scene.add(station.group);
@@ -194,6 +214,28 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     milkyWay.update(camera);
     stars.update(camera);
 
+    // Moon: true station-centric direction (parallax up to ~1 deg), in the same
+    // eye adaptation as the stars.
+    toVec3(frame.moon.pos, moonPosVec);
+    const moonEclipse = moonEclipseFactor(moonPosVec, sunDirVec);
+    const moonToStation = moonPosVec.sub(stationPosVec);
+    moonInfo.dirWorld.copy(moonToStation).normalize();
+    moonInfo.illum = frame.moon.illuminance;
+    moon.setExposure(skyExposure);
+    moon.update(camera, {
+      dirWorld: moonInfo.dirWorld,
+      distKm: moonToStation.length(),
+      sunDirWorld: sunDirVec,
+      earthCenter: earth.pivot.position,
+      eclipse: moonEclipse,
+      illum: frame.moon.illumFraction,
+    });
+
+    aurora.update(sunDirObjVec, dailyKp(frame.timeMs), simSeconds);
+    const nlc = nlcSeason(frame.timeMs);
+    atmosphere.setNlcSeason(nlc.north, nlc.south);
+    meteors.update(dtSec, camera, viewH * dpr, stationPosVec, sunDirVec, frame.timeMs);
+
     cloudMap.setClimate(frame.timeMs, sunDirObjVec);
     cloudMap.update(renderer, simSeconds);
     if (statsEl) renderer.info.reset();
@@ -249,11 +291,14 @@ export async function createSceneRenderer(canvas: HTMLCanvasElement): Promise<Sc
     stars.dispose();
     milkyWay.dispose();
     sun.dispose();
+    moon.dispose();
+    aurora.dispose();
+    meteors.dispose();
     station.dispose();
     sunLight.dispose();
     post.dispose();
     renderer.dispose();
   }
 
-  return { update, resize, aimAtSun: () => rig.aimAtSun(), nextCamera: () => rig.next(), dispose };
+  return { update, resize, aimAtSun: () => rig.aimAtSun(), nextCamera: () => rig.next(), moon: moonInfo, dispose };
 }

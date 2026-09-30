@@ -15,7 +15,7 @@ import type { FrameState, Vec3 } from '../types';
 import { EARTH_RADIUS_KM } from '../types';
 
 import { eciToScene, vDot, vLength, vSub, vScale } from './frames';
-import { sunDirectionECI, gmstRad } from './astro';
+import { sunDirectionECI, gmstRad, moonState, moonIlluminance } from './astro';
 
 const DEG2RAD = Math.PI / 180;
 const RAD2DEG = 180 / Math.PI;
@@ -160,6 +160,7 @@ export function computeFrame(timeMs: number): FrameState {
   lonDeg = ((lonDeg + 180) % 360 + 360) % 360 - 180;
 
   const inShadow = computeInShadow(rEci, sunEci);
+  const moon = moonState(timeMs);
 
   return {
     timeMs,
@@ -170,6 +171,13 @@ export function computeFrame(timeMs: number): FrameState {
     latDeg,
     lonDeg,
     inShadow,
+    moon: {
+      pos: eciToScene(moon.posEci),
+      distKm: moon.distKm,
+      illumFraction: moon.illumFraction,
+      phaseAngleDeg: moon.phaseAngleDeg,
+      illuminance: moonIlluminance(moon.phaseAngleDeg, moon.distKm),
+    },
   };
 }
 
