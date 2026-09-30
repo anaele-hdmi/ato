@@ -38,7 +38,7 @@ describe('station cupola', () => {
       }
     });
     console.log(`station: ${tris} triangles in ${calls} meshes`);
-    expect(calls).toBeLessThanOrEqual(5);
+    expect(calls).toBeLessThanOrEqual(8) // hull, trim, glass + per-paddle frame and cells;
     st.dispose();
   });
 });
