@@ -180,7 +180,7 @@ uniform vec3 uForm;           // palette CLOUD_FORM: self shadow, cavity, rim
 
 const float F_MASS = 120.0;   // cloud-mass cell scale (~53 km cells)
 const float F_DETAIL = 400.0; // cumulus texture inside the masses (~16 km)
-const float F_ERODE1 = 700.0; // erosion octaves (~9 km / ~3.5 km scallops)
+const float F_ERODE1 = 450.0; // erosion: ~14 km round puffs along the edge / ~3.5 km valleys inside
 const float F_ERODE2 = 1800.0;
 const float F_BIG = 45.0;     // large cloud-mass groups / gaps (~140 km cells)
 // the 2D low layer sits in the middle of the boundary-layer cloud slab
@@ -220,14 +220,13 @@ float lowDensity(vec3 q, vec4 m, float fade, float fadeDetail, float fw_big, flo
     float amp1 = 0.34 * mix(0.75, 1.3, big) * k1;
     // bumps that would raise d in clear air are damped: no speckle islands
     float b1 = 0.36 - (1.0 - g1) * edge;
-    d += amp1 * (b1 > 0.0 ? b1 * smoothstep(-0.25, 0.05, d) : b1);
-    carveO = (1.0 - g1) * k1;
+    d += amp1 * (b1 > 0.0 ? b1 * smoothstep(-0.1, 0.1, d) : b1);
+    carveO = smoothstep(0.6, 1.0, 1.0 - g1) * k1;
     float k2 = 1.0 - smoothstep(0.22, 0.6, fw * F_ERODE2);
     if (k2 > 0.02) {
       float g2 = texture(uPuffTex, q.yzx * (F_ERODE2 / 16.0) + cloudDrift() * 5.0 + 0.71).g;
-      float b2 = 0.36 - (1.0 - g2) * edge;
-      d += 0.13 * k2 * k1 * (b2 > 0.0 ? b2 * smoothstep(-0.25, 0.05, d) : b2);
-      carveO = clamp(carveO * 0.7 + k2 * 0.6 * (1.0 - g2), 0.0, 1.0);
+      // second octave shades the valleys only (no change to the outline)
+      carveO = max(carveO, k2 * smoothstep(0.55, 1.0, 1.0 - g2));
     }
   }
   return d;
@@ -320,16 +319,15 @@ void main() {
     float d = lowDensity(q, m, fade, fadeDetail, fw * F_BIG, fw, mass0, dt0, carve);
     // Edge: a soft 0.3-0.45 ramp far away (no shimmer), but near the camera the
     // ramp shrinks to ~1.5 pixels of the density field (fwidth) so silhouettes
-    // are crisp; a faint narrow halo keeps thin wisps translucent.
+    // are crisp; no halo (it read as dirt).
     float wOld = mix(0.3, 0.45, 1.0 - fade);
-    float wAA = clamp(fwidth(d) * 1.5, 0.02, 0.3);
+    float wAA = clamp(fwidth(d) * 1.8, 0.05, 0.3);
     float wCov = mix(wOld, wAA, fadeDetail);
     cov = smoothstep(0.0, wCov, d);
-    cov = max(cov, 0.1 * fadeDetail * smoothstep(-max(0.05, 3.0 * wAA), 0.0, d));
     if (cov < 0.01) discard;
     thick = smoothstep(0.0, 0.8, d);
     // a crisp silhouette is not a thin cloud: no dark lavender outline
-    thick = max(thick, 0.55 * fadeDetail * cov);
+    thick = max(thick, 0.85 * fadeDetail * cov);
     puff = dt0;
     // offset sample of the detail texture only (the masses barely change
     // over that distance): one fetch
@@ -352,7 +350,7 @@ void main() {
       float hs = (ms - 0.4) * 0.5 + (ds - 0.42) * 0.23;
       float sh = clamp((hs - h0) * 14.0, 0.0, 1.0) * smoothstep(0.1, 0.5, horiz) * thick;
       float cav = (1.0 - smoothstep(0.2, 0.6, dt0)) * smoothstep(0.35, 0.85, d);
-      light *= 1.0 - fadeDetail * (uForm.x * sh + uForm.y * cav) - 0.4 * carve * carve * thick;
+      light *= 1.0 - fadeDetail * (uForm.x * sh + uForm.y * cav) - 0.3 * carve * thick;
       rim = uForm.z * fadeDetail * (1.0 - thick) * (0.35 + 0.65 * max(grad, 0.0));
     }
   }
